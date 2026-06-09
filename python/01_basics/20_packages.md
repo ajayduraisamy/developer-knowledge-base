@@ -1,621 +1,619 @@
 # Packages - __init__.py, subpackages, relative imports
 
-## Introduction
+## __init__.py
 
-Packages are a way of organizing related modules into a directory hierarchy. A package is simply a directory containing a special `__init__.py` file (can be empty) and one or more module files. Packages can be nested (subpackages) and allow for a hierarchical structure of modules. Python also supports namespace packages (without `__init__.py`) and has package management through pip and PyPI.
+### What It Is
+`__init__.py` is a special Python file that marks a directory as a Python package. When Python imports a package, it executes the `__init__.py` file inside that directory. This file can be empty or contain initialization code, import statements, and package metadata. Without this file (or a namespace package mechanism), Python will not treat a directory as a regular package.
 
-## Why It Is Important
+### Why It Is Important
+`__init__.py` is the entry point for a package. It controls what gets exposed when a user imports the package, allows package-level initialization (e.g., setting up configuration, logging, or database connections), defines `__all__` to restrict star imports, and stores package metadata like `__version__` and `__author__`. Properly designed `__init__.py` files create clean public APIs that hide internal module structure from consumers.
 
-Packages are important because:
-- They organize related modules into logical groups
-- They prevent naming conflicts between modules
-- They enable large project organization
-- They support subpackages for deep hierarchies
-- They allow distribution of reusable code via PyPI
-- They enable relative imports within package hierarchies
+### How It Works Internally
+When Python encounters `import mypackage`, it searches `sys.path` for a directory named `mypackage`. If found, Python looks for `mypackage/__init__.py`. If the file exists, Python executes it in the context of the new package namespace. The file's global namespace becomes the package's namespace. Python also sets `__path__` on the package to `['path/to/mypackage']`, which is used for subpackage and submodule resolution. If `__init__.py` is absent (Python 3.3+), a namespace package is created instead, where multiple directories can contribute to the same package.
 
-## Syntax
-
+### Syntax
 ```python
-# Import from package
-import package.module
-from package import module
-from package.module import function
+# Minimal __init__.py (empty file)
 
-# Import subpackage
-import package.subpackage.module
-from package.subpackage import module
+# Package metadata
+__version__ = "2.1.0"
+__author__ = "Alice Smith"
 
-# Relative imports (inside package)
-from . import sibling_module
-from .. import parent_module
-from .subpackage import module
+# Selective imports from submodules
+from .math_ops import add, multiply
+from .string_ops import capitalize
 
-# Package structure:
-# mypackage/
-#     __init__.py
-#     module1.py
-#     module2.py
-#     subpackage/
-#         __init__.py
-#         module3.py
+# Control star imports
+__all__ = ["add", "multiply", "capitalize"]
+
+# Package-level initialization
+import logging
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 ```
 
-## Examples
-
-### Creating a Package
-
+### Beginner Examples
 ```python
-# Directory structure:
-# mypackage/
-#     __init__.py
-#     math_ops.py
-#     string_ops.py
-#     data_ops.py
-```
-
-```python
-# __init__.py - can be empty or contain package initialization
-"""
-MyPackage - A collection of utility functions.
-"""
+# Directory: mypackage/__init__.py
+"""MyPackage - mathematical and string utilities."""
 
 __version__ = "1.0.0"
-__author__ = "Your Name"
 
-# Import key functions for easy access
-from .math_ops import add, subtract, multiply, divide
-from .string_ops import reverse, capitalize_words
-from .data_ops import filter_none, unique
-
-# Define what gets imported with "from package import *"
-__all__ = ["add", "subtract", "multiply", "divide", 
-           "reverse", "capitalize_words", "filter_none", "unique"]
+# Import key functions to top-level
+from .basic import add, subtract
+from .strings import reverse
 ```
 
 ```python
-# math_ops.py
-"""Mathematical operations."""
-
+# mypackage/basic.py
 def add(a, b):
     return a + b
 
 def subtract(a, b):
     return a - b
-
-def multiply(a, b):
-    return a * b
-
-def divide(a, b):
-    if b == 0:
-        raise ValueError("Cannot divide by zero")
-    return a / b
 ```
 
 ```python
-# string_ops.py
-"""String operations."""
-
-def reverse(s):
-    return s[::-1]
-
-def capitalize_words(s):
-    return " ".join(word.capitalize() for word in s.split())
-
-def count_words(s):
-    return len(s.split())
-```
-
-### Using a Package
-
-```python
-# Various ways to import from a package
-
-# Method 1: Import the package, access modules
+# main.py
 import mypackage
-result = mypackage.math_ops.add(5, 3)
-print(f"5 + 3 = {result}")
 
-# Method 2: Import specific module
-from mypackage import math_ops
-print(f"10 * 5 = {math_ops.multiply(10, 5)}")
-
-# Method 3: Import specific function
-from mypackage.math_ops import divide
-print(f"100 / 7 = {divide(100, 7):.2f}")
-
-# Method 4: Using __init__.py imports
-from mypackage import add, reverse
-print(f"add: {add(10, 20)}")
-print(f"reverse: {reverse('hello')}")
-
-# Accessing package metadata
-import mypackage
-print(f"Package version: {mypackage.__version__}")
-print(f"Package author: {mypackage.__author__}")
+print(mypackage.add(5, 3))        # 8
+print(mypackage.__version__)      # 1.0.0
 ```
 
-## Beginner Examples
-
-### Package Structure Examples
-
+### Intermediate Examples
 ```python
-# Simple package structure:
-# project/
-#     main.py
-#     utils/
-#         __init__.py
-#         file_utils.py
-#         string_utils.py
-#         math_utils.py
+# __init__.py with conditional imports
+import sys
+
+if sys.platform == "win32":
+    from ._win_impl import FileHandler
+else:
+    from ._posix_impl import FileHandler
+
+__all__ = ["FileHandler"]
 ```
 
 ```python
-# utils/__init__.py
-"""Utility package initialization."""
-print("Initializing utils package")
+# Lazy loading in __init__.py
+class _LazyImporter:
+    def __init__(self, module_name, package):
+        self._module_name = module_name
+        self._package = package
+        self._module = None
 
-# Can do package-level setup here
-# Example: load configuration
+    def __getattr__(self, name):
+        if self._module is None:
+            import importlib
+            self._module = importlib.import_module(
+                f".{self._module_name}", self._package
+            )
+        return getattr(self._module, name)
+
+# Usage: package.users.get_user(1) auto-imports .users
+import sys
+sys.modules[__name__] = _LazyImporter(__name__, __package__ or __name__)
+```
+
+### Advanced Examples
+```python
+# Dynamic __all__ generation
+import pkgutil
+import importlib
+
+_all_modules = []
+__all__ = []
+
+for importer, modname, ispkg in pkgutil.iter_modules(__path__):
+    if not modname.startswith("_"):
+        module = importlib.import_module(f".{modname}", __package__)
+        public_names = [n for n in dir(module) if not n.startswith("_")]
+        globals().update({n: getattr(module, n) for n in public_names})
+        __all__.extend(public_names)
+```
+
+```python
+# __init__.py with version from single source
+from pathlib import Path
+
+def _read_version():
+    version_file = Path(__file__).parent / "VERSION"
+    return version_file.read_text().strip()
+
+__version__ = _read_version()
+```
+
+### Real-World Use Cases
+- **Exposing public API**: Libraries like NumPy use `__init__.py` to expose key functions at the top level (`numpy.array`, `numpy.zeros`).
+- **Plugin registration**: Web frameworks scan `__init__.py` to discover installed plugins.
+- **Configuration loading**: Django's `apps.py` equivalent in `__init__.py` for app configuration.
+- **Backward compatibility**: Deprecated functions are re-exported from `__init__.py` before removal.
+
+### Common Mistakes
+```python
+# Mistake: Importing everything in __init__.py
+from .module1 import *
+from .module2 import *
+# Can cause name collisions and slow imports
+
+# Mistake: Side effects in __init__.py
+print("Loading package...")  # Runs on every import
 import os
-DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+os.chdir("/some/path")       # Side effect changes global state
 
-# Selective export
-from .string_utils import truncate, format_name
+# Mistake: Circular imports through __init__.py
+# a_pkg/__init__.py: from . import b_module  # if b_module imports a_pkg
+# b_module.py:       from a_pkg import something
+
+# Mistake: Forgetting __all__ with star imports
+# Without __all__, all non-underscore names are exported
 ```
 
+### Best Practices
+- Keep `__init__.py` minimal; defer heavy imports to submodules.
+- Use `__all__` to explicitly define the public API.
+- Store version in a single source (`__version__`).
+- Avoid side effects at import time.
+- Use relative imports within `__init__.py`.
+- Import lazily for expensive dependencies.
+
+### Performance Considerations
+- Every function imported in `__init__.py` increases package import time.
+- Use lazy imports for heavy dependencies like Pandas or TensorFlow.
+- Star imports (`from .x import *`) can slow startup; prefer explicit imports.
+- `__init__.py` executes once per interpreter session and is cached in `sys.modules`.
+
+### Interview Questions
+1. What happens if you remove `__init__.py` from a package directory?
+2. How do you prevent `from package import *` from exporting private names?
+3. What is the difference between `__all__` in `__init__.py` vs a module?
+4. How do you implement lazy loading in `__init__.py`?
+5. What is a namespace package and when would you use it?
+
+### Coding Challenges
 ```python
-# utils/string_utils.py
-"""String utility functions."""
+# Challenge: Build an __init__.py that auto-discovers and registers plugins
+# plugins/__init__.py
+import pkgutil
+import importlib
 
-def truncate(text, max_length, suffix="..."):
-    if len(text) <= max_length:
-        return text
-    return text[:max_length - len(suffix)] + suffix
+PLUGIN_REGISTRY = {}
 
-def format_name(first, last):
-    return f"{first.capitalize()} {last.capitalize()}"
+for importer, modname, ispkg in pkgutil.iter_modules(__path__):
+    if modname.startswith("plugin_"):
+        module = importlib.import_module(f".{modname}", __package__)
+        if hasattr(module, "register"):
+            PLUGIN_REGISTRY[modname] = module.register()
 
-def to_slug(text):
-    import re
-    text = text.lower().strip()
-    return re.sub(r'[^a-z0-9]+', '-', text)
+def get_plugin(name):
+    return PLUGIN_REGISTRY.get(name)
+
+__all__ = ["PLUGIN_REGISTRY", "get_plugin"]
 ```
 
+### Related Topics
+- Modules
+- Namespace Packages
+- Import System
+- `__path__` attribute
+
+---
+
+## Subpackages
+
+### What It Is
+Subpackages are packages nested inside another package. They allow organizing code into hierarchical namespaces. A subpackage is simply a subdirectory containing its own `__init__.py` and module files. The parent package's namespace scopes the subpackage, accessed via dot notation (e.g., `package.subpackage.module`).
+
+### Why It Is Important
+Subpackages enable logical separation of concerns within large projects. A web framework might have subpackages for models, views, templates, and middleware. Subpackages prevent namespace pollution, allow independent versioning of subsystems, and mirror domain hierarchies directly in code structure. They are essential for any non-trivial Python project.
+
+### How It Works Internally
+When Python encounters `import package.subpackage`, it first imports the top-level `package` (executing `package/__init__.py`), then looks for `subpackage` in `package.__path__`. Python checks for `package/subpackage/__init__.py`. If found, it executes that file and assigns the resulting module to `package.subpackage` in `sys.modules`. The parent package's `__path__` attribute determines where subpackages are searched, which can be extended to support distributed packages.
+
+### Syntax
 ```python
-# main.py using the package
-from utils import truncate, format_name
-from utils.file_utils import read_file
-
-long_text = "This is a very long sentence that needs truncation"
-print(truncate(long_text, 20))  # This is a very lon...
-
-print(format_name("alice", "smith"))  # Alice Smith
-```
-
-### Subpackages
-
-```python
-# Deep package structure:
-# app/
+# Package structure:
+# myapp/
 #     __init__.py
 #     models/
 #         __init__.py
 #         user.py
-#         product.py
 #     views/
 #         __init__.py
-#         user_views.py
-#         product_views.py
-#     services/
-#         __init__.py
-#         auth_service.py
-#         payment_service.py
+#         user_view.py
+
+# Import subpackage module
+from myapp.models.user import User
+import myapp.views.user_view
+
+# Import subpackage itself
+from myapp import models
+models.user.User("Alice")
+```
+
+### Beginner Examples
+```python
+# Directory layout:
+# ecommerce/
+#     __init__.py          # version, main API
+#     products/
+#         __init__.py       # Product, Category
+#         product.py
+#         category.py
+#     orders/
+#         __init__.py       # Order, LineItem
+#         order.py
+#     payments/
+#         __init__.py       # PaymentProcessor
+#         stripe.py
 ```
 
 ```python
-# Importing from subpackages
-from app.models.user import User
-from app.views.user_views import UserView
-from app.services.auth_service import authenticate
-
-# Or import the module
-from app.models import user
-new_user = user.User("Alice", "alice@example.com")
+# ecommerce/products/product.py
+class Product:
+    def __init__(self, sku, name, price):
+        self.sku = sku
+        self.name = name
+        self.price = price
 ```
 
-## Intermediate Examples
+```python
+# main.py
+from ecommerce.products.product import Product
+from ecommerce.orders.order import Order
 
-### Relative Imports
+p = Product("ABC-123", "Widget", 9.99)
+order = Order()
+order.add_item(p)
+```
+
+### Intermediate Examples
+```python
+# Subpackage initialization pattern
+# ecommerce/products/__init__.py
+from .product import Product
+from .category import Category
+
+__all__ = ["Product", "Category"]
+```
 
 ```python
-# Inside a package, use relative imports
-# Structure:
+# Cross-subpackage references
+# ecommerce/orders/order.py
+from ecommerce.products.product import Product
+from ecommerce.payments.stripe import StripeProcessor
+
+class Order:
+    def __init__(self):
+        self.items = []
+        self.processor = StripeProcessor()
+
+    def add_item(self, product: Product):
+        self.items.append(product)
+
+    def checkout(self, token):
+        total = sum(item.price for item in self.items)
+        return self.processor.charge(total, token)
+```
+
+### Advanced Examples
+```python
+# Dynamic subpackage discovery
+import pkgutil
+import importlib
+
+def discover_services(base_package):
+    """Discover all service subpackages."""
+    package = importlib.import_module(base_package)
+    services = {}
+    for importer, modname, ispkg in pkgutil.walk_packages(
+        package.__path__, prefix=f"{base_package}."
+    ):
+        if ispkg:
+            module = importlib.import_module(modname)
+            services[modname] = module
+    return services
+
+# Usage: discover_services("myapp.services")
+```
+
+```python
+# Subpackage with shared configuration
+# config/__init__.py
+import os
+
+class Config:
+    DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///dev.db")
+    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
+
+# config/dev.py
+from . import Config
+Config.DEBUG = True
+Config.DATABASE_URL = "sqlite:///dev.db"
+
+# config/prod.py
+from . import Config
+Config.DEBUG = False
+```
+
+### Real-World Use Cases
+- **Django apps**: Each Django app is a subpackage under the project with `models/`, `views/`, `templates/`, `migrations/` subpackages.
+- **Flask blueprints**: Blueprints are organized as subpackages with templates and static files.
+- **Machine learning pipelines**: `pipeline/` with `data/`, `features/`, `models/`, `evaluation/` subpackages.
+- **CLI tools**: `cli/` with `commands/`, `parsers/`, `formatters/` subpackages.
+
+### Common Mistakes
+```python
+# Mistake: Deep nesting (more than 3-4 levels)
+# package/sub_pkg/sub_sub_pkg/deep/too_deep.py
+
+# Mistake: Circular imports between subpackages
+# products/__init__.py: from orders import Order
+# orders/__init__.py:   from products import Product
+
+# Mistake: Missing __init__.py in subpackage (pre-3.3)
+# Python 3.3+ works, but tools like mypy may not find it
+
+# Mistake: Importing with incorrect dot notation
+# import subpackage.module  # Wrong - need full path from top-level
+```
+
+### Best Practices
+- Limit nesting to 3 levels max; refactor deep hierarchies.
+- Use explicit relative imports within the same top-level package.
+- Keep subpackage `__init__.py` files minimal.
+- Use subpackages for distinct functional domains.
+- Avoid circular dependencies between sibling subpackages; extract shared code to a common subpackage.
+- Document subpackage boundaries clearly.
+
+### Performance Considerations
+- Deeply nested subpackages increase import time due to multiple `__init__.py` executions.
+- Each dot in an import path triggers additional filesystem lookups.
+- Cache frequently used subpackage references locally to avoid repeated attribute lookups.
+- Consider `import myapp.models.user` vs `from myapp.models import user` — the latter saves one attribute access.
+
+### Interview Questions
+1. How do subpackages differ from modules in terms of import resolution?
+2. What is the maximum recommended depth for package nesting?
+3. How does Python locate a subpackage at the filesystem level?
+4. How can two sibling subpackages reference each other without circular imports?
+5. What role does `__path__` play in subpackage resolution?
+
+### Coding Challenges
+```python
+# Challenge: Build a subpackage-based plugin architecture
+# plugins/__init__.py
+import pkgutil
+import importlib
+
+PLUGIN_REGISTRY = {}
+
+def load_plugins():
+    for importer, name, ispkg in pkgutil.iter_modules(__path__):
+        if ispkg and not name.startswith("_"):
+            module = importlib.import_module(f".{name}", __package__)
+            if hasattr(module, "Plugin"):
+                PLUGIN_REGISTRY[name] = module.Plugin()
+
+# Now any subpackage under plugins/ with a Plugin class is auto-discovered
+```
+
+### Related Topics
+- `__init__.py`
+- Modules
+- Namespace Packages
+- Package Distribution
+
+---
+
+## Relative Imports
+
+### What It Is
+Relative imports allow modules within a package to import other modules using relative paths based on the current module's position in the package hierarchy. They use dot notation: a single dot (`.`) refers to the current package, two dots (`..`) refers to the parent package, and so on. Relative imports are evaluated based on the `__package__` and `__name__` attributes of the importing module.
+
+### Why It Is Important
+Relative imports make intra-package references resilient to package renaming. If you use absolute imports like `from mypackage.utils import helper`, renaming `mypackage` to `myapp` requires changes everywhere. Relative imports like `from .utils import helper` work regardless of the top-level package name. They also make code more self-documenting by showing the relationship between modules within the package.
+
+### How It Works Internally
+When Python encounters `from .submodule import func`, it resolves the relative import using the `__package__` attribute of the importing module. `__package__` is set to the package name (e.g., `mypackage.subpkg`). Python splits this, removes dots based on the level (`.` removes 0, `..` removes 1), constructs the absolute module name, and looks it up in `sys.modules` or imports it. Relative imports only work inside packages; running a module directly (`python module.py`) sets `__package__` to `None`, causing relative imports to raise `ImportError`.
+
+### Syntax
+```python
+# Package structure:
 # mypackage/
 #     __init__.py
 #     utils.py
-#     helpers.py
-#     subpackage/
+#     module.py
+#     subpkg/
 #         __init__.py
-#         module.py
+#         helper.py
+#         worker.py
+
+# mypackage/module.py
+from .utils import helper_func        # sibling module
+from .subpkg.helper import run        # nested subpackage
+
+# mypackage/subpkg/worker.py
+from .helper import run               # same subpackage
+from ..utils import helper_func       # parent package
+from ..subpkg.helper import run       # sibling subpackage (via parent)
+```
+
+### Beginner Examples
+```python
+# mypackage/operations.py
+def add(a, b):
+    return a + b
 ```
 
 ```python
-# mypackage/utils.py
-from .helpers import format_output  # Relative import (sibling)
+# mypackage/calculator.py
+from .operations import add  # Relative import of sibling
 
-def process_data(data):
-    return format_output(data)
+def calculate_total(items):
+    return sum(add(item.tax, item.price) for item in items)
 ```
 
 ```python
-# mypackage/subpackage/module.py
-from ..utils import process_data  # Relative import (parent)
-from . import sibling_module       # Relative import (same package)
+# mypackage/__init__.py
+from .calculator import calculate_total
+from .operations import add
 
-def run():
-    data = process_data("test")
-    print(data)
+__all__ = ["calculate_total", "add"]
 ```
 
-### Package Initialization
-
+### Intermediate Examples
 ```python
-# Advanced __init__.py patterns
-
-# __init__.py with lazy loading
-class LazyLoader:
-    """Lazy load modules when first accessed."""
-    def __init__(self):
-        self._loaded = {}
-    
-    def __getattr__(self, name):
-        if name not in self._loaded:
-            import importlib
-            self._loaded[name] = importlib.import_module(f".{name}", __package__)
-        return self._loaded[name]
-
-import sys
-sys.modules[__name__] = LazyLoader()
-```
-
-### Namespace Packages
-
-```python
-# Namespace packages (no __init__.py)
-# Directory structure:
-# project/
-#     namespace_pkg/
-#         module_a.py
-#     another_location/
-#         namespace_pkg/
-#             module_b.py
-
-# Both directories contribute to the same namespace_pkg
-# import namespace_pkg.module_a
-# import namespace_pkg.module_b
-
-# Requires both directories to be in sys.path
-```
-
-## Advanced Examples
-
-### Package as Executable
-
-```python
-# Making a package runnable with python -m
-# Add __main__.py to the package:
+# mypackage/models/__init__.py
+from .user import User
+from .product import Product
 ```
 
 ```python
-# mypackage/__main__.py
-"""
-Allows running the package with: python -m mypackage
-"""
-import sys
-from . import __version__
+# mypackage/views/user_view.py
+from ..models.user import User  # Go up one level, then into models
 
-def main():
-    print(f"MyPackage v{__version__}")
-    print("Running package as script...")
-    # Package logic here
-
-if __name__ == "__main__":
-    main()
+def format_user(user: User) -> dict:
+    return {"id": user.id, "name": user.name}
 ```
 
 ```python
-# Now you can run:
-# python -m mypackage
-# Output: MyPackage v1.0.0
-# Output: Running package as script
+# mypackage/services/auth.py
+from ..models.user import User           # Parent -> sibling subpackage
+from .base import BaseService            # Same subpackage
+from .. import __version__               # Parent package's __init__
 ```
 
-### Package Data and Resources
-
+### Advanced Examples
 ```python
-# Including non-code files in packages
-# Structure:
-# mypackage/
+# Complex relative imports with shared utilities
+# myapp/
 #     __init__.py
-#     data/
-#         config.json
-#         template.txt
+#     utils/
+#         __init__.py
+#         db.py
+#         cache.py
+#     services/
+#         __init__.py
+#         user_service.py
+#         order_service.py
+#     api/
+#         __init__.py
+#         v1/
+#             __init__.py
+#             users.py
+#             orders.py
 
-import os
-import json
-
-def load_config():
-    """Load package data file."""
-    module_dir = os.path.dirname(__file__)
-    config_path = os.path.join(module_dir, "data", "config.json")
-    with open(config_path, "r") as f:
-        return json.load(f)
-
-# Better: use importlib.resources (Python 3.7+)
-try:
-    import importlib.resources as resources
-    def load_template():
-        return resources.read_text(__package__, "data/template.txt")
-except ImportError:
-    # Fallback for older Python
-    pass
+# myapp/api/v1/users.py
+from ...services.user_service import UserService  # Up 3 levels
+from ...utils.db import get_session               # Up 3 levels
+from .. import api_config                         # Up 2 levels (api/__init__)
+from . import schema                              # Same package
 ```
 
-### Conditional Imports in Packages
-
 ```python
-# Package with optional dependencies
-# database/__init__.py
+# Dynamic relative import
+import importlib
 
-try:
-    import pymongo
-    HAS_MONGO = True
-except ImportError:
-    HAS_MONGO = False
-
-try:
-    import sqlalchemy
-    HAS_SQL = True
-except ImportError:
-    HAS_SQL = False
-
-class Database:
-    """Database abstraction with optional backends."""
-    
-    @classmethod
-    def create_mongo(cls, connection_string):
-        if not HAS_MONGO:
-            raise ImportError("pymongo is required for MongoDB")
-        return MongoDatabase(connection_string)
-    
-    @classmethod
-    def create_sql(cls, connection_string):
-        if not HAS_SQL:
-            raise ImportError("sqlalchemy is required for SQL")
-        return SQLDatabase(connection_string)
-```
-
-## Real-World Use Cases
-
-- **Web Frameworks**: Django, Flask, FastAPI organize code in packages
-- **Data Science Libraries**: NumPy, Pandas, scikit-learn as packages
-- **Project Structure**: Organizing large codebases with MVC pattern
-- **Plugin Systems**: Dynamic discovery of plugins via packages
-- **Shared Libraries**: Distributing reusable code via PyPI
-- **Microservices**: Organizing service code as packages
-- **Testing**: Test packages mirroring source structure
-
-## Common Mistakes
-
-```python
-# Mistake 1: Missing __init__.py in older Python
-# Python 3.3+ has namespace packages (works without __init__.py)
-# But __init__.py is still recommended for regular packages
-
-# Mistake 2: Circular imports between packages
-# package_a/__init__.py: from package_b import something
-# package_b/__init__.py: from package_a import something
-# Solution: move shared code to a common module
-
-# Mistake 3: Incorrect relative imports
-# from ..module import func  # Only works inside a package
-# Running script directly: can't use relative imports
-# Use: python -m package.module instead
-
-# Mistake 4: Name conflicts
-# Don't name your package the same as a standard library module
-# e.g., "email", "json", "math" - will shadow standard library!
-
-# Mistake 5: Forgetting __all__ in __init__.py
-# Without __all__, "from package import *" imports all non-private names
-# Set __all__ to control what gets exported
-
-# Mistake 6: Side effects in __init__.py
-# Don't put code with side effects in package initialization
-# It runs on every import!
-```
-
-## Best Practices
-
-- Use `__init__.py` to expose a clean public API
-- Use `__all__` to control what "from package import *" exports
-- Use relative imports within packages
-- Keep `__init__.py` minimal (no heavy imports)
-- Use meaningful package names (lowercase, no underscores)
-- Follow the principle "one package = one responsibility"
-- Use subpackages for large, complex packages
-- Document the package with docstrings in `__init__.py`
-- Specify version in `__version__` variable
-- Use `setup.py` or `pyproject.toml` for distributable packages
-- Avoid circular dependencies between packages
-
-## Interview Questions
-
-1. What is the difference between a module and a package?
-2. What is the purpose of `__init__.py`?
-3. What are namespace packages?
-4. How do relative imports work in packages?
-5. What is `__all__` and how is it used?
-6. How do you make a package executable with `python -m`?
-7. How do you include data files in a package?
-8. What is `__main__.py`?
-9. How do you organize a large project using packages?
-10. What is the difference between `from package import module` and `from package.module import function`?
-
-## Coding Challenges
-
-```python
-# Challenge 1: Create a calculator package
-# calculator/
-#     __init__.py
-#     basic.py
-#     advanced.py
-#     __main__.py
-
-# calculator/__init__.py
-from .basic import add, subtract, multiply, divide
-from .advanced import power, sqrt, factorial
-
-__all__ = ["add", "subtract", "multiply", "divide", "power", "sqrt", "factorial"]
-
-# calculator/basic.py
-def add(a, b): return a + b
-def subtract(a, b): return a - b
-def multiply(a, b): return a * b
-def divide(a, b):
-    if b == 0:
-        raise ValueError("Division by zero")
-    return a / b
-
-# calculator/advanced.py
-import math
-def power(a, b): return a ** b
-def sqrt(a): return math.sqrt(a)
-def factorial(n): return math.factorial(n)
-
-# calculator/__main__.py
-from . import add, subtract
-import sys
-def main():
-    if len(sys.argv) == 3:
-        a, b = map(float, sys.argv[1:])
-        print(f"Add: {add(a, b)}")
-        print(f"Subtract: {subtract(a, b)}")
-if __name__ == "__main__":
-    main()
-
-# Challenge 2: Package introspection
-def package_info(package_name):
-    """Get detailed information about a package."""
-    import importlib
-    try:
-        mod = importlib.import_module(package_name)
-    except ImportError:
-        return {"error": f"Package {package_name} not found"}
-    
-    info = {
-        "name": package_name,
-        "file": getattr(mod, "__file__", "N/A"),
-        "version": getattr(mod, "__version__", "Unknown"),
-        "doc": (mod.__doc__ or "No docstring")[:200],
-        "submodules": [],
-    }
-    
-    import os
-    package_dir = os.path.dirname(mod.__file__)
-    for item in os.listdir(package_dir):
-        if item.endswith(".py") and not item.startswith("_"):
-            info["submodules"].append(item[:-3])
-        elif os.path.isdir(os.path.join(package_dir, item)) and not item.startswith("_"):
-            if os.path.exists(os.path.join(package_dir, item, "__init__.py")):
-                info["submodules"].append(f"{item}/")
-    
-    return info
-
-info = package_info("mypackage")
-for key, value in info.items():
-    print(f"{key}: {value}")
-
-# Challenge 3: Plugin discovery system
-def discover_plugins(package_name):
-    """Discover all plugins in a package."""
-    import importlib
-    import pkgutil
-    
-    plugins = {}
-    package = importlib.import_module(package_name)
-    package_path = package.__path__
-    
-    for importer, modname, ispkg in pkgutil.iter_modules(package_path):
-        if modname.startswith("plugin_"):
-            module = importlib.import_module(f"{package_name}.{modname}")
-            if hasattr(module, "run"):
-                plugins[modname] = module.run
-    
-    return plugins
-
-# Assuming plugins package structure:
-# plugins/
-#     __init__.py
-#     plugin_email.py  (has run() function)
-#     plugin_sms.py    (has run() function)
-
-# Challenge 4: Package dependency tree
-def dependency_tree(package_name, depth=0, max_depth=3):
-    """Build a dependency tree for a package."""
-    if depth > max_depth:
-        return
-    
-    try:
-        module = __import__(package_name)
-        print("  " * depth + f"├── {package_name}")
-        
-        if hasattr(module, "__path__"):
-            import pkgutil
-            for importer, name, ispkg in pkgutil.iter_modules(module.__path__):
-                if not name.startswith("_"):
-                    full_name = f"{package_name}.{name}"
-                    if ispkg:
-                        dependency_tree(full_name, depth + 1, max_depth)
-                    else:
-                        print("  " * (depth + 1) + f"├── {name}")
-    except ImportError:
-        pass
-
-# Challenge 5: Dynamic package reloader
-def reload_package(package_name):
-    """Reload a package and all its submodules."""
-    import importlib
+def import_sibling(name):
+    """Import a sibling module using the caller's package."""
     import sys
-    
-    def _reload_recursive(module):
-        importlib.reload(module)
-        if hasattr(module, "__path__"):
-            import pkgutil
-            for importer, name, ispkg in pkgutil.iter_modules(module.__path__):
-                full_name = f"{module.__name__}.{name}"
-                if full_name in sys.modules:
-                    _reload_recursive(sys.modules[full_name])
-    
-    if package_name in sys.modules:
-        _reload_recursive(sys.modules[package_name])
-        print(f"Reloaded {package_name} and all submodules")
-    else:
-        print(f"{package_name} is not imported")
+    caller_frame = sys._getframe(1)
+    package = caller_frame.f_globals.get("__package__")
+    if not package:
+        raise ImportError("Not inside a package")
+    module_name = f".{name}"
+    return importlib.import_module(module_name, package)
 ```
 
-## Summary
+### Real-World Use Cases
+- **Framework internals**: Django, Flask, and SQLAlchemy use relative imports extensively within their own codebases.
+- **Microservice projects**: Services organized in subpackages use relative imports to share models and utilities.
+- **Testing**: Test files mirror source structure and use relative imports for their corresponding modules.
+- **Library development**: Library authors use relative imports so consumers can install under any package name.
 
-Packages organize related modules into directory hierarchies, with `__init__.py` (can be empty) marking a directory as a package. They support subpackages, relative imports, and namespace packages. The PyPI ecosystem with pip enables distribution and installation of third-party packages. Well-structured packages improve code organization, maintainability, and reusability.
+### Common Mistakes
+```python
+# Mistake: Using relative imports in scripts run directly
+# main.py (at project root)
+# from .utils import helper  # ImportError: attempted relative import with no known parent package
 
-## Related Topics
+# Correct: Run with -m flag
+# python -m mypackage.main
 
-- Modules
+# Mistake: Going too many levels up
+# from ....module import x  # Fragile, confusing
+
+# Mistake: Mixing relative and absolute in the same package
+# from .utils import a    # relative
+# from mypackage import b # absolute (breaks if package renamed)
+
+# Mistake: Forgetting dot before module name
+# from utils import helper  # absolute import, not relative!
+```
+
+### Best Practices
+- Use relative imports for all intra-package references.
+- Limit to at most 2-3 levels up (`..` or `...`); deeper suggests poor structure.
+- Prefer `from . import sibling` over `from .sibling import name` for clarity.
+- Never mix relative and absolute imports for the same package.
+- Run package code with `python -m` to ensure relative imports resolve correctly.
+- Use explicit relative imports in `__init__.py` (`from .submodule import name`).
+
+### Performance Considerations
+- Relative imports have negligible overhead compared to absolute imports.
+- Python resolves relative imports at module load time, so there is no runtime penalty.
+- Deeply nested relative imports (4+ levels) hint at overly deep package hierarchies that slow overall import times.
+- Use `from . import mod` (one attribute lookup) vs `from .mod import func` (two attribute lookups) when importing many names.
+
+### Interview Questions
+1. What is the difference between `from .module import func` and `from module import func`?
+2. Why do relative imports fail when running a script directly with `python script.py`?
+3. What does the `__package__` attribute do in relation to relative imports?
+4. How many dots would you use to import from a grandparent package?
+5. What happens with relative imports inside `__main__.py`?
+
+### Coding Challenges
+```python
+# Challenge: Write a utility that resolves any relative import path to its absolute form
+def resolve_relative_import(importer_module, relative_path):
+    """Convert relative import path to absolute module name.
+    
+    resolve_relative_import("package.sub.module", "..sibling.child")
+    -> "package.sibling.child"
+    """
+    package = sys.modules[importer_module].__package__
+    if not package:
+        raise ValueError(f"No package context for {importer_module}")
+    
+    parts = package.split(".")
+    relative_parts = relative_path.split(".")
+    
+    level = 0
+    for part in relative_parts:
+        if part == "":
+            level += 1
+        else:
+            break
+    
+    if level > len(parts):
+        raise ValueError(f"Relative import goes beyond top-level package")
+    
+    base = parts[:len(parts) - level]
+    base.extend(p for p in relative_parts[level:] if p)
+    return ".".join(base)
+
+# Test
+import sys
+sys.modules["package.sub.module"] = type(sys)("package.sub.module")
+sys.modules["package.sub.module"].__package__ = "package.sub"
+print(resolve_relative_import("package.sub.module", "..sibling.child"))
+# Output: "package.sibling.child"
+```
+
+### Related Topics
+- `__package__` Attribute
+- `__name__` Attribute
+- Absolute Imports
 - Import System
-- __init__.py
-- pip and PyPI
-- setup.py / pyproject.toml
-- Virtual Environments
-- Relative vs Absolute Imports
-- Application Structure and Organization
+- `python -m` Flag

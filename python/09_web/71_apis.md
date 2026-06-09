@@ -1,884 +1,376 @@
 # APIs - Designing REST APIs, status codes, versioning, pagination
 
 ## Introduction
+Application Programming Interfaces (APIs) define how software components interact. Representational State Transfer (REST) has become the dominant architectural style for web APIs due to its simplicity, scalability, and use of standard HTTP protocol semantics. Designing good REST APIs requires thoughtful decisions about resource modeling, URL structure, HTTP methods, status codes, error formats, versioning strategies, and pagination. A well-designed API is intuitive to use, easy to maintain, and capable of evolving without breaking existing clients. This document covers the fundamental principles and best practices for building robust, developer-friendly REST APIs.
 
-An Application Programming Interface (API) is a set of defined rules that enable different software components to communicate with each other. In modern web development, APIs typically refer to web APIs that expose endpoints over HTTP, allowing clients to perform operations on resources. REST (Representational State Transfer) is the most common architectural style for designing web APIs, though GraphQL, gRPC, and SOAP are also used. Python developers frequently build, consume, and interact with APIs across many domains — from microservices to data science to automation.
+## REST API design
 
-## Why It Is Important
+### What It Is
+REST (Representational State Transfer) is an architectural style for designing networked applications. RESTful APIs treat server data as resources that can be created, read, updated, and deleted using standard HTTP methods. Each resource is identified by a URL, and representations of resources (typically JSON or XML) are transferred between client and server.
 
-APIs are the backbone of modern software integration. They allow developers to leverage third-party services (payment gateways, mapping services, AI models), decompose monolithic applications into microservices, enable mobile and frontend applications to access backend logic, and facilitate automation across tools and platforms. Understanding API design, consumption, versioning, authentication, and documentation is essential for building maintainable, scalable, and interoperable systems.
+### Why It Is Important
+REST APIs are the backbone of modern web and mobile applications. They enable decoupled architectures where frontend and backend can evolve independently. A well-designed REST API reduces integration effort, improves developer experience, and ensures the API can scale to support multiple clients (web, mobile, third-party).
 
-## Syntax
+### How It Works Internally
+REST relies on the stateless client-server model. Each request from client to server must contain all information needed to understand and process the request (no server-side session state). Resources are identified in requests (usually via URL), and the server manipulates these resources using the received representations. Responses include metadata (status codes, headers) and potentially a representation of the resource. The uniform interface constraint (standard HTTP methods, self-descriptive messages, HATEOAS) distinguishes REST from other API styles.
 
-### Consuming a REST API
-
+### Resource Naming
 ```python
-import requests
+# Good resource naming (nouns, plural, hierarchical)
+GET    /users                    # List users
+GET    /users/{id}               # Get specific user
+POST   /users                    # Create user
+PUT    /users/{id}               # Replace user
+PATCH  /users/{id}               # Partial update user
+DELETE /users/{id}               # Delete user
 
-# GET request
-response = requests.get("https://api.github.com/users/octocat")
-data = response.json()
+# Nested resources
+GET    /users/{id}/orders                  # User's orders
+GET    /users/{id}/orders/{order_id}       # Specific order
+GET    /products/{id}/reviews              # Product reviews
 
-# POST request
-response = requests.post(
-    "https://api.example.com/items",
-    json={"name": "New Item", "price": 29.99},
-    headers={"Authorization": "Bearer token123"}
-)
+# Filtering, sorting, searching
+GET    /products?category=electronics&sort=price:desc
+GET    /products?search=laptop&in_stock=true
+
+# Actions as sub-resources (not verbs in URL)
+POST   /orders/{id}/cancel      # OK (cancel is a sub-resource concept)
+POST   /orders/{id}/cancel-order  # Bad (verb)
+
+# Better: use state changes
+PATCH  /orders/{id}             {"status": "cancelled"}
 ```
 
-### Defining API Endpoints with FastAPI
-
+### Designing Responses
 ```python
-from fastapi import FastAPI
-from pydantic import BaseModel
-
-app = FastAPI()
-
-class Item(BaseModel):
-    name: str
-    price: float
-
-@app.get("/items/{item_id}")
-async def read_item(item_id: int):
-    return {"item_id": item_id, "name": "Sample"}
-
-@app.post("/items")
-async def create_item(item: Item):
-    return {"id": 1, **item.model_dump()}
-```
-
-## Examples
-
-### Simple API Client
-
-```python
-import requests
-
-class GithubClient:
-    BASE_URL = "https://api.github.com"
-
-    def __init__(self, token=None):
-        self.session = requests.Session()
-        if token:
-            self.session.headers.update({"Authorization": f"Bearer {token}"})
-        self.session.headers.update({"Accept": "application/vnd.github.v3+json"})
-
-    def get_user(self, username):
-        response = self.session.get(f"{self.BASE_URL}/users/{username}")
-        response.raise_for_status()
-        return response.json()
-
-    def get_repos(self, username):
-        response = self.session.get(f"{self.BASE_URL}/users/{username}/repos")
-        response.raise_for_status()
-        return response.json()
-
-    def create_repo(self, name, description="", private=False):
-        data = {"name": name, "description": description, "private": private}
-        response = self.session.post(f"{self.BASE_URL}/user/repos", json=data)
-        response.raise_for_status()
-        return response.json()
-
-
-client = GithubClient()
-user = client.get_user("octocat")
-print(f"User: {user['login']} - {user['name']}")
-```
-
-### Pagination Handling
-
-```python
-import requests
-
-def fetch_all_pages(base_url, params=None):
-    all_items = []
-    page = 1
-
-    while True:
-        page_params = {"page": page, "per_page": 100}
-        if params:
-            page_params.update(params)
-
-        response = requests.get(base_url, params=page_params)
-        response.raise_for_status()
-
-        data = response.json()
-        if not data:
-            break
-
-        all_items.extend(data)
-        page += 1
-
-        # Check Link header for last page
-        link_header = response.headers.get("Link", "")
-        if 'rel="next"' not in link_header:
-            break
-
-    return all_items
-
-
-repos = fetch_all_pages("https://api.github.com/users/octocat/repos")
-print(f"Total repos: {len(repos)}")
-```
-
-## Beginner Examples
-
-### 1. Consuming a Public REST API
-
-```python
-import requests
-
-url = "https://jsonplaceholder.typicode.com/posts"
-response = requests.get(url)
-
-if response.status_code == 200:
-    posts = response.json()
-    print(f"Fetched {len(posts)} posts")
-    for post in posts[:3]:
-        print(f"  - {post['title'][:50]}")
-else:
-    print(f"Error: {response.status_code}")
-```
-
-### 2. Sending Data to an API
-
-```python
-import requests
-
-new_post = {
-    "title": "My New Post",
-    "body": "This is the content of the post.",
-    "userId": 1
-}
-
-response = requests.post(
-    "https://jsonplaceholder.typicode.com/posts",
-    json=new_post
-)
-
-if response.status_code == 201:
-    created = response.json()
-    print(f"Created post with ID: {created['id']}")
-else:
-    print(f"Failed: {response.status_code}")
-```
-
-### 3. Updating and Deleting Resources
-
-```python
-import requests
-
-# Update (PUT - complete replacement)
-update_data = {"id": 1, "title": "Updated Title", "body": "Updated body", "userId": 1}
-response = requests.put(
-    "https://jsonplaceholder.typicode.com/posts/1",
-    json=update_data
-)
-print(f"PUT status: {response.status_code}")
-
-# Partial update (PATCH)
-patch_data = {"title": "Partially Updated Title"}
-response = requests.patch(
-    "https://jsonplaceholder.typicode.com/posts/1",
-    json=patch_data
-)
-print(f"PATCH status: {response.status_code}")
-
-# Delete
-response = requests.delete("https://jsonplaceholder.typicode.com/posts/1")
-print(f"DELETE status: {response.status_code}")
-```
-
-### 4. API with Query Parameters
-
-```python
-import requests
-
-url = "https://jsonplaceholder.typicode.com/comments"
-params = {"postId": 1}
-
-response = requests.get(url, params=params)
-comments = response.json()
-
-print(f"Comments for post 1: {len(comments)}")
-for comment in comments[:2]:
-    print(f"  - {comment['email']}: {comment['name']}")
-```
-
-### 5. Error Handling in API Calls
-
-```python
-import requests
-from requests.exceptions import RequestException
-
-def safe_api_call(url, method="GET", **kwargs):
-    try:
-        response = requests.request(method, url, timeout=10, **kwargs)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.HTTPError as e:
-        print(f"HTTP Error: {e.response.status_code} - {e.response.reason}")
-        if e.response.status_code == 404:
-            print("Resource not found")
-        elif e.response.status_code == 403:
-            print("Access forbidden")
-        elif e.response.status_code == 429:
-            print("Rate limited")
-    except requests.exceptions.ConnectionError:
-        print("Connection error - is the server running?")
-    except requests.exceptions.Timeout:
-        print("Request timed out")
-    except RequestException as e:
-        print(f"API call failed: {e}")
-    return None
-
-
-result = safe_api_call("https://jsonplaceholder.typicode.com/posts/1")
-if result:
-    print(f"Success: {result['title']}")
-
-result = safe_api_call("https://jsonplaceholder.typicode.com/posts/99999")
-```
-
-## Intermediate Examples
-
-### 1. API Client with Rate Limiting
-
-```python
-import requests
-import time
-
-class RateLimitedAPIClient:
-    def __init__(self, base_url, rate_limit=10, period=1):
-        self.base_url = base_url.rstrip("/")
-        self.rate_limit = rate_limit
-        self.period = period
-        self.request_times = []
-        self.session = requests.Session()
-
-    def _wait_if_needed(self):
-        now = time.time()
-        self.request_times = [t for t in self.request_times if now - t < self.period]
-        if len(self.request_times) >= self.rate_limit:
-            sleep_time = self.request_times[0] + self.period - now
-            if sleep_time > 0:
-                print(f"Rate limit reached, sleeping {sleep_time:.2f}s")
-                time.sleep(sleep_time)
-        self.request_times.append(time.time())
-
-    def request(self, method, endpoint, **kwargs):
-        self._wait_if_needed()
-        url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        response = self.session.request(method, url, **kwargs)
-        response.raise_for_status()
-        return response
-
-    def get(self, endpoint, **kwargs):
-        return self.request("GET", endpoint, **kwargs)
-
-
-client = RateLimitedAPIClient(
-    base_url="https://jsonplaceholder.typicode.com",
-    rate_limit=5,
-    period=1
-)
-
-for i in range(1, 11):
-    resp = client.get(f"/posts/{i}")
-    print(f"Post {i}: {resp.json()['title'][:30]}")
-```
-
-### 2. Retry with Exponential Backoff for API Calls
-
-```python
-import requests
-import time
-
-def api_call_with_retry(url, max_retries=5, base_delay=1, **kwargs):
-    for attempt in range(max_retries):
-        try:
-            response = requests.get(url, timeout=10, **kwargs)
-            if response.status_code == 429:
-                retry_after = int(response.headers.get("Retry-After", base_delay * (2 ** attempt)))
-                print(f"Rate limited. Waiting {retry_after}s...")
-                time.sleep(retry_after)
-                continue
-            response.raise_for_status()
-            return response.json()
-        except (requests.exceptions.ConnectionError,
-                requests.exceptions.Timeout) as e:
-            if attempt == max_retries - 1:
-                raise
-            delay = base_delay * (2 ** attempt)
-            print(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s...")
-            time.sleep(delay)
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code in (500, 502, 503, 504):
-                if attempt == max_retries - 1:
-                    raise
-                delay = base_delay * (2 ** attempt)
-                print(f"Server error {e.response.status_code}. Retrying in {delay}s...")
-                time.sleep(delay)
-            else:
-                raise
-    return None
-
-
-try:
-    data = api_call_with_retry("https://jsonplaceholder.typicode.com/posts/1")
-    print(f"Data: {data['title']}")
-except Exception as e:
-    print(f"Failed after retries: {e}")
-```
-
-### 3. Building a Pagination Iterator
-
-```python
-import requests
-from typing import Iterator, Dict, Any
-
-class PaginatedAPI:
-    def __init__(self, base_url, params=None, page_size=100):
-        self.base_url = base_url
-        self.params = params or {}
-        self.page_size = page_size
-
-    def __iter__(self) -> Iterator[Dict[str, Any]]:
-        page = 1
-        while True:
-            params = {**self.params, "page": page, "per_page": self.page_size}
-            response = requests.get(self.base_url, params=params)
-            response.raise_for_status()
-
-            data = response.json()
-            if not data:
-                break
-
-            for item in data:
-                yield item
-
-            page += 1
-
-            link = response.headers.get("Link", "")
-            if 'rel="next"' not in link:
-                break
-
-
-paginator = PaginatedAPI(
-    base_url="https://api.github.com/users/octocat/repos",
-    page_size=5
-)
-
-count = 0
-for repo in paginator:
-    print(f"Repo: {repo['name']}")
-    count += 1
-    if count >= 10:
-        break
-print(f"Listed {count} repos")
-```
-
-### 4. API Versioning Strategies
-
-```python
-import requests
-
-# URL-based versioning (common)
-BASE_URL_V1 = "https://api.example.com/v1"
-BASE_URL_V2 = "https://api.example.com/v2"
-
-def get_users_v1():
-    response = requests.get(f"{BASE_URL_V1}/users")
-    return response.json()
-
-def get_users_v2():
-    response = requests.get(f"{BASE_URL_V2}/users")
-    return response.json()
-
-# Header-based versioning
-def get_users_header_version(version=1):
-    headers = {"Accept": f"application/vnd.example.v{version}+json"}
-    response = requests.get("https://api.example.com/users", headers=headers)
-    return response.json()
-
-# Query parameter versioning
-def get_users_query_version(version=1):
-    response = requests.get(
-        "https://api.example.com/users",
-        params={"api_version": version}
-    )
-    return response.json()
-
-
-headers = {"Accept": "application/vnd.github.v3+json"}
-response = requests.get("https://api.github.com/zen", headers=headers)
-print(f"GitHub API response: {response.text}")
-```
-
-### 5. API Authentication Patterns
-
-```python
-import requests
-
-# API Key in header
-def call_with_api_key(url, api_key):
-    headers = {"X-API-Key": api_key}
-    response = requests.get(url, headers=headers)
-    return response
-
-# Bearer token (JWT)
-def call_with_bearer_token(url, token):
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(url, headers=headers)
-    return response
-
-# Basic authentication
-def call_with_basic_auth(url, username, password):
-    from requests.auth import HTTPBasicAuth
-    response = requests.get(url, auth=HTTPBasicAuth(username, password))
-    return response
-
-# OAuth2 token from environment
-import os
-token = os.environ.get("API_TOKEN", "demo_token")
-response = call_with_bearer_token("https://httpbin.org/bearer", token)
-print(f"Authenticated: {response.status_code}")
-```
-
-### 6. Webhook Client
-
-```python
-import requests
-import json
-import hmac
-import hashlib
-
-class WebhookClient:
-    def __init__(self, webhook_url, secret=None):
-        self.webhook_url = webhook_url
-        self.secret = secret
-
-    def _compute_signature(self, payload):
-        if not self.secret:
-            return None
-        return hmac.new(
-            self.secret.encode(),
-            payload.encode(),
-            hashlib.sha256
-        ).hexdigest()
-
-    def send_event(self, event_type, data):
-        payload = json.dumps({"event": event_type, "data": data})
-        headers = {
-            "Content-Type": "application/json",
-            "X-Event-Type": event_type
-        }
-
-        signature = self._compute_signature(payload)
-        if signature:
-            headers["X-Signature-256"] = signature
-
-        response = requests.post(
-            self.webhook_url,
-            data=payload,
-            headers=headers,
-            timeout=10
-        )
-        response.raise_for_status()
-        return response.status_code
-
-
-wh = WebhookClient(
-    webhook_url="https://httpbin.org/post",
-    secret="whsec_abc123"
-)
-
-status = wh.send_event("order.created", {"order_id": 123, "total": 49.99})
-print(f"Webhook sent, status: {status}")
-```
-
-### 7. GraphQL API Client
-
-```python
-import requests
-import json
-
-class GraphQLClient:
-    def __init__(self, endpoint, token=None):
-        self.endpoint = endpoint
-        self.session = requests.Session()
-        if token:
-            self.session.headers.update({"Authorization": f"Bearer {token}"})
-        self.session.headers.update({"Content-Type": "application/json"})
-
-    def query(self, query, variables=None):
-        payload = {"query": query}
-        if variables:
-            payload["variables"] = variables
-        response = self.session.post(self.endpoint, json=payload)
-        response.raise_for_status()
-        result = response.json()
-        if "errors" in result:
-            raise Exception(f"GraphQL errors: {result['errors']}")
-        return result["data"]
-
-    def mutate(self, mutation, variables=None):
-        return self.query(mutation, variables)
-
-
-client = GraphQLClient("https://api.github.com/graphql", token="demo_token")
-
-query = """
-query {
-    repository(owner: "octocat", name: "Hello-World") {
-        name
-        description
-        stargazerCount
-        forkCount
+# Consistent response envelope
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "name": "Alice",
+        "email": "alice@example.com"
+    },
+    "meta": {
+        "request_id": "req-abc123",
+        "timestamp": "2024-01-01T12:00:00Z"
     }
 }
-"""
 
-try:
-    data = client.query(query)
-    repo = data["repository"]
-    print(f"Repo: {repo['name']} - Stars: {repo['stargazerCount']}")
-except Exception as e:
-    print(f"GraphQL error (expected with demo token): {e}")
+# Error response format
+{
+    "success": false,
+    "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid email format",
+        "details": [
+            {"field": "email", "reason": "must be a valid email address"}
+        ]
+    },
+    "meta": {
+        "request_id": "req-def456"
+    }
+}
 ```
 
-### 8. Bulk API Operations
+## HTTP status codes
 
+### What They Are
+HTTP status codes are three-digit numbers returned by servers to indicate the result of a request. They are grouped into five classes: 1xx (Informational), 2xx (Success), 3xx (Redirection), 4xx (Client Error), and 5xx (Server Error). Proper use of status codes makes APIs self-documenting and enables clients to handle responses programmatically.
+
+### Why They Are Important
+Correct status codes allow clients to implement generic error handling, retry logic, and conditional behavior without parsing response bodies. Misusing status codes (e.g., returning 200 with an error in the body) forces clients to implement error-prone custom parsing for every API call.
+
+### Key Status Codes
 ```python
-import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
+# 2xx Success
+200 OK                    # Successful GET, PUT, PATCH
+201 Created               # Successful POST (new resource created)
+202 Accepted              # Request accepted for async processing
+204 No Content            # Successful DELETE (or PUT with no body)
 
-class BulkAPIClient:
-    def __init__(self, base_url, max_workers=10):
-        self.base_url = base_url.rstrip("/")
-        self.session = requests.Session()
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+# 3xx Redirection
+301 Moved Permanently     # Resource has new URL
+304 Not Modified           # Cached version still valid (ETag/If-Modified-Since)
 
-    def fetch_single(self, resource_type, resource_id):
-        url = f"{self.base_url}/{resource_type}/{resource_id}"
-        response = self.session.get(url, timeout=10)
-        response.raise_for_status()
-        return (resource_id, response.json())
+# 4xx Client Errors
+400 Bad Request           # Malformed request syntax
+401 Unauthorized          # Authentication required/missing/invalid
+403 Forbidden             # Authenticated but not authorized
+404 Not Found             # Resource doesn't exist
+405 Method Not Allowed    # Wrong HTTP method for resource
+409 Conflict              # Resource state conflict (e.g., duplicate)
+422 Unprocessable Entity  # Validation errors (request body invalid)
+429 Too Many Requests     # Rate limit exceeded
 
-    def fetch_bulk(self, resource_type, ids):
-        futures = {
-            self.executor.submit(self.fetch_single, resource_type, id): id
-            for id in ids
+# 5xx Server Errors
+500 Internal Server Error # Generic server error
+502 Bad Gateway           # Upstream server error
+503 Service Unavailable   # Server overloaded or down
+504 Gateway Timeout       # Upstream server timeout
+```
+
+### Implementation Example
+```python
+from flask import Flask, jsonify, request
+from werkzeug.exceptions import HTTPException
+
+app = Flask(__name__)
+
+class APIException(Exception):
+    def __init__(self, message, status_code=400, details=None):
+        self.message = message
+        self.status_code = status_code
+        self.details = details or []
+
+@app.errorhandler(APIException)
+def handle_api_error(error):
+    response = {
+        "success": False,
+        "error": {
+            "code": error.__class__.__name__,
+            "message": error.message,
+            "details": error.details
         }
-        results = {}
-        for future in as_completed(futures):
-            resource_id = futures[future]
-            try:
-                _, data = future.result()
-                results[resource_id] = data
-            except Exception as e:
-                print(f"Failed to fetch {resource_type}/{resource_id}: {e}")
-        return results
+    }
+    return jsonify(response), error.status_code
 
-
-client = BulkAPIClient("https://jsonplaceholder.typicode.com", max_workers=5)
-results = client.fetch_bulk("posts", range(1, 21))
-
-print(f"Fetched {len(results)} posts")
-for pid in sorted(results.keys())[:3]:
-    print(f"  Post {pid}: {results[pid]['title'][:40]}")
-```
-
-### 9. API Response Caching
-
-```python
-import requests
-import time
-from functools import lru_cache
-
-class CachedAPIClient:
-    def __init__(self, base_url, cache_ttl=60):
-        self.base_url = base_url.rstrip("/")
-        self.session = requests.Session()
-        self.cache_ttl = cache_ttl
-        self._cache = {}
-        self._cache_times = {}
-
-    def _is_cache_valid(self, key):
-        if key not in self._cache_times:
-            return False
-        return time.time() - self._cache_times[key] < self.cache_ttl
-
-    def get(self, endpoint, params=None, use_cache=True):
-        cache_key = f"{endpoint}:{str(params)}"
-
-        if use_cache and self._is_cache_valid(cache_key):
-            print(f"Cache hit for {cache_key}")
-            return self._cache[cache_key]
-
-        url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        response = self.session.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-
-        self._cache[cache_key] = data
-        self._cache_times[cache_key] = time.time()
-        return data
-
-    def clear_cache(self):
-        self._cache.clear()
-        self._cache_times.clear()
-
-
-client = CachedAPIClient("https://jsonplaceholder.typicode.com", cache_ttl=3)
-
-client.get("/posts/1")
-print("First call (cache miss)")
-
-client.get("/posts/1")
-print("Second call (cache hit)")
-
-time.sleep(4)
-client.get("/posts/1")
-print("Third call (cache expired)")
-```
-
-### 10. Comprehensive API Client with All Features
-
-```python
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-import time
-import logging
-from typing import Optional, Dict, Any, List
-
-logging.basicConfig(level=logging.INFO)
-
-class ComprehensiveAPIClient:
-    def __init__(
-        self,
-        base_url: str,
-        api_key: Optional[str] = None,
-        token: Optional[str] = None,
-        rate_limit: int = 60,
-        rate_period: int = 60,
-        max_retries: int = 3,
-        default_timeout: int = 30
-    ):
-        self.base_url = base_url.rstrip("/")
-        self.default_timeout = default_timeout
-        self.logger = logging.getLogger(self.__class__.__name__)
-
-        self.session = requests.Session()
-
-        if api_key:
-            self.session.headers.update({"X-API-Key": api_key})
-        if token:
-            self.session.headers.update({"Authorization": f"Bearer {token}"})
-
-        retry_strategy = Retry(
-            total=max_retries,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
+@app.route("/users", methods=["POST"])
+def create_user():
+    data = request.get_json()
+    if not data or "email" not in data:
+        raise APIException("Email is required", 400)
+    if "@" not in data["email"]:
+        raise APIException(
+            "Invalid email",
+            status_code=422,
+            details=[{"field": "email", "reason": "must contain @"}]
         )
-        adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=20, pool_maxsize=100)
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
-
-        self.rate_limit = rate_limit
-        self.rate_period = rate_period
-        self.request_times: List[float] = []
-
-        self.cache: Dict[str, Any] = {}
-        self.cache_ttl: Dict[str, float] = {}
-
-    def _rate_limit_wait(self):
-        now = time.time()
-        self.request_times = [t for t in self.request_times if now - t < self.rate_period]
-        if len(self.request_times) >= self.rate_limit:
-            sleep = self.request_times[0] + self.rate_period - now
-            if sleep > 0:
-                self.logger.warning(f"Rate limit reached, sleeping {sleep:.1f}s")
-                time.sleep(sleep)
-        self.request_times.append(time.time())
-
-    def _build_url(self, endpoint: str) -> str:
-        return f"{self.base_url}/{endpoint.lstrip('/')}"
-
-    def _cache_key(self, method: str, endpoint: str, params: Optional[Dict] = None) -> str:
-        return f"{method}:{endpoint}:{str(params)}"
-
-    def _get_from_cache(self, key: str) -> Optional[Any]:
-        if key in self.cache:
-            if time.time() - self.cache_ttl.get(key, 0) < 60:
-                self.logger.debug(f"Cache hit: {key}")
-                return self.cache[key]
-            else:
-                del self.cache[key]
-                del self.cache_ttl[key]
-        return None
-
-    def _set_cache(self, key: str, data: Any):
-        self.cache[key] = data
-        self.cache_ttl[key] = time.time()
-
-    def request(
-        self,
-        method: str,
-        endpoint: str,
-        use_cache: bool = False,
-        **kwargs
-    ) -> requests.Response:
-        url = self._build_url(endpoint)
-        kwargs.setdefault("timeout", self.default_timeout)
-
-        cache_key = self._cache_key(method, endpoint, kwargs.get("params"))
-        if use_cache and method == "GET":
-            cached = self._get_from_cache(cache_key)
-            if cached:
-                return cached
-
-        self._rate_limit_wait()
-        self.logger.info(f"{method} {url}")
-
-        try:
-            response = self.session.request(method, url, **kwargs)
-            response.raise_for_status()
-
-            if use_cache and method == "GET":
-                self._set_cache(cache_key, response)
-
-            return response
-        except requests.exceptions.HTTPError as e:
-            self.logger.error(f"HTTP {e.response.status_code}: {e}")
-            raise
-        except requests.exceptions.ConnectionError as e:
-            self.logger.error(f"Connection error: {e}")
-            raise
-        except requests.exceptions.Timeout as e:
-            self.logger.error(f"Timeout: {e}")
-            raise
-
-    def get(self, endpoint: str, **kwargs):
-        return self.request("GET", endpoint, **kwargs)
-
-    def post(self, endpoint: str, **kwargs):
-        return self.request("POST", endpoint, **kwargs)
-
-    def put(self, endpoint: str, **kwargs):
-        return self.request("PUT", endpoint, **kwargs)
-
-    def patch(self, endpoint: str, **kwargs):
-        return self.request("PATCH", endpoint, **kwargs)
-
-    def delete(self, endpoint: str, **kwargs):
-        return self.request("DELETE", endpoint, **kwargs)
-
-    def close(self):
-        self.session.close()
-
-
-client = ComprehensiveAPIClient(
-    base_url="https://jsonplaceholder.typicode.com",
-    rate_limit=30,
-    rate_period=60
-)
-
-try:
-    resp = client.get("/posts/1")
-    print(f"Fetched post: {resp.json()['title'][:40]}")
-
-    resp = client.post("/posts", json={"title": "Test", "body": "Body", "userId": 1})
-    print(f"Created post: ID {resp.json()['id']}")
-finally:
-    client.close()
+    user = {"id": 1, "email": data["email"], "name": data.get("name")}
+    return jsonify({"success": True, "data": user}), 201
 ```
 
-## Real-World Use Cases
+## API versioning
 
-- **Payment Processing**: Stripe, PayPal, Square API integration for payments
-- **Social Media Automation**: Twitter, LinkedIn, Instagram API clients for posting
-- **Cloud Infrastructure**: AWS, Azure, GCP SDKs for resource management
-- **Mapping and Geolocation**: Google Maps, Mapbox, OpenStreetMap APIs
-- **Communication**: Twilio (SMS/voice), SendGrid (email), Slack (messaging)
-- **AI and ML**: OpenAI, Google Cloud Vision, AWS Rekognition APIs
-- **E-commerce**: Shopify, WooCommerce, Magento APIs for store management
-- **Financial Data**: Alpha Vantage, Yahoo Finance, Plaid APIs
-- **Travel**: Amadeus, Skyscanner, Kayak APIs for flight/hotel data
-- **Blockchain**: Ethereum, Bitcoin, CoinGecko APIs for crypto data
+### What It Is
+API versioning allows APIs to evolve and introduce breaking changes without disrupting existing clients. Different clients can continue using older versions while newer clients adopt the latest version. Common strategies include URL path versioning, header versioning, and query parameter versioning.
 
-## Common Mistakes
+### Why It Is Important
+Without versioning, any breaking change forces all clients to update simultaneously, which is impractical for mobile apps, third-party integrations, and distributed systems. Versioning provides a safety net for backward compatibility.
 
-- **Ignoring rate limits** — causing IP bans or account suspension
-- **Not handling pagination** — only fetching the first page of results
-- **Hardcoding API keys** — committing secrets to version control
-- **No error handling** — crashing on network errors or unexpected responses
-- **Not validating responses** — assuming the API always returns expected data
-- **Missing timeout values** — threads hanging indefinitely
-- **Overfetching data** — requesting more fields than needed, wasting bandwidth
-- **Poor versioning strategy** — breaking existing clients when APIs change
-- **Inconsistent error formats** — making error handling difficult for consumers
-- **No logging/observability** — making debugging API issues nearly impossible
+### Versioning Strategies
+```python
+# Strategy 1: URL Path Versioning (most common)
+# GET /api/v1/users
+# GET /api/v2/users
 
-## Best Practices
+from flask import Blueprint
 
-- Always use environment variables for API keys and secrets
-- Implement proper error handling with meaningful error messages
-- Use pagination for large datasets and expose page/page_size or cursor-based params
-- Version your APIs from day one (URL or header based)
-- Return consistent, well-structured error responses (RFC 7807 Problem Details)
-- Use appropriate HTTP status codes correctly
-- Document APIs thoroughly with OpenAPI/Swagger
-- Implement rate limiting and communicate limits via headers
-- Validate input data with schemas (Pydantic, Marshmallow)
-- Use idempotency keys for mutation operations to prevent duplicate processing
+v1 = Blueprint("api_v1", __name__, url_prefix="/api/v1")
+v2 = Blueprint("api_v2", __name__, url_prefix="/api/v2")
 
-## Interview Questions
+@v1.route("/users")
+def list_users_v1():
+    return jsonify([{"id": 1, "name": "Alice"}])
 
-**Q1: What is REST and what are its constraints?**
-A: REST (Representational State Transfer) is an architectural style with constraints: statelessness, client-server separation, cacheability, uniform interface, layered system, and code on demand (optional).
+@v2.route("/users")
+def list_users_v2():
+    return jsonify([{"id": 1, "name": "Alice", "email": "alice@example.com"}])
 
-**Q2: What is the difference between PUT and PATCH?**
-A: PUT replaces the entire resource. PATCH applies a partial update. PUT is idempotent; PATCH may not be depending on implementation.
+# Strategy 2: Header Versioning
+# Accept: application/vnd.myapp.v1+json
 
-**Q3: How do you handle API versioning?**
-A: Common strategies include URL path versioning (`/v1/users`), header versioning (`Accept: application/vnd.example.v1+json`), and query parameter versioning (`?version=1`).
+@app.route("/users")
+def list_users():
+    version = request.headers.get("Accept", "")
+    if "vnd.myapp.v2" in version:
+        return jsonify([{"id": 1, "name": "Alice", "email": "alice@example.com"}])
+    return jsonify([{"id": 1, "name": "Alice"}])
 
-**Q4: What is HATEOAS?**
-A: HATEOAS (Hypermedia as the Engine of Application State) means API responses include links to related actions, allowing clients to discover and navigate the API dynamically.
+# Strategy 3: Query Parameter Versioning
+# GET /users?version=1
+# GET /users?version=2
 
-**Q5: How do you design a paginated API?**
-A: Use either page-based (page, per_page) or cursor-based (cursor, limit) pagination. Return metadata (total count, next/previous links) and support consistent ordering.
+@app.route("/users")
+def list_users():
+    version = request.args.get("version", "1")
+    if version == "2":
+        return jsonify([{"id": 1, "name": "Alice", "email": "alice@example.com"}])
+    return jsonify([{"id": 1, "name": "Alice"}])
+```
 
-## Coding Challenges
+### Version Lifecycle
+```python
+# Best practices for version management
+VERSIONS = {
+    "v1": {"deprecated": True, "sunset": "2024-06-01"},
+    "v2": {"deprecated": False, "sunset": None},
+    "v3": {"deprecated": False, "sunset": None},
+}
 
-**Challenge 1: Weather API Client**
-Build a client for OpenWeatherMap API that fetches current weather for a city. Handle 401 (invalid key), 404 (city not found), and rate limiting.
+@app.after_request
+def add_version_headers(response):
+    version = getattr(request, "api_version", None)
+    if version and VERSIONS.get(version, {}).get("deprecated"):
+        response.headers["Warning"] = f'299 - "API version {version} is deprecated"'
+        response.headers["Sunset"] = VERSIONS[version]["sunset"]
+    return response
+```
 
-**Challenge 2: Paginated GitHub Issues Viewer**
-Write a function that fetches all issues from a GitHub repository, handling pagination via Link headers. Return a list of issue titles and labels.
+## Pagination
 
-**Challenge 3: API Rate Limiter Middleware**
-Create a decorator that wraps any API client method, ensuring no more than N requests per second. Use a token bucket algorithm.
+### What It Is
+Pagination divides large result sets into manageable pages, reducing server load, network transfer, and client processing time. Without pagination, a single request could return thousands or millions of records, overwhelming both server and client.
 
-**Challenge 4: Multi-API Dashboard Aggregator**
-Query multiple APIs (news, weather, stocks) concurrently and aggregate results into a single dashboard-friendly response.
+### Why It Is Important
+Pagination is essential for API performance and usability. It prevents timeouts on large queries, reduces bandwidth usage, and provides a consistent browsing experience. Well-designed pagination also allows clients to request specific pages, prefetch next pages, and estimate total result counts.
 
-**Challenge 5: API Gateway Simulation**
-Build a simple API gateway that routes requests to different backend services, handles authentication, applies rate limiting, and logs all requests.
+### Pagination Strategies
+```python
+# Strategy 1: Offset/Limit (page-based)
+# GET /users?page=1&per_page=20
 
-## Summary
+@app.route("/api/v1/users")
+def list_users():
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 20, type=int), 100)
+    offset = (page - 1) * per_page
 
-APIs are the fundamental building blocks of modern software integration and communication. Python's rich ecosystem — particularly the `requests` library — makes consuming APIs straightforward, while frameworks like FastAPI and Flask simplify building them. Successful API development requires attention to design principles, authentication, error handling, rate limiting, caching, pagination, and documentation. Mastering these patterns enables developers to build robust, scalable, and maintainable systems that integrate seamlessly with the broader software ecosystem.
+    total = get_user_count()
+    users = get_users(offset=offset, limit=per_page)
+    total_pages = (total + per_page - 1) // per_page
 
-## Related Topics
+    return jsonify({
+        "data": users,
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1,
+        }
+    })
 
-- [70. HTTP Requests](./70_http_requests.md)
-- [75. REST API Design](./75_rest_api_design.md)
-- [73. FastAPI](./73_fastapi.md)
-- [72. Flask](./72_flask.md)
-- [76. Authentication](./76_authentication.md)
-- [74. Web Scraping](./74_web_scraping.md)
+# Strategy 2: Cursor-based (keyset pagination)
+# GET /users?cursor=eyJpZCI6IDUwfQ&limit=20
+# Recommended for real-time data, avoids offset drift
+
+import base64
+import json
+
+def encode_cursor(last_value):
+    return base64.urlsafe_b64encode(json.dumps(last_value).encode()).decode()
+
+def decode_cursor(cursor):
+    return json.loads(base64.urlsafe_b64decode(cursor.encode()))
+
+@app.route("/api/v2/users")
+def list_users_cursor():
+    cursor = request.args.get("cursor")
+    limit = min(request.args.get("limit", 20, type=int), 100)
+
+    if cursor:
+        last_values = decode_cursor(cursor)
+        users = get_users_after(last_values["id"], limit=limit + 1)
+    else:
+        users = get_users(limit=limit + 1)
+
+    has_more = len(users) > limit
+    if has_more:
+        users = users[:limit]
+
+    next_cursor = None
+    if has_more:
+        last_user = users[-1]
+        next_cursor = encode_cursor({"id": last_user["id"]})
+
+    return jsonify({
+        "data": users,
+        "pagination": {
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+        }
+    })
+```
+
+### Advanced Pagination with Response Headers
+```python
+from flask import url_for
+
+@app.route("/api/v1/users")
+def list_users():
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 20, type=int)
+    total = get_user_count()
+    total_pages = (total + per_page - 1) // per_page
+
+    users = get_users(page=page, per_page=per_page)
+
+    # Link header for RESTful pagination
+    links = []
+    if page > 1:
+        links.append(f'<{url_for("list_users", page=1, per_page=per_page, _external=True)}>; rel="first"')
+        links.append(f'<{url_for("list_users", page=page-1, per_page=per_page, _external=True)}>; rel="prev"')
+    if page < total_pages:
+        links.append(f'<{url_for("list_users", page=page+1, per_page=per_page, _external=True)}>; rel="next"')
+        links.append(f'<{url_for("list_users", page=total_pages, per_page=per_page, _external=True)}>; rel="last"')
+
+    response = jsonify({"data": users, "total": total})
+    if links:
+        response.headers["Link"] = ", ".join(links)
+    return response
+```
+
+### Real-World Use Cases
+- **Social media APIs**: Twitter, Facebook, Instagram APIs serving feeds, posts, comments.
+- **E-commerce APIs**: Product catalogs, order history, inventory listings.
+- **SaaS platforms**: Stripe, Twilio, GitHub APIs with versioning and pagination.
+- **Mobile backends**: APIs serving mobile apps with limited bandwidth and offline support.
+
+### Common Mistakes
+- Returning HTTP 200 for all responses (including errors).
+- Not using proper status codes (e.g., 400 for validation, 401 for auth).
+- Mixing snake_case and camelCase in responses.
+- Not versioning the API from day one (very hard to add later).
+- Using offset pagination for real-time data (duplicates/missing records).
+- Not rate limiting, allowing abuse and DoS attacks.
+- Exposing internal implementation details in responses.
+
+### Best Practices
+- Use nouns for resources, verbs for HTTP methods.
+- Return consistent JSON envelope structure.
+- Use appropriate HTTP status codes consistently.
+- Version your API from the start (URL path versioning recommended).
+- Use cursor-based pagination for real-time or append-heavy data.
+- Include metadata (total count, available pages) in paginated responses.
+- Document all error codes, request/response formats (OpenAPI/Swagger).
+- Rate limit with meaningful error messages (Retry-After headers).
+
+### Performance Considerations
+- Cursor-based pagination is O(1) per page for indexed keys; offset pagination is O(n) for large offsets.
+- Use database indexes on pagination columns (created_at, id).
+- Limit maximum page size to prevent abuse (e.g., max 100 per page).
+- Use ETags and conditional requests (If-None-Match) for caching.
+- Implement response compression (gzip) for large payloads.
+
+### Interview Questions
+1. What are the constraints of REST architecture?
+2. Compare offset-based pagination with cursor-based pagination.
+3. What is the difference between 401 Unauthorized and 403 Forbidden?
+4. Which HTTP status code would you return for a validation error?
+5. How do you version a REST API? What are the trade-offs of different strategies?
+6. What is HATEOAS and why is it important for true REST?
+7. How would you design an API that supports partial responses (field selection)?
+
+### Coding Challenges
+1. **API Client Library**: Build a Python client that handles pagination transparently, automatically fetching all pages for a given endpoint.
+2. **Versioned API Server**: Implement a Flask/FastAPI server with two API versions and a deprecation warning header.
+3. **Cursor Pagination Implementation**: Build a paginated endpoint using cursor-based pagination with a SQL database that handles new insertions correctly.
+
+### Related Topics
+- OpenAPI/Swagger (API documentation)
+- GraphQL (alternative to REST for flexible queries)
+- gRPC (high-performance RPC framework)
+- Rate limiting strategies (token bucket, sliding window)
+- API gateway patterns (authentication, throttling, routing)

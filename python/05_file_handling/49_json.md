@@ -2,842 +2,520 @@
 
 ## Introduction
 
-JSON (JavaScript Object Notation) is a lightweight, text-based data interchange format that is easy for humans to read and write and easy for machines to parse and generate. Python's `json` module provides a comprehensive interface for encoding Python objects to JSON strings and decoding JSON strings back to Python objects.
+JSON (JavaScript Object Notation) is a lightweight, text-based data interchange format that is easy for humans to read and write and easy for machines to parse and generate. Python's `json` module provides a comprehensive interface for encoding Python objects to JSON strings and decoding JSON strings back to Python objects. JSON is language-independent, making it the most widely used data interchange format for web APIs, configuration files, and data storage.
 
-JSON supports primitive data types (strings, numbers, booleans, null) and structured data types (objects/dictionaries, arrays/lists). The format is language-independent, making it the most widely used data interchange format for web APIs, configuration files, and data storage.
+## json.dumps()
 
-Python's `json` module maps JSON types to Python types: JSON objects become `dict`, arrays become `list`, strings become `str`, numbers become `int` or `float`, `true`/`false` become `True`/`False`, and `null` becomes `None`.
+### What It Is
 
-## Why It Is Important
+`json.dumps()` (dump string) serializes a Python object to a JSON string. It converts Python data types to their JSON equivalents: `dict` to object, `list`/`tuple` to array, `str` to string, `int`/`float` to number, `True`/`False` to boolean, `None` to null.
 
-JSON has become the de facto standard for data interchange in modern software development. Understanding Python's JSON module is crucial because:
+### Why It Is Important
 
-- **Web APIs**: Most REST APIs return JSON responses and accept JSON in request bodies
-- **Configuration Files**: Many applications use JSON for configuration instead of INI or custom formats
-- **Data Storage**: JSON is commonly used for storing semi-structured data in NoSQL databases and files
-- **Interoperability**: JSON enables communication between systems written in different programming languages
-- **Serialization**: JSON provides a standardized way to serialize complex data structures for transmission or storage
-- **Human Readability**: JSON files can be easily read and edited by humans, unlike binary formats
-- **Schema Validation**: JSON Schema provides a way to validate the structure and content of JSON data
+Serialization converts Python objects into a portable, language-independent format that can be transmitted over a network, stored in a file, or passed to other systems. `json.dumps()` is the primary serialization function, with parameters to control formatting, encoding, and handling of non-serializable types.
 
-Mastering JSON processing in Python is essential for web development, data engineering, API integration, and configuration management.
+### How It Works Internally
 
-## Syntax
+`json.dumps()` walks the Python object tree recursively, converting each value to its JSON representation. It uses an encoder class (`JSONEncoder`) that maps Python types to JSON types. For unsupported types, it calls the `default` method, which by default raises `TypeError`. Custom encoders can override `default` to handle special types.
+
+### Syntax
 
 ```python
 import json
 
-# Serialization: Python -> JSON string
-json_string = json.dumps(obj, skipkeys=False, ensure_ascii=True, 
-                         check_circular=True, allow_nan=True, 
-                         cls=None, indent=None, separators=None, 
-                         default=None, sort_keys=False)
+json_string = json.dumps(
+    obj,
+    skipkeys=False,       # Skip non-string dict keys
+    ensure_ascii=True,    # Escape non-ASCII characters
+    check_circular=True,  # Check for circular references
+    allow_nan=True,       # Allow NaN, Infinity, -Infinity
+    cls=None,             # Custom encoder class
+    indent=None,          # Pretty-print indentation
+    separators=None,      # (item_separator, key_separator)
+    default=None,         # Function for non-serializable objects
+    sort_keys=False,       # Sort dictionary keys
+)
+```
 
-# Deserialization: JSON string -> Python
-python_obj = json.loads(json_string, cls=None, object_hook=None,
-                        parse_float=None, parse_int=None,
-                        parse_constant=None, object_pairs_hook=None)
+```python
+import json
 
-# Serialization to file
-with open('file.json', 'w') as f:
-    json.dump(obj, f, indent=2, sort_keys=True)
+data = {"name": "Alice", "age": 30, "scores": [95, 87, 91]}
 
-# Deserialization from file
-with open('file.json', 'r') as f:
-    python_obj = json.load(f)
+# Basic serialization
+json_str = json.dumps(data)
+print(json_str)  # {"name": "Alice", "age": 30, "scores": [95, 87, 91]}
 
-# Custom JSON encoding/decoding
+# Pretty printing
+print(json.dumps(data, indent=2))
+# {
+#   "name": "Alice",
+#   "age": 30,
+#   "scores": [
+#     95,
+#     87,
+#     91
+#   ]
+# }
+
+# Sorted keys for consistency
+print(json.dumps(data, sort_keys=True, indent=2))
+
+# Compact output (no spaces)
+print(json.dumps(data, separators=(",", ":")))
+# {"name":"Alice","age":30,"scores":[95,87,91]}
+
+# Handling non-serializable types
+from datetime import datetime
+data["date"] = datetime.now()
+try:
+    json.dumps(data)  # TypeError: Object of type datetime is not JSON serializable
+except TypeError:
+    print("Can't serialize datetime")
+
+# Use default parameter
+json.dumps(data, default=str)  # Converts datetime to string
+```
+
+### Beginner Examples
+
+```python
+import json
+
+# Serializing different types
+print(json.dumps({"key": "value"}))       # {"key": "value"}
+print(json.dumps([1, 2, 3]))             # [1, 2, 3]
+print(json.dumps("hello"))               # "hello"
+print(json.dumps(42))                    # 42
+print(json.dumps(3.14))                  # 3.14
+print(json.dumps(True))                  # true
+print(json.dumps(None))                  # null
+print(json.dumps((1, 2, 3)))             # [1, 2, 3] (tuple becomes array)
+
+# Skipkeys: skip non-string keys
+data = {1: "one", 2: "two"}
+# json.dumps(data)  # TypeError: keys must be str, int, float, bool, None
+json.dumps(data, skipkeys=True)  # {} (keys skipped)
+
+# ensure_ascii
+data = {"name": "José"}
+print(json.dumps(data))                    # {"name": "Jos\u00e9"}
+print(json.dumps(data, ensure_ascii=False))  # {"name": "José"}
+
+# Writing to file
+with open("data.json", "w") as f:
+    json.dump(data, f, indent=2)  # dump() not dumps() for files
+```
+
+## json.loads()
+
+### What It Is
+
+`json.loads()` (load string) deserializes a JSON string back into a Python object. It reverses the mapping: JSON object to `dict`, array to `list`, string to `str`, number to `int`/`float`, boolean to `bool`, null to `None`.
+
+### Why It Is Important
+
+Deserialization is how Python programs consume JSON data from APIs, configuration files, and data sources. Understanding how to safely parse JSON and handle edge cases (malformed JSON, unexpected types) is essential for robust data processing.
+
+### How It Works Internally
+
+`json.loads()` tokenizes the JSON string using a state machine parser, then recursively builds Python objects. The parser uses a decoder class (`JSONDecoder`) with configurable hooks (`object_hook`, `parse_float`, `parse_int`, `parse_constant`) that allow custom deserialization logic.
+
+### Syntax
+
+```python
+import json
+
+python_obj = json.loads(
+    json_string,
+    cls=None,               # Custom decoder class
+    object_hook=None,        # Called for each decoded object (dict)
+    parse_float=None,        # Called for each float (default: float)
+    parse_int=None,          # Called for each int (default: int)
+    parse_constant=None,     # Called for NaN, Infinity, -Infinity
+    object_pairs_hook=None,  # Called for each decoded object with ordered pairs
+)
+```
+
+```python
+import json
+
+json_str = '{"name": "Alice", "age": 30, "scores": [95, 87, 91]}'
+
+# Basic deserialization
+data = json.loads(json_str)
+print(data["name"])       # Alice
+print(data["scores"][0])  # 95
+
+# Type conversions
+json_str = '{"is_active": true, "value": null, "count": 42}'
+data = json.loads(json_str)
+print(data["is_active"])  # True
+print(data["value"])      # None
+print(data["count"])      # 42 (int)
+
+# Reading from file
+with open("data.json", "r") as f:
+    data = json.load(f)  # load() not loads() for files
+
+# Object hook for custom decoding
+def decode_person(dct):
+    if "__type__" in dct and dct["__type__"] == "Person":
+        return Person(dct["name"], dct["age"])
+    return dct
+
+json_str = '{"__type__": "Person", "name": "Alice", "age": 30}'
+person = json.loads(json_str, object_hook=decode_person)
+print(type(person).__name__)  # Person
+```
+
+### Beginner Examples
+
+```python
+import json
+
+# Simple parsing
+data = json.loads('{"name": "Alice", "age": 30}')
+print(data["name"])  # Alice
+
+# Parsing arrays
+items = json.loads('[1, 2, 3, "four"]')
+print(items[0])  # 1
+print(items[3])  # four
+
+# Nested JSON
+nested = json.loads('{"user": {"name": "Bob", "scores": [10, 20]}}')
+print(nested["user"]["name"])     # Bob
+print(nested["user"]["scores"])   # [10, 20]
+
+# Handling JSON from API
+import urllib.request
+
+response = urllib.request.urlopen("https://api.example.com/data")
+data = json.load(response)  # load from file-like object
+
+# Error handling
+try:
+    data = json.loads("invalid json")
+except json.JSONDecodeError as e:
+    print(f"Invalid JSON at line {e.lineno}, column {e.colno}: {e.msg}")
+
+# Loading boolean and null
+data = json.loads('{"active": true, "data": null}')
+print(data["active"])  # True
+print(data["data"])    # None
+```
+
+## Serialization
+
+### What It Is
+
+Serialization (encoding) converts Python objects to JSON-formatted strings or bytes for storage or transmission. The `json` module provides `json.dumps()` for strings and `json.dump()` for file objects.
+
+### Why It Is Important
+
+Serialization enables data persistence, API communication, and cross-language data exchange. Python's JSON serialization handles common types automatically and can be extended for custom types through encoder classes.
+
+### How It Works Internally
+
+The JSON encoder uses a `make_encoder()` function that creates a state machine for efficient serialization. It iterates over the input object recursively, writing JSON tokens to an output buffer. The encoder handles circular reference detection, NaN/infinity handling, and key sorting.
+
+### Beginner Examples
+
+```python
+import json
+
+# Basic serialization to file
+data = {"name": "Alice", "age": 30}
+with open("data.json", "w") as f:
+    json.dump(data, f)
+
+# Reading it back
+with open("data.json", "r") as f:
+    loaded = json.load(f)
+print(loaded)
+
+# Serializing complex nested data
+data = {
+    "users": [
+        {"id": 1, "name": "Alice", "scores": [95, 87]},
+        {"id": 2, "name": "Bob", "scores": [78, 92]},
+    ],
+    "metadata": {"version": "1.0", "exported": True},
+}
+with open("users.json", "w") as f:
+    json.dump(data, f, indent=2, sort_keys=True)
+```
+
+### Intermediate Examples
+
+```python
+# Handling datetime serialization
+from datetime import datetime
+
+def json_serial(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
+
+data = {"timestamp": datetime.now(), "value": 42}
+print(json.dumps(data, default=json_serial))
+
+# Serialization with custom encoder
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
-        return super().default(obj)
-
-class CustomDecoder(json.JSONDecoder):
-    def __init__(self, *args, **kwargs):
-        super().__init__(object_hook=self.object_hook, *args, **kwargs)
-    
-    def object_hook(self, dct):
-        return dct
-```
-
-## Examples
-
-### Basic JSON Operations
-
-```python
-import json
-
-data = {
-    'name': 'Alice',
-    'age': 30,
-    'city': 'New York',
-    'is_student': False,
-    'grades': [95, 87, 91],
-    'address': None
-}
-
-json_string = json.dumps(data, indent=2)
-print(json_string)
-
-parsed = json.loads(json_string)
-print(parsed['name'])
-print(parsed['grades'][0])
-print(parsed['address'])
-```
-
-### Reading and Writing JSON Files
-
-```python
-import json
-
-data = {
-    'users': [
-        {'id': 1, 'name': 'Alice', 'email': 'alice@example.com'},
-        {'id': 2, 'name': 'Bob', 'email': 'bob@example.com'},
-        {'id': 3, 'name': 'Charlie', 'email': 'charlie@example.com'}
-    ],
-    'metadata': {
-        'version': '1.0',
-        'exported_at': '2024-01-15T10:30:00Z'
-    }
-}
-
-with open('users.json', 'w') as f:
-    json.dump(data, f, indent=2)
-
-with open('users.json', 'r') as f:
-    loaded_data = json.load(f)
-
-for user in loaded_data['users']:
-    print(f"{user['id']}: {user['name']} ({user['email']})")
-```
-
-### Pretty Printing with indent and sort_keys
-
-```python
-import json
-
-data = {'z': 1, 'a': 2, 'm': 3, 'b': {'nested': 4, 'alpha': 5}}
-
-print(json.dumps(data))
-
-print(json.dumps(data, indent=4))
-
-print(json.dumps(data, indent=4, sort_keys=True))
-```
-
-## Beginner Examples
-
-### Example 1: User Preferences Manager
-
-```python
-import json
-import os
-
-class UserPreferences:
-    def __init__(self, filename='preferences.json'):
-        self.filename = filename
-        self.preferences = self.load()
-    
-    def load(self):
-        if os.path.exists(self.filename):
-            try:
-                with open(self.filename, 'r') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, IOError):
-                return self.defaults()
-        return self.defaults()
-    
-    def defaults(self):
-        return {
-            'theme': 'light',
-            'language': 'en',
-            'font_size': 12,
-            'auto_save': True,
-            'recent_files': [],
-            'window_position': {'x': 100, 'y': 100}
-        }
-    
-    def save(self):
-        with open(self.filename, 'w') as f:
-            json.dump(self.preferences, f, indent=2, sort_keys=True)
-    
-    def get(self, key, default=None):
-        return self.preferences.get(key, default)
-    
-    def set(self, key, value):
-        self.preferences[key] = value
-        self.save()
-    
-    def add_recent_file(self, filepath):
-        recent = self.preferences.get('recent_files', [])
-        if filepath in recent:
-            recent.remove(filepath)
-        recent.insert(0, filepath)
-        self.preferences['recent_files'] = recent[:10]
-        self.save()
-
-prefs = UserPreferences()
-print(f"Current theme: {prefs.get('theme')}")
-prefs.set('theme', 'dark')
-prefs.add_recent_file('/path/to/document.txt')
-print(f"Recent files: {prefs.get('recent_files')}")
-```
-
-### Example 2: Simple Contact Book
-
-```python
-import json
-import os
-
-CONTACTS_FILE = 'contacts.json'
-
-def load_contacts():
-    if os.path.exists(CONTACTS_FILE):
-        with open(CONTACTS_FILE, 'r') as f:
-            return json.load(f)
-    return []
-
-def save_contacts(contacts):
-    with open(CONTACTS_FILE, 'w') as f:
-        json.dump(contacts, f, indent=2)
-
-def add_contact():
-    name = input("Name: ")
-    phone = input("Phone: ")
-    email = input("Email: ")
-    
-    contacts = load_contacts()
-    contacts.append({
-        'name': name,
-        'phone': phone,
-        'email': email
-    })
-    save_contacts(contacts)
-    print(f"Contact '{name}' added.")
-
-def list_contacts():
-    contacts = load_contacts()
-    if not contacts:
-        print("No contacts found.")
-        return
-    print("\nContacts:")
-    for i, contact in enumerate(contacts, 1):
-        print(f"{i}. {contact['name']} - {contact['phone']} - {contact['email']}")
-
-def search_contacts():
-    query = input("Search: ").lower()
-    contacts = load_contacts()
-    results = [c for c in contacts if query in c['name'].lower() 
-               or query in c['phone'] or query in c['email'].lower()]
-    
-    if results:
-        print(f"\nFound {len(results)} contact(s):")
-        for contact in results:
-            print(f"  {contact['name']} - {contact['phone']} - {contact['email']}")
-    else:
-        print("No contacts found.")
-
-while True:
-    print("\n--- Contact Book ---")
-    print("1. Add Contact")
-    print("2. List Contacts")
-    print("3. Search Contacts")
-    print("4. Exit")
-    
-    choice = input("Choose: ")
-    if choice == '1':
-        add_contact()
-    elif choice == '2':
-        list_contacts()
-    elif choice == '3':
-        search_contacts()
-    elif choice == '4':
-        print("Goodbye!")
-        break
-    else:
-        print("Invalid choice.")
-```
-
-### Example 3: JSON to Table Converter
-
-```python
-import json
-
-def json_to_table(json_data):
-    if not isinstance(json_data, list) or not json_data:
-        return "Empty data"
-    
-    headers = []
-    for item in json_data:
-        if isinstance(item, dict):
-            for key in item.keys():
-                if key not in headers:
-                    headers.append(key)
-    
-    if not headers:
-        return "No data to display"
-    
-    col_widths = {h: len(str(h)) for h in headers}
-    for item in json_data:
-        if isinstance(item, dict):
-            for h in headers:
-                val = str(item.get(h, ''))
-                col_widths[h] = max(col_widths[h], len(val))
-    
-    separator = '+' + '+'.join('-' * (col_widths[h] + 2) for h in headers) + '+'
-    
-    lines = [separator]
-    header_row = '|' + '|'.join(f' {h:<{col_widths[h]}} ' for h in headers) + '|'
-    lines.append(header_row)
-    lines.append(separator)
-    
-    for item in json_data:
-        if isinstance(item, dict):
-            row = '|' + '|'.join(f' {str(item.get(h, "")):<{col_widths[h]}} ' for h in headers) + '|'
-            lines.append(row)
-    
-    lines.append(separator)
-    return '\n'.join(lines)
-
-sample_data = [
-    {"name": "Alice", "age": 30, "city": "New York"},
-    {"name": "Bob", "age": 25, "city": "Los Angeles"},
-    {"name": "Charlie", "age": 35, "city": "Chicago"}
-]
-
-print(json_to_table(sample_data))
-
-with open('formatted_output.json', 'w') as f:
-    json.dump(sample_data, f, indent=2)
-```
-
-## Intermediate Examples
-
-### Example 4: Deep JSON Merge and Patch
-
-```python
-import json
-from copy import deepcopy
-
-def json_deep_merge(base, override):
-    result = deepcopy(base)
-    
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = json_deep_merge(result[key], value)
-        else:
-            result[key] = deepcopy(value)
-    
-    return result
-
-def json_apply_patch(doc, patch):
-    result = deepcopy(doc)
-    
-    for operation in patch:
-        op = operation['op']
-        path = operation['path'].strip('/').split('/') if operation['path'] != '/' else []
-        
-        if op == 'add':
-            target = result
-            for part in path[:-1]:
-                if isinstance(target, list):
-                    target = target[int(part)]
-                else:
-                    target = target[part]
-            
-            key = path[-1] if path else None
-            if isinstance(target, list):
-                idx = int(key) if key else len(target)
-                target.insert(idx, operation['value'])
-            else:
-                target[key] = operation['value']
-        
-        elif op == 'remove':
-            target = result
-            for part in path[:-1]:
-                if isinstance(target, list):
-                    target = target[int(part)]
-                else:
-                    target = target[part]
-            
-            key = path[-1]
-            if isinstance(target, list):
-                del target[int(key)]
-            else:
-                del target[key]
-        
-        elif op == 'replace':
-            target = result
-            for part in path[:-1]:
-                if isinstance(target, list):
-                    target = target[int(part)]
-                else:
-                    target = target[part]
-            
-            key = path[-1]
-            target[key] = operation['value']
-        
-        elif op == 'test':
-            pass
-    
-    return result
-
-base_config = {
-    'database': {
-        'host': 'localhost',
-        'port': 5432,
-        'credentials': {
-            'user': 'admin',
-            'password': 'secret'
-        }
-    },
-    'logging': {
-        'level': 'INFO',
-        'file': '/var/log/app.log'
-    }
-}
-
-user_config = {
-    'database': {
-        'host': 'prod-server.example.com',
-        'credentials': {
-            'user': 'prod_user'
-        }
-    },
-    'logging': {
-        'level': 'WARNING'
-    }
-}
-
-merged = json_deep_merge(base_config, user_config)
-print(json.dumps(merged, indent=2))
-
-patch = [
-    {'op': 'replace', 'path': '/database/host', 'value': 'new-host'},
-    {'op': 'add', 'path': '/logging/format', 'value': 'json'},
-    {'op': 'add', 'path': '/features', 'value': ['analytics', 'reporting']}
-]
-
-patched = json_apply_patch(merged, patch)
-print(json.dumps(patched, indent=2))
-```
-
-### Example 5: Streaming JSON Processing
-
-```python
-import json
-import ijson
-
-def process_large_json_stream(filename):
-    """Process a large JSON array using streaming parser."""
-    results = []
-    
-    with open(filename, 'rb') as f:
-        parser = ijson.parse(f)
-        
-        current_item = None
-        current_key = None
-        
-        for prefix, event, value in parser:
-            if prefix == 'item' and event == 'start_map':
-                current_item = {}
-            elif prefix == 'item' and event == 'end_map':
-                if current_item:
-                    results.append(process_item(current_item))
-                    current_item = None
-            elif event == 'map_key':
-                current_key = value
-            elif current_item is not None:
-                current_item[current_key] = value
-    
-    return results
-
-def process_item(item):
-    """Transform or filter a single JSON item."""
-    if item.get('active') == True:
-        return {
-            'id': item.get('id'),
-            'name': item.get('name', '').upper(),
-            'score': item.get('score', 0) * 1.1
-        }
-    return None
-
-def create_large_json():
-    """Create a large JSON file for testing."""
-    data = []
-    for i in range(10000):
-        data.append({
-            'id': i,
-            'name': f'User_{i}',
-            'active': i % 2 == 0,
-            'score': i * 10
-        })
-    
-    with open('large_data.json', 'w') as f:
-        json.dump(data, f)
-
-def efficient_json_dump(data, filename, chunk_size=1000):
-    """Write large JSON data efficiently in chunks."""
-    with open(filename, 'w') as f:
-        f.write('[')
-        for i in range(0, len(data), chunk_size):
-            chunk = data[i:i + chunk_size]
-            chunk_str = json.dumps(chunk)[1:-1]
-            if i > 0:
-                f.write(',')
-            f.write(chunk_str)
-        f.write(']')
-
-if __name__ == '__main__':
-    print("Creating large JSON file...")
-    data = [{'id': i, 'value': f'item_{i}'} for i in range(50000)]
-    efficient_json_dump(data, 'efficient_large.json')
-    print("Done!")
-```
-
-### Example 6: JSON Schema Validation
-
-```python
-import json
-from jsonschema import validate, ValidationError
-
-USER_SCHEMA = {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "type": "object",
-    "properties": {
-        "id": {"type": "integer", "minimum": 1},
-        "name": {"type": "string", "minLength": 1, "maxLength": 100},
-        "email": {"type": "string", "format": "email"},
-        "age": {"type": "integer", "minimum": 0, "maximum": 150},
-        "roles": {
-            "type": "array",
-            "items": {"type": "string"},
-            "uniqueItems": True
-        },
-        "address": {
-            "type": "object",
-            "properties": {
-                "street": {"type": "string"},
-                "city": {"type": "string"},
-                "zipcode": {"type": "string", "pattern": "^[0-9]{5}$"}
-            },
-            "required": ["city"]
-        },
-        "created_at": {"type": "string", "format": "date-time"}
-    },
-    "required": ["id", "name", "email"],
-    "additionalProperties": False
-}
-
-def validate_user(user_data):
-    try:
-        validate(instance=user_data, schema=USER_SCHEMA)
-        return True, "User data is valid"
-    except ValidationError as e:
-        return False, f"Validation error: {e.message}"
-
-valid_user = {
-    "id": 1,
-    "name": "Alice Johnson",
-    "email": "alice@example.com",
-    "age": 30,
-    "roles": ["admin", "user"],
-    "address": {
-        "street": "123 Main St",
-        "city": "New York",
-        "zipcode": "10001"
-    },
-    "created_at": "2024-01-15T10:30:00Z"
-}
-
-invalid_user = {
-    "id": -1,
-    "name": "",
-    "email": "not-an-email"
-}
-
-for user in [valid_user, invalid_user]:
-    is_valid, message = validate_user(user)
-    print(f"{'Valid' if is_valid else 'Invalid'}: {message}")
-
-# Export valid users to JSON
-valid_users = [valid_user]
-with open('valid_users.json', 'w') as f:
-    json.dump(valid_users, f, indent=2)
-```
-
-## Advanced Examples
-
-### Example 7: Custom JSON Encoder for Complex Objects
-
-```python
-import json
-from datetime import datetime, date
-from decimal import Decimal
-from enum import Enum
-from pathlib import Path
-
-class Color(Enum):
-    RED = 'red'
-    GREEN = 'green'
-    BLUE = 'blue'
-
-class Person:
-    def __init__(self, name, birth_date, salary, favorite_colors):
-        self.name = name
-        self.birth_date = birth_date
-        self.salary = salary
-        self.favorite_colors = favorite_colors
-
-class CustomJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, (datetime, date)):
+        if isinstance(obj, datetime):
             return obj.isoformat()
-        elif isinstance(obj, Decimal):
-            return float(obj)
-        elif isinstance(obj, Enum):
-            return obj.value
-        elif isinstance(obj, Path):
-            return str(obj)
-        elif isinstance(obj, Person):
-            return {
-                '__type__': 'Person',
-                'name': obj.name,
-                'birth_date': obj.birth_date.isoformat(),
-                'salary': obj.salary,
-                'favorite_colors': [c.value for c in obj.favorite_colors]
-            }
-        elif isinstance(obj, set):
+        if isinstance(obj, set):
             return list(obj)
-        elif isinstance(obj, bytes):
+        if isinstance(obj, bytes):
             return obj.hex()
         return super().default(obj)
 
-class CustomJSONDecoder(json.JSONDecoder):
-    def __init__(self, *args, **kwargs):
-        super().__init__(object_hook=self.object_hook, *args, **kwargs)
-    
-    def object_hook(self, dct):
-        if dct.get('__type__') == 'Person':
-            return Person(
-                name=dct['name'],
-                birth_date=datetime.fromisoformat(dct['birth_date']).date(),
-                salary=Decimal(str(dct['salary'])),
-                favorite_colors=[Color(c) for c in dct['favorite_colors']]
-            )
-        return dct
-
 data = {
-    'name': 'Complex Data',
-    'created_at': datetime.now(),
-    'pi': Decimal('3.141592653589793'),
-    'color': Color.RED,
-    'path': Path('/usr/local/config'),
-    'unique_ids': {1, 2, 3, 4, 5},
-    'binary_data': b'hello',
-    'person': Person(
-        name='Alice',
-        birth_date=date(1990, 5, 15),
-        salary=Decimal('75000.50'),
-        favorite_colors=[Color.BLUE, Color.GREEN]
-    )
+    "date": datetime.now(),
+    "tags": {"python", "json"},
+    "binary": b"hello",
 }
-
-encoded = json.dumps(data, cls=CustomJSONEncoder, indent=2)
-print("Encoded JSON:")
-print(encoded)
-
-with open('complex_data.json', 'w') as f:
-    json.dump(data, f, cls=CustomJSONEncoder, indent=2)
-
-with open('complex_data.json', 'r') as f:
-    decoded_data = json.load(f, cls=CustomJSONDecoder)
-
-print(f"\nDecoded person name: {decoded_data['person'].name}")
-print(f"Decoded person salary: {decoded_data['person'].salary}")
-print(f"Decoded favorite colors: {[c.value for c in decoded_data['person'].favorite_colors]}")
+print(json.dumps(data, cls=CustomEncoder, indent=2))
 ```
 
-### Example 8: JSON Data Pipeline
+## Deserialization
+
+### What It Is
+
+Deserialization (decoding) converts JSON-formatted data back into Python objects using `json.loads()` (strings) or `json.load()` (files).
+
+### Why It Is Important
+
+Deserialization is how programs consume data from external sources. Safe deserialization practices prevent issues from malformed or malicious JSON.
+
+### How It Works Internally
+
+The JSON decoder tokenizes the input string, validates it against the JSON grammar, and recursively builds Python objects. It uses a `scan_once` function that advances through the input positionally. Error handling tracks line and column numbers for useful error messages.
+
+### Beginner Examples
 
 ```python
 import json
-from typing import Any, Callable, List
 
-class JSONPipeline:
-    def __init__(self):
-        self.stages = []
-    
-    def add_stage(self, name: str, transformer: Callable[[Any], Any]):
-        self.stages.append((name, transformer))
-        return self
-    
-    def execute(self, data: Any) -> Any:
-        result = data
-        for name, transformer in self.stages:
-            print(f"Pipeline stage: {name}")
-            result = transformer(result)
-        return result
+# Loading from string
+json_str = '{"city": "New York", "population": 8336817}'
+data = json.loads(json_str)
+print(f"City: {data['city']}, Population: {data['population']}")
 
-def load_json_file(filename: str) -> dict:
-    with open(filename, 'r') as f:
-        return json.load(f)
+# Loading from file
+with open("config.json", "r") as f:
+    config = json.load(f)
 
-def save_json_file(filename: str, data: Any):
-    with open(filename, 'w') as f:
-        json.dump(data, f, indent=2)
+# Handling missing keys
+data = json.loads('{"name": "Alice"}')
+print(data.get("age", "unknown"))  # unknown
 
-def filter_active_users(data: dict) -> dict:
-    if 'users' in data:
-        data['users'] = [u for u in data['users'] if u.get('active', False)]
-    return data
-
-def anonymize_users(data: dict) -> dict:
-    if 'users' in data:
-        for user in data['users']:
-            if 'email' in user:
-                local, domain = user['email'].split('@')
-                user['email'] = f"{local[0]}***@{domain}"
-            if 'name' in user:
-                user['name'] = user['name'][0] + '***'
-    return data
-
-def add_metadata(data: dict) -> dict:
-    data['processed_at'] = '2024-01-15T12:00:00Z'
-    data['pipeline_version'] = '2.0'
-    data['user_count'] = len(data.get('users', []))
-    return data
-
-def validate_data(data: dict) -> dict:
-    required_fields = ['users']
-    for field in required_fields:
-        if field not in data:
-            raise ValueError(f"Missing required field: {field}")
-    return data
-
-source_data = {
-    'users': [
-        {'id': 1, 'name': 'Alice Johnson', 'email': 'alice@example.com', 'active': True},
-        {'id': 2, 'name': 'Bob Smith', 'email': 'bob@example.com', 'active': False},
-        {'id': 3, 'name': 'Charlie Brown', 'email': 'charlie@example.com', 'active': True}
-    ],
-    'source': 'import_2024'
-}
-
-with open('pipeline_input.json', 'w') as f:
-    json.dump(source_data, f, indent=2)
-
-pipeline = JSONPipeline()
-pipeline.add_stage('Load', load_json_file)
-pipeline.add_stage('Validate', validate_data)
-pipeline.add_stage('Filter Active', filter_active_users)
-pipeline.add_stage('Anonymize', anonymize_users)
-pipeline.add_stage('Add Metadata', add_metadata)
-pipeline.add_stage('Save', lambda data: save_json_file('pipeline_output.json', data) or data)
-
-result = pipeline.execute('pipeline_input.json')
-print(json.dumps(result, indent=2))
+# Error handling
+try:
+    data = json.loads("{invalid}")
+except json.JSONDecodeError as e:
+    print(f"Parse error at line {e.lineno}: {e.msg}")
 ```
 
-## Real-World Use Cases
+### Advanced Examples
 
-1. **REST API Communication**: All modern web APIs use JSON for request and response payloads. Python's `json` module is used with libraries like `requests` to serialize request data and deserialize API responses.
+```python
+# Custom object hook for date deserialization
+from datetime import datetime
 
-2. **Configuration Management**: Applications store configuration in JSON files that can be modified without code changes. Tools like `json5` extend JSON with comments for better configuration files.
+def date_hook(dct):
+    for key, value in dct.items():
+        if isinstance(value, str) and "T" in value:
+            try:
+                dct[key] = datetime.fromisoformat(value)
+            except ValueError:
+                pass
+    return dct
 
-3. **Database Export/Import**: JSON is a common format for exporting and importing data between different database systems and for database backups.
+json_str = '{"name": "Event", "created": "2024-01-15T10:30:00"}'
+data = json.loads(json_str, object_hook=date_hook)
+print(type(data["created"]))  # <class 'datetime.datetime'>
 
-4. **Machine Learning Data Preparation**: JSON Lines format (one JSON object per line) is used for training data in ML pipelines, especially for NLP and structured data tasks.
+# object_pairs_hook for preserving key order
+from collections import OrderedDict
 
-5. **IoT Device Communication**: IoT devices send sensor data in JSON format to cloud platforms for processing and visualization.
+data = json.loads(
+    '{"b": 1, "a": 2, "c": 3}',
+    object_pairs_hook=OrderedDict
+)
+print(list(data.keys()))  # ['b', 'a', 'c']
 
-6. **Caching and Serialization**: JSON is used as a cache format in Redis and other caching systems, and for serializing complex data structures for storage.
+# Custom decoder for type conversion
+class TypedDecoder(json.JSONDecoder):
+    def __init__(self):
+        super().__init__(object_hook=self.typed_hook)
 
-7. **Internationalization (i18n)**: Translation strings are typically stored in JSON files with language codes as keys.
+    def typed_hook(self, dct):
+        for key, value in dct.items():
+            if key == "id":
+                dct[key] = str(value)  # Ensure id is string
+        return dct
 
-## Common Mistakes
+data = json.loads('{"id": 42, "name": "Alice"}', cls=TypedDecoder)
+print(type(data["id"]))  # <class 'str'>
+```
 
-1. **Forgetting to Handle Non-Serializable Types**: Python objects like `datetime`, `Decimal`, and custom classes cannot be directly serialized. You need custom encoders.
+### Real-World Use Cases
 
-2. **Not Specifying Encoding**: Always use `encoding='utf-8'` when reading/writing JSON files to avoid encoding issues.
+```python
+# API integration
+import json
+import urllib.request
 
-3. **Loading Untrusted JSON Without Validation**: `json.loads()` can create arbitrary Python objects. Always validate JSON data before using it, especially from untrusted sources.
+def fetch_user(user_id):
+    url = f"https://jsonplaceholder.typicode.com/users/{user_id}"
+    with urllib.request.urlopen(url) as response:
+        return json.load(response)
 
-4. **Using eval() Instead of json.loads()**: Never use `eval()` to parse JSON strings. Always use `json.loads()` for safety.
+user = fetch_user(1)
+print(f"User: {user['name']}, Email: {user['email']}")
 
-5. **Ignoring ensure_ascii Parameter**: By default, `json.dumps()` escapes non-ASCII characters. Use `ensure_ascii=False` to preserve Unicode characters.
+# Configuration management
+import json
+import os
 
-6. **Loading Entire Large JSON Files**: For large JSON files, use streaming parsers like `ijson` instead of loading the entire file into memory.
+class ConfigManager:
+    def __init__(self, path="config.json"):
+        self.path = path
+        self.config = self.load()
 
-## Best Practices
+    def load(self):
+        if os.path.exists(self.path):
+            with open(self.path, "r") as f:
+                return json.load(f)
+        return {}
 
-1. **Use indent for Readability**: Use `indent=2` or `indent=4` when writing JSON files meant for human reading.
+    def save(self):
+        with open(self.path, "w") as f:
+            json.dump(self.config, f, indent=2)
 
-2. **Sort Keys for Consistency**: Use `sort_keys=True` to ensure consistent key ordering, especially for version-controlled files.
+    def get(self, key, default=None):
+        return self.config.get(key, default)
 
-3. **Always Specify Encoding**: Always use `encoding='utf-8'` when opening JSON files.
+    def set(self, key, value):
+        self.config[key] = value
+        self.save()
 
-4. **Validate JSON Data**: Use JSON Schema for validating JSON data structure and types before processing.
+# Data pipeline
+import json
 
-5. **Handle Errors Gracefully**: Catch `json.JSONDecodeError` and `KeyError` when parsing and accessing JSON data.
+class JSONPipeline:
+    def process(self, input_file, output_file, transforms):
+        with open(input_file, "r") as f:
+            data = json.load(f)
 
-6. **Use Custom Encoders/Decoders**: For complex applications, create custom JSONEncoder and JSONDecoder subclasses to handle serialization consistently.
+        for transform in transforms:
+            data = transform(data)
 
-7. **Prefer json.load/json.dump for Files**: Use `json.load()` and `json.dump()` with file objects instead of reading/writing strings with `json.loads()`/`json.dumps()`.
+        with open(output_file, "w") as f:
+            json.dump(data, f, indent=2)
+```
 
-## Interview Questions
+### Common Mistakes
 
-**Q1: What is the difference between `json.dumps()` and `json.dump()`?**
+```python
+# Mistake 1: Forgetting to handle non-serializable types
+data = {"date": datetime.now()}
+json.dumps(data)  # TypeError!
 
-A: `json.dumps()` serializes a Python object to a JSON string and returns it. `json.dump()` serializes a Python object and writes it directly to a file object. Similarly, `json.loads()` parses a JSON string, while `json.load()` reads from a file object.
+# Correct:
+json.dumps(data, default=str)
 
-**Q2: How do you serialize a datetime object to JSON?**
+# Mistake 2: Not specifying encoding for files
+with open("data.json", "r") as f:  # Platform-dependent encoding!
+    data = json.load(f)
 
-A: `datetime` objects are not JSON serializable by default. You need to either:
-1. Convert them to string before serialization: `datetime.isoformat()`
-2. Create a custom JSONEncoder that handles datetime objects
-3. Use a `default` function: `json.dumps(data, default=str)`
+# Correct:
+with open("data.json", "r", encoding="utf-8") as f:
+    data = json.load(f)
 
-**Q3: Explain the `object_hook` parameter in `json.loads()`.**
+# Mistake 3: Using eval() instead of json.loads()
+data = eval('{"key": "value"}')  # DANGEROUS! Use json.loads()
 
-A: `object_hook` is an optional function that is called with the result of each JSON object decoded. It can be used to convert dictionaries to custom Python objects or to transform the decoded data. For example, you could automatically convert date strings to datetime objects.
+# Mistake 4: Loading untrusted JSON without validation
+data = json.loads(untrusted_json)  # Safe from code execution, but validate structure
 
-**Q4: How does the `ensure_ascii` parameter work?**
+# Mistake 5: Forgetting ensure_ascii=False for Unicode
+print(json.dumps("café"))  # "caf\u00e9"
+print(json.dumps("café", ensure_ascii=False))  # "café"
 
-A: When `ensure_ascii=True` (default), all non-ASCII characters in the output are escaped using `\uXXXX` sequences. When `ensure_ascii=False`, the characters are written as-is. This is useful for preserving Unicode characters in the output.
+# Mistake 6: Loading entire large JSON into memory
+# Use ijson for streaming large JSON arrays
+```
 
-**Q5: What is JSON Schema and how do you use it in Python?**
+### Best Practices
 
-A: JSON Schema is a vocabulary that allows you to annotate and validate JSON documents. It describes the structure, constraints, and types of JSON data. The `jsonschema` library in Python provides validation against JSON Schema.
+- Use `indent=2` and `sort_keys=True` for human-readable JSON files
+- Always specify `encoding="utf-8"` when reading/writing JSON files
+- Handle `json.JSONDecodeError` when parsing untrusted JSON
+- Use `default` parameter or custom encoder for non-serializable types
+- Do NOT use `eval()` to parse JSON—always use `json.loads()`
+- Validate JSON structure after loading (manually or with JSON Schema)
+- Use `object_hook` for custom deserialization logic
+- Prefer `json.load()`/`json.dump()` with files over string versions
+- Use streaming parsers for large JSON data
 
-## Coding Challenges
+### Performance Considerations
 
-**Challenge 1: JSON Difference Finder**
-Write a program that compares two JSON files and reports the differences between them (added, removed, and modified keys).
+- `json.dumps()` performance depends on object complexity and size
+- Use `separators=(",", ":")` for compact output (faster to write/read)
+- The `indent` parameter adds ~20-50% overhead for output size
+- `sort_keys=True` adds sorting overhead
+- For high-throughput serialization, consider `orjson` or `ujson`
+- `json.loads()` is very fast for moderate-sized data
+- Large JSON arrays should be streamed (not loaded entirely) with `ijson`
 
-**Challenge 2: JSON to YAML Converter**
-Implement a converter that transforms JSON data into YAML format without using external libraries.
+### Interview Questions
 
-**Challenge 3: JSON Query Engine**
-Create a simple query engine that can filter and transform JSON data using a simple query language (similar to jq).
+1. What's the difference between `json.dumps()` and `json.dump()`?
 
-**Challenge 4: Nested JSON Flattener**
-Write a function that flattens nested JSON objects into a single-level dictionary with dot-notation keys.
+   `dumps()` serializes to a string. `dump()` writes to a file object. Similarly, `loads()` parses a string, `load()` reads from a file.
 
-**Challenge 5: JSON Merge Tool**
-Implement a JSON merge tool that can merge multiple JSON files into one, handling array concatenation and object merging.
+2. How do you serialize a `datetime` object?
 
-## Summary
+   Use `default=str` for simple conversion, or create a custom `JSONEncoder` subclass that handles `datetime` specially.
 
-Python's `json` module provides a powerful and flexible interface for JSON serialization and deserialization. It handles basic types automatically and can be extended with custom encoders and decoders for complex objects. Key functions include `json.dumps()`/`json.dump()` for serialization and `json.loads()`/`json.load()` for deserialization. Parameters like `indent`, `sort_keys`, and `ensure_ascii` control output formatting. For large datasets, streaming parsers like `ijson` are recommended. JSON Schema provides validation capabilities. JSON remains the most important data interchange format in modern software development.
+3. What is `object_hook` in `json.loads()`?
 
-## Related Topics
+   It's a function called for each decoded dict. It can convert dicts to custom objects or transform data. For example, converting ISO date strings to `datetime` objects.
 
-- `48_file_operations.md` - File I/O basics for reading/writing JSON files
-- `50_csv.md` - CSV as an alternative data format
-- `51_pickle.md` - Binary serialization with pickle
-- `52_pathlib.md` - Path management for JSON file locations
-- `53_temp_files.md` - Temporary files for intermediate JSON data
-- Web APIs - REST API communication with JSON
-- NoSQL Databases - Document databases like MongoDB use JSON-like formats
-- Data Serialization - Comparing JSON with XML, YAML, Protocol Buffers
+4. How does `ensure_ascii` work?
+
+   When `True` (default), non-ASCII chars are escaped as `\uXXXX`. When `False`, they're written as-is, preserving Unicode.
+
+5. What is JSON Schema validation?
+
+   JSON Schema describes the structure and constraints of JSON data. The `jsonschema` library validates JSON against a schema, catching structural issues.
+
+6. Can JSON handle circular references?
+
+   No. `json.dumps()` raises `ValueError` for circular references. You must handle them manually (e.g., by removing back-references).
+
+### Coding Challenges
+
+1. Write a JSON differ that compares two JSON objects and reports added, removed, and modified keys.
+
+2. Implement a JSON to YAML converter without external libraries.
+
+3. Build a JSON query engine that filters/transforms JSON data using a simple query language.
+
+4. Create a nested JSON flattener that converts nested objects to dot-notation keys.
+
+5. Implement a JSON merge tool that combines multiple JSON files handling array concatenation and object merging.
+
+### Related Topics
+
+- `48_file_operations.md` - File I/O for JSON files
+- `50_csv.md` - CSV as alternative data format
+- `51_pickle.md` - Binary serialization
+- `52_pathlib.md` - Path management for JSON files
+- Data serialization (YAML, XML, Protocol Buffers, MessagePack)
+- REST APIs and JSON communication
+- JSON Schema for validation

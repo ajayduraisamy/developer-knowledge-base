@@ -2,80 +2,58 @@
 
 ## Introduction
 
-`pathlib` is a Python module introduced in Python 3.4 that provides an object-oriented approach to working with filesystem paths. Instead of representing paths as strings, `pathlib` represents them as `Path` objects with methods and properties that make path manipulation intuitive and less error-prone.
+`pathlib` is a Python module introduced in Python 3.4 that provides an object-oriented approach to filesystem paths. Instead of representing paths as strings, `pathlib` uses `Path` objects with methods and properties that make path manipulation intuitive and less error-prone. It addresses the pain points of string-based path handling: cross-platform separator differences, complex path joining, and error-prone string manipulation.
 
-The module offers two main types of paths: `PurePath` (for purely computational operations without I/O) and `Path` (for actual filesystem operations). Both come in Windows and POSIX variants: `PureWindowsPath`, `PurePosixPath`, `WindowsPath`, and `PosixPath`.
+## Path() class
 
-`pathlib` addresses the pain points of string-based path handling: cross-platform separator differences, complex path joining, and error-prone string manipulation for tasks like getting parent directories, file extensions, and path components.
+### What It Is
 
-## Why It Is Important
+`Path()` is the main class in pathlib. It represents a filesystem path and provides methods for both path manipulation and filesystem I/O. `Path` objects can be created from strings, joined with the `/` operator, and provide properties for accessing path components.
 
-Path handling is a fundamental requirement in almost every Python program. `pathlib` is important because:
+### Why It Is Important
 
-- **Cross-Platform Compatibility**: Automatically uses the correct path separator (/ on POSIX, \\ on Windows)
-- **Readable Code**: Method chaining and property access make path operations more readable than os.path functions
-- **Comprehensive API**: Combines os.path, glob, os.listdir, shutil, and more in a single consistent interface
-- **Type Safety**: Path objects are distinct from strings, preventing accidental misuse
-- **Modern Python**: It's the recommended way to handle paths in Python 3.6+
-- **Rich Comparison**: Path objects support equality, ordering, and hashing
-- **Operator Overloading**: The `/` operator provides intuitive path joining
+`Path()` replaces most `os.path` functions with a cleaner, object-oriented API. It handles cross-platform path separators automatically, provides method chaining, and combines path manipulation with direct filesystem access methods (read, write, mkdir, etc.). It's the recommended way to handle paths in Python 3.6+.
 
-Mastering `pathlib` is essential for writing clean, portable Python code that interacts with the filesystem.
+### How It Works Internally
 
-## Syntax
+`Path()` creates either a `PosixPath` or `WindowsPath` instance depending on the operating system. These classes inherit from `PurePosixPath`/`PureWindowsPath` (for string operations) and mix in filesystem methods. The `/` operator is overloaded to perform path joining using the correct separator for the platform.
+
+### Syntax
 
 ```python
-from pathlib import Path, PurePath, PureWindowsPath, PurePosixPath
+from pathlib import Path
 
 # Creating paths
-p = Path('/usr/local/bin')       # POSIX path
-p = Path('C:\\Users\\Alice')     # Windows path
-p = Path()                        # Current directory
-p = Path.home()                   # User home directory
-p = Path.cwd()                    # Current working directory
+p = Path("/usr/local/bin")         # POSIX absolute path
+p = Path("C:\\Users\\Alice")       # Windows absolute path
+p = Path("relative/path")          # Relative path
+p = Path()                          # Current directory (.)
+p = Path.home()                     # User home directory
+p = Path.cwd()                      # Current working directory
 
 # Path properties
-p.parts                          # Tuple of path components
-p.parent                         # Parent directory
-p.parents                        # Sequence of all ancestors
-p.name                           # Final component (file or directory name)
-p.stem                           # Filename without extension
-p.suffix                         # File extension
-p.suffixes                       # List of all extensions
-p.root                           # Root of the path
-p.anchor                         # Drive letter + root
+p.parts          # ('usr', 'local', 'bin') - tuple of components
+p.parent         # /usr/local - parent directory
+p.parents        # [PurePosixPath('/usr/local'), PurePosixPath('/usr'), PurePosixPath('/')]
+p.name           # 'bin' - final component
+p.stem           # 'file' - filename without extension
+p.suffix         # '.txt' - file extension
+p.suffixes       # ['.tar', '.gz'] - all extensions
+p.root           # '/' - root of path
+p.anchor         # '/' or 'C:\\' - drive + root
 
-# Path joining with /
-new_path = Path('/usr') / 'local' / 'bin' / 'app'
+# Path joining
+p = Path("/usr") / "local" / "bin"
 
-# Checking existence/type
+# Existence checks
 p.exists()
 p.is_file()
 p.is_dir()
 p.is_absolute()
 p.is_symlink()
-
-# Directory operations
-p.mkdir(parents=True, exist_ok=True)
-p.rmdir()                        # Remove empty directory
-p.rename(target)
-p.replace(target)
-
-# File operations
-p.read_text(encoding='utf-8')
-p.write_text('content', encoding='utf-8')
-p.read_bytes()
-p.write_bytes(b'content')
-
-# Globbing
-list(p.glob('*.py'))             # Match in current directory
-list(p.rglob('*.py'))            # Recursive match
-list(p.glob('**/*.py'))          # Recursive match (Python 3.5+)
 ```
 
-## Examples
-
-### Basic Path Operations
+### Beginner Examples
 
 ```python
 from pathlib import Path
@@ -87,468 +65,378 @@ print(f"Home: {home}")
 print(f"CWD: {cwd}")
 
 # Path components
-p = Path('/usr/local/bin/python3')
+p = Path("/usr/local/bin/python3")
 print(f"Parts: {p.parts}")
 print(f"Parent: {p.parent}")
 print(f"Name: {p.name}")
 print(f"Stem: {p.stem}")
 print(f"Suffix: {p.suffix}")
-print(f"Root: {p.root}")
-
-# Reading and writing files
-file_path = Path('hello.txt')
-file_path.write_text('Hello, pathlib!')
-content = file_path.read_text()
-print(f"File content: {content}")
 
 # Path joining with /
-config_dir = Path('/etc') / 'app' / 'config'
-ini_file = config_dir / 'settings.ini'
-print(f"Config file: {ini_file}")
+config = Path("/etc") / "app" / "config.ini"
+print(f"Config: {config}")
+
+# Check existence
+p = Path("test.txt")
+if p.exists():
+    print(f"{p} exists")
+    print(f"Is file: {p.is_file()}")
+    print(f"Is dir: {p.is_dir()}")
+
+# Simple I/O
+file_path = Path("hello.txt")
+file_path.write_text("Hello, pathlib!")
+content = file_path.read_text()
+print(content)
+file_path.unlink()  # Delete file
+
+# Directory creation
+new_dir = Path("new_directory")
+new_dir.mkdir(exist_ok=True)
+new_dir.rmdir()  # Remove empty directory
 ```
 
-### Checking File Properties
+## PurePath
+
+### What It Is
+
+`PurePath` is the base class for path objects that provide purely computational path operations without filesystem access. It has two subclasses: `PurePosixPath` (for POSIX-style paths) and `PureWindowsPath` (for Windows-style paths). `Path` inherits from `PurePath` and adds filesystem I/O.
+
+### Why It Is Important
+
+`PurePath` is useful when you only need path manipulation (splitting, joining, resolving) without touching the filesystem. It's also platform-independent: on Windows you can use `PurePosixPath` to manipulate POSIX-style paths (e.g., for remote server paths).
+
+### How It Works Internally
+
+`PurePath` stores the path string internally and provides properties/methods that compute results from the string without any filesystem calls. Methods like `.parent`, `.name`, `.stem` are string operations. `.resolve()` (on `Path`, not `PurePath`) requires filesystem access to resolve symlinks and normalize.
+
+### Syntax
+
+```python
+from pathlib import PurePath, PurePosixPath, PureWindowsPath
+
+# Platform-specific
+pure_posix = PurePosixPath("/usr/local/bin")
+pure_win = PureWindowsPath("C:\\Users\\Alice")
+
+# Cross-platform use on any OS
+posix = PurePosixPath("linux/path/file.txt")
+print(posix.parent)  # PurePosixPath('linux/path')
+
+win = PureWindowsPath("windows\\path\\file.txt")
+print(win.parent)    # PureWindowsPath('windows\\path')
+
+# Common operations
+p = PurePath("/usr/local/bin")
+print(p.parts)          # ('/', 'usr', 'local', 'bin')
+print(p.drive)          # ''
+print(p.root)           # '/'
+print(p.anchor)         # '/'
+
+# Comparison (order-independent of case on Windows)
+p1 = PurePosixPath("/usr/bin")
+p2 = PurePosixPath("/usr/bin")
+print(p1 == p2)  # True
+
+# No filesystem methods
+p = PurePath("/etc/hosts")
+# p.exists()  # AttributeError: 'PurePath' object has no attribute 'exists'
+```
+
+## Path operations
+
+### What It Is
+
+Path operations encompass all the methods available on `Path` objects for manipulating and querying paths, as well as performing filesystem I/O. These include reading/writing files, creating/deleting directories, resolving paths, and querying file metadata.
+
+### Why It Is Important
+
+`Path` provides a unified API for common filesystem tasks that previously required multiple modules (`os.path`, `os`, `glob`, `shutil`). This reduces the number of imports needed and makes code more readable.
+
+### How It Works Internally
+
+Filesystem methods on `Path` delegate to the corresponding `os` module functions internally. For example, `path.exists()` calls `os.path.exists(path)`, `path.mkdir()` calls `os.mkdir()` or `os.makedirs()`. The `Path` object simply provides a cleaner interface.
+
+### Syntax
 
 ```python
 from pathlib import Path
-import os
 
-path = Path('.')
+p = Path("some/path")
 
-print(f"Current directory exists: {path.exists()}")
-print(f"Is directory: {path.is_dir()}")
-print(f"Is file: {path.is_file()}")
+# Querying
+p.exists()                      # Whether path exists
+p.is_file()                     # Whether it's a file
+p.is_dir()                      # Whether it's a directory
+p.is_absolute()                 # Whether path is absolute
+p.is_symlink()                  # Whether it's a symbolic link
+p.stat()                        # File stat info
+p.lstat()                       # Stat without following symlinks
+p.owner()                       # File owner name
+p.group()                       # File group name
 
-for item in path.iterdir():
-    item_type = 'DIR' if item.is_dir() else 'FILE' if item.is_file() else 'OTHER'
-    size = item.stat().st_size if item.is_file() else 0
-    print(f"[{item_type}] {item.name} ({size} bytes)")
+# Reading/Writing
+p.read_text(encoding="utf-8")     # Read text content
+p.read_bytes()                     # Read binary content
+p.write_text("content")           # Write text
+p.write_bytes(b"content")         # Write binary
+
+# Directory operations
+p.mkdir(mode=0o777, parents=False, exist_ok=False)  # Create directory
+p.rmdir()                        # Remove empty directory
+p.rename(target)                 # Rename/move
+p.replace(target)                # Rename/move, overwrite target
+p.iterdir()                      # Iterate over directory contents
+
+# Path manipulation
+p.resolve()                      # Resolve symlinks, make absolute
+p.absolute()                     # Make absolute (doesn't resolve symlinks)
+p.relative_to(other)             # Get relative path to other
+p.with_name(name)                # Replace final component
+p.with_suffix(suffix)            # Replace extension
+p.with_stem(stem)                # Replace stem without extension (3.9+)
+
+# Utilities
+p.samefile(other)                # Whether paths point to same file
+p.expanduser()                   # Expand ~ to home directory
+p.home()                         # Home directory
+p.cwd()                          # Current working directory
 ```
 
-### File Globbing
+### Beginner Examples
+
+```python
+from pathlib import Path
+
+# Creating directories
+Path("output/data").mkdir(parents=True, exist_ok=True)
+
+# Writing and reading files
+p = Path("data.txt")
+p.write_text("Hello, World!")
+print(p.read_text())
+
+# Iterating directory
+for item in Path(".").iterdir():
+    if item.is_file():
+        print(f"File: {item.name}")
+    elif item.is_dir():
+        print(f"Dir: {item.name}")
+
+# Getting file info
+p = Path("data.txt")
+if p.exists():
+    stat = p.stat()
+    print(f"Size: {stat.st_size} bytes")
+    print(f"Modified: {stat.st_mtime}")
+
+# Renaming files
+p = Path("old_name.txt")
+if p.exists():
+    p.rename("new_name.txt")
+
+# Resolving paths
+print(Path(".").resolve())  # Full absolute path
+
+# Changing extension
+p = Path("data.txt")
+print(p.with_suffix(".csv"))  # data.csv
+
+# Relative paths
+p1 = Path("/usr/local/bin")
+p2 = Path("/usr/local/lib/file.txt")
+print(p2.relative_to(p1))  # ../lib/file.txt
+```
+
+### Intermediate Examples
+
+```python
+from pathlib import Path
+import shutil
+
+# File copy using Path
+src = Path("source.txt")
+dst = Path("backup/source.txt")
+dst.parent.mkdir(parents=True, exist_ok=True)
+shutil.copy2(src, dst)
+
+# Finding files by properties
+def find_large_files(directory, min_size_mb=100):
+    path = Path(directory)
+    for file in path.rglob("*"):
+        if file.is_file() and file.stat().st_size > min_size_mb * 1024 * 1024:
+            yield file
+
+# Batch rename
+def rename_files(directory, pattern, replacement):
+    path = Path(directory)
+    for item in path.iterdir():
+        if item.is_file():
+            new_name = item.name.replace(pattern, replacement)
+            if new_name != item.name:
+                item.rename(item.parent / new_name)
+
+# Safe file deletion with confirmation
+def safe_delete(path, confirm=True):
+    p = Path(path)
+    if not p.exists():
+        return
+    if p.is_dir():
+        if confirm:
+            response = input(f"Delete directory '{p}' and all contents? (y/N): ")
+            if response.lower() != "y":
+                return
+        shutil.rmtree(p)
+    else:
+        p.unlink()
+
+# Directory tree walking
+def tree(directory, prefix=""):
+    path = Path(directory)
+    contents = list(path.iterdir())
+    for i, item in enumerate(contents):
+        is_last = i == len(contents) - 1
+        print(f"{prefix}{'└── ' if is_last else '├── '}{item.name}")
+        if item.is_dir():
+            extension = "    " if is_last else "│   "
+            tree(item, prefix + extension)
+```
+
+## glob (Python 3.4+)
+
+### What It Is
+
+`Path.glob()` and `Path.rglob()` provide pattern-based file matching within a directory tree. `glob()` matches files in the current directory, while `rglob()` recursively searches all subdirectories. They support the standard glob patterns (`*`, `?`, `[abc]`, `**`).
+
+### Why It Is Important
+
+Globbing is essential for finding files by pattern without manually traversing directory trees. `pathlib`'s glob methods return `Path` objects (not strings), integrate naturally with the Path API, and are generally faster than the standalone `glob` module for simple patterns.
+
+### How It Works Internally
+
+`glob()` and `rglob()` use Python's `pathlib._NormalAccessor.scandir()` for efficient directory iteration. They compile the glob pattern and match filenames against it. `rglob()` is equivalent to `glob("**/pattern")` and recursively enters subdirectories. The methods are generators that yield results lazily as they're found.
+
+### Syntax
+
+```python
+from pathlib import Path
+
+p = Path(".")
+
+# Basic glob
+for py_file in p.glob("*.py"):
+    print(py_file)
+
+# Recursive glob
+for all_py in p.rglob("*.py"):
+    print(all_py)
+
+# Equivalent forms
+p.rglob("*.py")         # Recursive
+p.glob("**/*.py")       # Same thing (Python 3.5+)
+
+# Single character wildcard
+p.glob("file_?.txt")    # file_1.txt, file_a.txt, etc.
+
+# Character set
+p.glob("[abc]*.py")     # Starts with a, b, or c
+
+# Multiple patterns
+for ext in ["*.py", "*.md", "*.txt"]:
+    for file in p.glob(ext):
+        print(file)
+
+# Check if any files match
+has_python = any(p.glob("*.py"))
+```
+
+### Beginner Examples
 
 ```python
 from pathlib import Path
 
 # Find all Python files
-base = Path('.')
-py_files = list(base.glob('*.py'))
-print(f"Python files: {[f.name for f in py_files]}")
+py_files = list(Path("src").glob("*.py"))
+print(f"Found {len(py_files)} Python files")
 
-# Recursive search for all .md files
-md_files = list(base.rglob('*.md'))
-print(f"Markdown files: {len(md_files)} found")
+# Find all text files recursively
+txt_files = Path(".").rglob("*.txt")
+for file in txt_files:
+    print(file)
 
-# Search with multiple patterns
-for ext in ['*.py', '*.md', '*.txt']:
-    files = list(base.glob(ext))
-    print(f"{ext}: {len(files)} files")
+# Count files by extension
+from collections import Counter
+counter = Counter()
+for file in Path(".").rglob("*"):
+    if file.is_file():
+        counter[file.suffix] += 1
+print(counter)
+
+# Find directories
+dirs = [p for p in Path(".").glob("*") if p.is_dir()]
+print(f"Subdirectories: {len(dirs)}")
+
+# Find files matching multiple extensions
+extensions = {".py", ".js", ".ts"}
+matching = [
+    f for f in Path(".").rglob("*")
+    if f.suffix in extensions
+]
+
+# Check for specific file
+if Path(".").glob("config.yaml"):
+    print("Config found")
+
+# Find files by size pattern
+large_files = [
+    f for f in Path(".").rglob("*")
+    if f.is_file() and f.stat().st_size > 1024 * 1024
+]
 ```
 
-## Beginner Examples
-
-### Example 1: File Organizer by Extension
+### Intermediate Examples
 
 ```python
 from pathlib import Path
 
-def organize_files(directory):
-    base = Path(directory)
-    if not base.exists() or not base.is_dir():
-        print(f"Directory not found: {directory}")
-        return
-    
-    for item in base.iterdir():
-        if item.is_file():
-            ext = item.suffix.lower().lstrip('.')
-            if not ext:
-                ext = 'no_extension'
-            
-            ext_dir = base / ext
-            if not ext_dir.exists():
-                ext_dir.mkdir()
-                print(f"Created directory: {ext_dir.name}")
-            
-            destination = ext_dir / item.name
-            item.rename(destination)
-            print(f"Moved: {item.name} -> {ext_dir.name}/")
-    
-    print("Organization complete!")
-
-def create_test_files():
-    test_dir = Path('test_files')
-    test_dir.mkdir(exist_ok=True)
-    
-    for info in [('txt', 3), ('jpg', 2), ('py', 2), ('pdf', 1), ('docx', 1)]:
-        ext, count = info
-        for i in range(count):
-            file = test_dir / f"file_{i+1}.{ext}"
-            file.write_text(f"This is file {i+1}.{ext}")
-    
-    print(f"Created test files in {test_dir}")
-
-if __name__ == '__main__':
-    create_test_files()
-    organize_files('test_files')
-```
-
-### Example 2: Directory Tree Viewer
-
-```python
-from pathlib import Path
-
-def show_directory_tree(start_path, indent='', max_depth=3, current_depth=0):
-    if current_depth > max_depth:
-        return
-    
-    path = Path(start_path)
-    if not path.is_dir():
-        print(f"{indent}📄 {path.name}")
-        return
-    
-    print(f"{indent}📁 {path.name}/")
-    indent += '    '
-    
-    try:
-        items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
-        for item in items:
-            if item.is_dir():
-                show_directory_tree(item, indent, max_depth, current_depth + 1)
-            else:
-                size = item.stat().st_size
-                print(f"{indent}📄 {item.name} ({size:,} bytes)")
-    except PermissionError:
-        print(f"{indent}[Permission Denied]")
-
-def count_files_by_type(directory):
+# Recursive file search with pattern exclusion
+def find_files(directory, pattern, exclude_dirs=None):
+    exclude_dirs = exclude_dirs or {".git", "__pycache__", "venv"}
     path = Path(directory)
-    extensions = {}
-    
-    for file in path.rglob('*'):
-        if file.is_file():
-            ext = file.suffix.lower() or 'no_ext'
-            extensions[ext] = extensions.get(ext, 0) + 1
-    
-    print(f"\nFile count by type in '{directory}':")
-    for ext, count in sorted(extensions.items(), key=lambda x: -x[1]):
-        print(f"  {ext or 'no extension':<10}: {count}")
+    for item in path.rglob(pattern):
+        if not any(part in exclude_dirs for part in item.parts):
+            yield item
 
-show_directory_tree('.', max_depth=2)
-count_files_by_type('.')
-```
+# Group files by directory
+def group_by_directory(root, pattern):
+    groups = {}
+    for file in Path(root).rglob(pattern):
+        parent = file.parent
+        if parent not in groups:
+            groups[parent] = []
+        groups[parent].append(file)
+    return groups
 
-### Example 3: Batch File Renamer
-
-```python
-from pathlib import Path
-import re
-
-def batch_rename(directory, pattern, replacement, dry_run=True):
-    """Rename files matching a pattern.
-    
-    Args:
-        directory: Target directory
-        pattern: Regex pattern to match
-        replacement: Replacement string (can use \\1, \\2 etc.)
-        dry_run: If True, only print what would be renamed
-    """
-    path = Path(directory)
-    if not path.is_dir():
-        print(f"Not a directory: {directory}")
-        return
-    
-    renamed = 0
-    for item in path.iterdir():
-        if item.is_file():
-            new_name = re.sub(pattern, replacement, item.name)
-            if new_name != item.name:
-                new_path = item.parent / new_name
-                if dry_run:
-                    print(f"Would rename: {item.name} -> {new_name}")
-                else:
-                    item.rename(new_path)
-                    print(f"Renamed: {item.name} -> {new_name}")
-                renamed += 1
-    
-    print(f"\n{'Would rename' if dry_run else 'Renamed'} {renamed} file(s)")
-
-def add_date_prefix(directory, date_str):
-    """Add date prefix to all files in directory."""
-    path = Path(directory)
-    for item in path.iterdir():
-        if item.is_file():
-            new_name = f"{date_str}_{item.name}"
-            item.rename(item.parent / new_name)
-            print(f"Renamed: {item.name} -> {new_name}")
-
-def make_sequential(directory, prefix='file', start=1, digits=3):
-    """Rename all files in directory to sequential names."""
-    path = Path(directory)
-    for i, item in enumerate(sorted(path.iterdir()), start):
-        if item.is_file():
-            ext = item.suffix
-            new_name = f"{prefix}_{str(i).zfill(digits)}{ext}"
-            item.rename(item.parent / new_name)
-            print(f"Renamed: {item.name} -> {new_name}")
-
-if __name__ == '__main__':
-    test_dir = Path('rename_test')
-    test_dir.mkdir(exist_ok=True)
-    for name in ['report_2024.txt', 'report_2023.txt', 'summary_2024.txt', 'notes.txt']:
-        (test_dir / name).write_text('test')
-    
-    print("Dry run:")
-    batch_rename('rename_test', r'report_(\d{4})', r'document_\1', dry_run=True)
-```
-
-## Intermediate Examples
-
-### Example 4: File Synchronization Tool
-
-```python
-from pathlib import Path
-import hashlib
-import shutil
-from datetime import datetime
-
-class FileSync:
-    def __init__(self, source, destination):
-        self.source = Path(source)
-        self.destination = Path(destination)
-    
-    def sync(self):
-        """Synchronize source to destination."""
-        if not self.source.exists():
-            print(f"Source does not exist: {self.source}")
-            return
-        
-        self.destination.mkdir(parents=True, exist_ok=True)
-        
-        synced = 0
-        skipped = 0
-        
-        for src_path in self.source.rglob('*'):
-            rel_path = src_path.relative_to(self.source)
-            dest_path = self.destination / rel_path
-            
-            if src_path.is_dir():
-                dest_path.mkdir(exist_ok=True)
-                continue
-            
-            if dest_path.exists():
-                if self._files_equal(src_path, dest_path):
-                    skipped += 1
-                    continue
-            
-            shutil.copy2(src_path, dest_path)
-            synced += 1
-            print(f"Synced: {rel_path}")
-        
-        print(f"\nSync complete: {synced} copied, {skipped} skipped")
-    
-    def _files_equal(self, path1, path2):
-        if path1.stat().st_size != path2.stat().st_size:
-            return False
-        
-        hash1 = hashlib.md5(path1.read_bytes()).hexdigest()
-        hash2 = hashlib.md5(path2.read_bytes()).hexdigest()
-        return hash1 == hash2
-    
-    def show_diff(self):
-        """Show files that differ between source and destination."""
-        print("\nDifferences:")
-        
-        for src_path in self.source.rglob('*'):
-            rel_path = src_path.relative_to(self.source)
-            dest_path = self.destination / rel_path
-            
-            if src_path.is_file():
-                if not dest_path.exists():
-                    print(f"  Only in source: {rel_path}")
-                elif not self._files_equal(src_path, dest_path):
-                    print(f"  Modified: {rel_path}")
-        
-        for dest_path in self.destination.rglob('*'):
-            rel_path = dest_path.relative_to(self.destination)
-            src_path = self.source / rel_path
-            
-            if dest_path.is_file() and not src_path.exists():
-                print(f"  Only in destination: {rel_path}")
-
-source = Path('source_dir')
-dest = Path('dest_dir')
-
-source.mkdir(exist_ok=True)
-(source / 'file1.txt').write_text('Hello')
-(source / 'sub').mkdir(exist_ok=True)
-(source / 'sub' / 'file2.txt').write_text('World')
-
-syncer = FileSync(source, dest)
-syncer.sync()
-
-(source / 'file1.txt').write_text('Modified!')
-syncer.show_diff()
-syncer.sync()
-```
-
-### Example 5: Config File Locator and Parser
-
-```python
-from pathlib import Path
-import configparser
-
-class ConfigManager:
-    def __init__(self, app_name):
-        self.app_name = app_name
-        self.config_dirs = self._get_config_dirs()
-        self.config = configparser.ConfigParser()
-    
-    def _get_config_dirs(self):
-        """Get platform-specific config directory candidates."""
-        home = Path.home()
-        candidates = []
-        
-        if home:
-            candidates.extend([
-                home / '.config' / self.app_name,
-                home / f'.{self.app_name}',
-                Path('/etc') / self.app_name,
-                Path.cwd() / 'config',
-            ])
-        
-        return candidates
-    
-    def find_config(self, filename='config.ini'):
-        """Find a config file in the search path."""
-        for config_dir in self.config_dirs:
-            config_file = config_dir / filename
-            if config_file.exists():
-                print(f"Found config: {config_file}")
-                return config_file
+# Find most recently modified file
+def latest_file(directory, pattern="*"):
+    files = list(Path(directory).rglob(pattern))
+    if not files:
         return None
-    
-    def load_config(self, filename='config.ini'):
-        """Load and parse configuration."""
-        config_file = self.find_config(filename)
-        if config_file:
-            self.config.read(str(config_file))
-            print(f"Loaded config from: {config_file}")
-            return True
-        print("No config file found, using defaults")
-        return False
-    
-    def get(self, section, key, fallback=None):
-        return self.config.get(section, key, fallback=fallback)
-    
-    def create_default_config(self, directory=None):
-        """Create a default config file."""
-        if directory is None:
-            directory = self.config_dirs[0]
-        
-        dir_path = Path(directory)
-        dir_path.mkdir(parents=True, exist_ok=True)
-        
-        config_file = dir_path / 'config.ini'
-        if config_file.exists():
-            print(f"Config already exists: {config_file}")
-            return
-        
-        self.config['General'] = {
-            'debug': 'false',
-            'language': 'en',
-            'theme': 'light'
-        }
-        self.config['Database'] = {
-            'host': 'localhost',
-            'port': '5432',
-            'database': self.app_name,
-            'user': 'admin'
-        }
-        
-        with open(config_file, 'w') as f:
-            self.config.write(f)
-        
-        print(f"Created default config: {config_file}")
+    return max(files, key=lambda f: f.stat().st_mtime)
 
-app = ConfigManager('myapp')
-app.create_default_config()
-app.load_config()
-print(f"Debug mode: {app.get('General', 'debug')}")
-print(f"DB host: {app.get('Database', 'host')}")
+# Glob with filtering
+config_files = [
+    f for f in Path(".").rglob("*.json")
+    if "test" not in f.name.lower()
+]
+
+# Check for duplicate filenames
+from collections import Counter
+filenames = [f.name for f in Path(".").rglob("*") if f.is_file()]
+duplicates = {name: count for name, count in Counter(filenames).items() if count > 1}
 ```
 
-### Example 6: Temporary Project Scaffolder
-
-```python
-from pathlib import Path
-from datetime import datetime
-
-class ProjectScaffolder:
-    TEMPLATES = {
-        'python': {
-            'src/{project_name}/__init__.py': '# {project_name}\n',
-            'src/{project_name}/main.py': 'def main():\n    pass\n\nif __name__ == "__main__":\n    main()\n',
-            'tests/__init__.py': '',
-            'tests/test_main.py': 'def test_main():\n    assert True\n',
-            'README.md': '# {project_name}\n\n## Description\n\n## Installation\n\n## Usage\n',
-            'requirements.txt': '# dependencies\n',
-            '.gitignore': '__pycache__/\n*.pyc\n.env\nvenv/\n',
-            'setup.py': 'from setuptools import setup, find_packages\n\nsetup(\n    name="{project_name}",\n    version="0.1.0",\n    packages=find_packages("src"),\n    package_dir={"": "src"},\n)\n',
-        },
-        'web': {
-            'public/index.html': '<!DOCTYPE html>\n<html>\n<head>\n    <title>{project_name}</title>\n</head>\n<body>\n    <h1>{project_name}</h1>\n</body>\n</html>\n',
-            'public/css/style.css': '/* {project_name} styles */\n',
-            'public/js/app.js': '// {project_name} application\n',
-            'package.json': '{{\n    "name": "{project_name}",\n    "version": "1.0.0"\n}}\n',
-        }
-    }
-    
-    def __init__(self, project_name, project_type='python'):
-        self.project_name = project_name
-        self.project_type = project_type
-        self.base_path = Path.cwd() / project_name
-    
-    def scaffold(self):
-        if self.base_path.exists():
-            print(f"Project directory already exists: {self.base_path}")
-            return False
-        
-        template = self.TEMPLATES.get(self.project_type)
-        if not template:
-            print(f"Unknown project type: {self.project_type}")
-            return False
-        
-        self.base_path.mkdir(parents=True)
-        print(f"Creating project: {self.project_name}")
-        
-        for relative_path, content in template.items():
-            file_path = self.base_path / relative_path.format(project_name=self.project_name)
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            formatted_content = content.format(
-                project_name=self.project_name,
-                year=datetime.now().year
-            )
-            
-            file_path.write_text(formatted_content)
-            print(f"  Created: {relative_path}")
-        
-        print(f"\nProject scaffolded at: {self.base_path}")
-        return True
-
-scaffolder = ProjectScaffolder('my_awesome_project', 'python')
-scaffolder.scaffold()
-
-print("\nProject structure:")
-for item in sorted(scaffolder.base_path.rglob('*')):
-    rel = item.relative_to(scaffolder.base_path)
-    prefix = '📁' if item.is_dir() else '📄'
-    print(f"  {prefix} {rel}")
-```
-
-## Advanced Examples
-
-### Example 7: File Integrity Monitor
+### Advanced Examples
 
 ```python
 from pathlib import Path
@@ -556,252 +444,212 @@ import hashlib
 import json
 from datetime import datetime
 
-class FileIntegrityMonitor:
-    def __init__(self, base_dir, state_file='.integrity.json'):
-        self.base_dir = Path(base_dir)
-        self.state_file = self.base_dir / state_file
-        self.state = self._load_state()
-    
-    def _load_state(self):
-        if self.state_file.exists():
-            return json.loads(self.state_file.read_text())
-        return {}
-    
-    def _save_state(self):
-        self.state_file.write_text(json.dumps(self.state, indent=2))
-    
-    def _hash_file(self, file_path):
-        hasher = hashlib.sha256()
-        for chunk in iter(lambda: file_path.read_bytes(), b''):
-            hasher.update(chunk)
-        return hasher.hexdigest()
-    
-    def scan(self):
-        """Scan all files and record their hashes."""
-        self.state = {}
-        for file_path in self.base_dir.rglob('*'):
-            if file_path.is_file() and file_path.name != self.state_file.name:
-                relative = str(file_path.relative_to(self.base_dir))
-                self.state[relative] = {
-                    'hash': self._hash_file(file_path),
-                    'size': file_path.stat().st_size,
-                    'modified': datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
-                }
-        self._save_state()
-        print(f"Scanned {len(self.state)} files")
-    
-    def check(self):
-        """Check current files against recorded state."""
-        if not self.state:
-            print("No state recorded. Run scan() first.")
-            return
-        
-        changes = []
-        
-        current_files = set()
-        for file_path in self.base_dir.rglob('*'):
-            if file_path.is_file() and file_path.name != self.state_file.name:
-                relative = str(file_path.relative_to(self.base_dir))
-                current_files.add(relative)
-                
-                if relative in self.state:
-                    current_hash = self._hash_file(file_path)
-                    if current_hash != self.state[relative]['hash']:
-                        changes.append(('MODIFIED', relative))
-                else:
-                    changes.append(('ADDED', relative))
-        
-        for relative in self.state:
-            if relative not in current_files:
-                changes.append(('DELETED', relative))
-        
-        if changes:
-            print(f"\nFound {len(changes)} change(s):")
-            for change_type, path in sorted(changes):
-                print(f"  [{change_type}] {path}")
-        else:
-            print("No changes detected.")
-        
+# File integrity checker
+def scan_files(directory):
+    state = {}
+    for file in Path(directory).rglob("*"):
+        if file.is_file() and file.name != ".integrity.json":
+            relative = str(file.relative_to(directory))
+            state[relative] = {
+                "hash": hashlib.sha256(file.read_bytes()).hexdigest(),
+                "size": file.stat().st_size,
+                "modified": datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
+            }
+    Path(directory, ".integrity.json").write_text(json.dumps(state, indent=2))
+    return state
+
+# Project scaffolder
+def scaffold_project(name):
+    base = Path.cwd() / name
+    base.mkdir(parents=True, exist_ok=True)
+    (base / "src" / name).mkdir(parents=True, exist_ok=True)
+    (base / "tests").mkdir()
+    (base / "README.md").write_text(f"# {name}\n")
+    (base / "src" / name / "__init__.py").write_text("")
+    (base / "requirements.txt").write_text("# dependencies\n")
+    return base
+
+# File watcher
+class FileWatcher:
+    def __init__(self, directory):
+        self.directory = Path(directory)
+        self.snapshot = self._take_snapshot()
+
+    def _take_snapshot(self):
+        snapshot = {}
+        for f in self.directory.rglob("*"):
+            if f.is_file():
+                stat = f.stat()
+                snapshot[f] = (stat.st_size, stat.st_mtime)
+        return snapshot
+
+    def check_changes(self):
+        current = self._take_snapshot()
+        changes = {"added": [], "removed": [], "modified": []}
+        for path, state in current.items():
+            if path not in self.snapshot:
+                changes["added"].append(path)
+            elif state != self.snapshot[path]:
+                changes["modified"].append(path)
+        for path in self.snapshot:
+            if path not in current:
+                changes["removed"].append(path)
+        self.snapshot = current
         return changes
 
-monitor = FileIntegrityMonitor('monitored_dir')
-Path('monitored_dir').mkdir(exist_ok=True)
-Path('monitored_dir/test.txt').write_text('Hello World')
-Path('monitored_dir/sub').mkdir(exist_ok=True)
-Path('monitored_dir/sub/data.txt').write_text('Some data')
-
-monitor.scan()
-
-Path('monitored_dir/test.txt').write_text('Modified content!')
-Path('monitored_dir/new_file.txt').write_text('New file!')
-Path('monitored_dir/sub/data.txt').unlink()
-
-monitor.check()
+# Config locator
+def find_config(app_name, filename="config.ini"):
+    candidates = [
+        Path.home() / ".config" / app_name / filename,
+        Path.home() / f".{app_name}" / filename,
+        Path("/etc") / app_name / filename,
+        Path.cwd() / "config" / filename,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
 ```
 
-### Example 8: Event-Driven File Watcher
+### Real-World Use Cases
 
 ```python
 from pathlib import Path
-import time
-from datetime import datetime
 
-class FileWatcher:
-    def __init__(self, directory, callback=None):
-        self.directory = Path(directory)
-        self.callback = callback
-        self.files_state = {}
-        self.running = False
-    
-    def _get_file_state(self):
-        state = {}
-        for file_path in self.directory.rglob('*'):
-            if file_path.is_file():
-                stat = file_path.stat()
-                state[str(file_path.relative_to(self.directory))] = {
-                    'size': stat.st_size,
-                    'mtime': stat.st_mtime
-                }
-        return state
-    
-    def _handle_change(self, event_type, file_path, details=None):
-        message = f"[{datetime.now().isoformat()}] {event_type}: {file_path}"
-        if details:
-            message += f" ({details})"
-        print(message)
-        
-        if self.callback:
-            self.callback(event_type, file_path, details)
-    
-    def start(self, interval=1.0):
-        print(f"Watching directory: {self.directory}")
-        self.files_state = self._get_file_state()
-        self.running = True
-        
-        try:
-            while self.running:
-                time.sleep(interval)
-                current_state = self._get_file_state()
-                
-                for filename, state in current_state.items():
-                    if filename not in self.files_state:
-                        self._handle_change('CREATED', filename)
-                    elif state['mtime'] != self.files_state[filename]['mtime']:
-                        self._handle_change('MODIFIED', filename)
-                    elif state['size'] != self.files_state[filename]['size']:
-                        self._handle_change('SIZE_CHANGED', filename)
-                
-                for filename in self.files_state:
-                    if filename not in current_state:
-                        self._handle_change('DELETED', filename)
-                
-                self.files_state = current_state
-        except KeyboardInterrupt:
-            print("\nWatcher stopped.")
-    
-    def stop(self):
-        self.running = False
+# Build system: find all source files
+source_files = list(Path("src").rglob("*.py"))
+test_files = list(Path("tests").rglob("*.py"))
 
-def on_file_change(event, filename, details):
-    if event == 'CREATED':
-        print(f"  -> New file detected!")
-    elif event == 'MODIFIED':
-        file_path = Path('watched_dir') / filename
-        if file_path.suffix == '.py':
-            print(f"  -> Python file changed, re-running...")
+# Data pipeline: organize output structure
+output_dir = Path("output") / datetime.now().strftime("%Y-%m-%d")
+output_dir.mkdir(parents=True, exist_ok=True)
+(output_dir / "processed").mkdir()
+(output_dir / "errors").mkdir()
 
-watcher_dir = Path('watched_dir')
-watcher_dir.mkdir(exist_ok=True)
+# Log rotation: archive old logs
+log_dir = Path("logs")
+for log_file in log_dir.glob("*.log"):
+    if log_file.stat().st_mtime < time.time() - 86400 * 30:  # 30 days
+        archive_name = log_dir / "archive" / f"{log_file.stem}_{datetime.now():%Y%m%d}{log_file.suffix}"
+        archive_name.parent.mkdir(exist_ok=True)
+        log_file.rename(archive_name)
 
-print("Creating test files (in another terminal or this script):")
-test_file = watcher_dir / 'test.py'
-test_file.write_text('# initial version\nprint("hello")\n')
-
-watcher = FileWatcher('watched_dir', callback=on_file_change)
-print("\nStarting watcher (Ctrl+C to stop)...")
-print("Modify files in 'watched_dir' to see events")
-watcher.start(interval=1.0)
+# Backup: find new/modified files
+backup_dir = Path("backup")
+source_dir = Path("data")
+for file in source_dir.rglob("*"):
+    if file.is_file():
+        rel = file.relative_to(source_dir)
+        dest = backup_dir / rel
+        if not dest.exists() or file.stat().st_mtime > dest.stat().st_mtime:
+            shutil.copy2(file, dest)
 ```
 
-## Real-World Use Cases
+### Common Mistakes
 
-1. **Build Systems**: Finding source files, managing build artifacts, and cleaning build directories using pathlib's intuitive API.
+```python
+# Mistake 1: Not using parents=True with mkdir()
+p = Path("a/b/c")
+p.mkdir()  # FileNotFoundError if a/b doesn't exist!
+p.mkdir(parents=True, exist_ok=True)  # Correct
 
-2. **Data Processing Pipelines**: Traversing directory trees to find input files, creating output directory structures, and managing intermediate files.
+# Mistake 2: Converting to string unnecessarily
+path = Path("data.txt")
+# Most libraries (numpy, pandas, etc.) accept Path objects
+# Avoid str(path) unless the API requires it
 
-3. **Configuration Management**: Locating configuration files across platform-specific paths, reading/writing config, and creating default configurations.
+# Mistake 3: Hardcoding separators
+# Wrong:
+path = Path("usr/local/bin")
+# This creates a relative path "usr/local/bin" on all platforms
+# If you mean absolute:
+path = Path("/usr/local/bin")
 
-4. **Log Rotation**: Monitoring log file sizes, archiving old logs, and managing log directory structures.
+# Mistake 4: is_file()/is_dir() on non-existent paths
+p = Path("nonexistent.txt")
+print(p.is_file())  # Returns False (not an error)
+print(p.is_dir())   # Returns False
 
-5. **File Backup Systems**: Comparing source and backup directories, identifying new/modified files, and creating incremental backups.
+# Always check exists() first:
+if p.exists():
+    if p.is_file():
+        process_file(p)
 
-6. **Development Tools**: Project scaffolding, code generation, and file watchers for automatic recompilation.
+# Mistake 5: Modifying paths as strings
+path = Path("data.txt")
+# Wrong:
+new_path = Path(str(path).replace(".txt", ".csv"))
+# Correct:
+new_path = path.with_suffix(".csv")
 
-## Common Mistakes
+# Mistake 6: Using rglob without limiting depth
+files = list(Path(".").rglob("*"))  # Could be millions of files
+```
 
-1. **Ignoring Cross-Platform Differences**: Using hardcoded forward slashes on Windows or backslashes on POSIX. Use pathlib's `/` operator instead.
+### Best Practices
 
-2. **Not Using parents=True with mkdir()**: `Path.mkdir()` fails if parent directories don't exist unless `parents=True` is specified.
+- Use `Path` over `PurePath` unless you only need string operations
+- Use `/` operator for path joining (more readable than `os.path.join`)
+- Use `rglob()` for recursive searches (`**/*.py` is less clear)
+- Use `parents=True, exist_ok=True` with `mkdir()` to avoid errors
+- Let libraries accept `Path` objects directly (no need for `str()`)
+- Use `with_name()`, `with_suffix()`, `with_stem()` instead of string manipulation
+- Use `open()` as a method on Path: `path.open()` (same as built-in `open()`)
+- Prefer Path methods over `os.path` functions
+- Use `path.resolve()` for absolute canonical paths
+- Use `path.relative_to()` for computing relative paths between two directories
 
-3. **Calling is_file()/is_dir() on non-existent paths**: These return False for non-existent paths, which can hide bugs. Check `exists()` first.
+### Performance Considerations
 
-4. **Converting to String Unnecessarily**: Many libraries now accept Path objects. Avoid `str(path)` unless required by an API that only accepts strings.
+- `Path` objects have minimal overhead—they store a single string
+- `iterdir()` is efficient for listing directory contents
+- `rglob()` is optimized but can be slow on deep directory trees
+- `Path.stat()` makes a system call—cache results if used repeatedly
+- `read_bytes()`/`read_text()` load entire file into memory
+- For large directory trees, consider using `os.scandir()` directly
+- `glob()`/`rglob()` are lazily evaluated generators
 
-5. **Modifying Paths as Strings**: Don't use string operations on path strings. Use pathlib methods like `with_name()`, `with_suffix()`, or `with_stem()`.
+### Interview Questions
 
-## Best Practices
+1. What is the difference between `PurePath` and `Path`?
 
-1. **Use Path Over PurePath**: Unless you're only doing string operations without filesystem access, use `Path` for the full API.
+   `PurePath` provides path manipulation without filesystem access. `Path` inherits from `PurePath` and adds filesystem operations like `exists()`, `mkdir()`, `read_text()`.
 
-2. **Use / Operator for Joining**: The `/` operator is more readable than `os.path.join()` and automatically handles separators.
+2. How do you join paths in pathlib?
 
-3. **Use rglob for Recursive Searches**: `path.rglob('*.py')` is cleaner than `path.glob('**/*.py')`.
+   Use the `/` operator: `Path("/usr") / "local" / "bin"` produces `Path("/usr/local/bin")`.
 
-4. **Use Path.open() Instead of open()**: `path.open()` is a method on Path objects and works identically to the built-in `open()`.
+3. What does `Path.rglob("*.py")` do?
 
-5. **Prefer Path Methods Over os.path**: Use `path.parent`, `path.name`, `path.stem`, `path.suffix` instead of `os.path.dirname()`, `os.path.basename()`, etc.
+   It recursively searches for all Python files matching `*.py` starting from the path's directory and all subdirectories.
 
-## Interview Questions
+4. How do you get the filename without extension?
 
-**Q1: What is the difference between PurePath and Path?**
+   Use `.stem` property. For `Path("file.txt")`, `.stem` returns `"file"` and `.suffix` returns `".txt"`.
 
-A: `PurePath` provides path computation operations (joining, splitting, etc.) without filesystem access. `Path` inherits from PurePath and adds filesystem operations like `exists()`, `mkdir()`, `read_text()`, etc.
+5. What is the difference between `path.resolve()` and `path.absolute()`?
 
-**Q2: How do you join paths in pathlib?**
+   `resolve()` makes the path absolute AND resolves symlinks/normalizes. `absolute()` just prepends the current working directory without resolving symlinks.
 
-A: Use the `/` operator: `Path('/usr') / 'local' / 'bin'` produces `Path('/usr/local/bin')`. This works with both Path objects and strings.
+### Coding Challenges
 
-**Q3: What does `Path.rglob('*.py')` do?**
+1. Duplicate file finder: recursively find duplicate files by content hash.
 
-A: It recursively searches for all Python files matching the pattern `*.py` starting from the path's directory and all subdirectories. It's equivalent to `Path.glob('**/*.py')`.
+2. Directory size calculator: calculate total size of all files in a tree with per-directory breakdowns.
 
-**Q4: How do you get the filename without extension in pathlib?**
+3. File history tracker: track file modifications over time with state snapshots.
 
-A: Use the `.stem` property. For `Path('/path/to/file.txt')`, `.stem` returns `'file'` and `.suffix` returns `'.txt'`.
+4. Template-based project generator: scaffold projects from template files.
 
-## Coding Challenges
+5. Log archiver: archive/compress log files older than N days.
 
-**Challenge 1: Duplicate File Finder** - Recursively find duplicate files in a directory tree using pathlib and hashlib.
+### Related Topics
 
-**Challenge 2: Directory Size Calculator** - Calculate the total size of all files in a directory tree, showing per-directory breakdowns.
-
-**Challenge 3: File History Tracker** - Track file modifications over time, storing snapshots of file states.
-
-**Challenge 4: Template-Based Project Generator** - Create a more sophisticated project scaffolder that reads templates from a configuration file.
-
-**Challenge 5: Log File Archiver** - Automatically archive and compress log files older than a configurable number of days.
-
-## Summary
-
-`pathlib` provides an object-oriented, cross-platform interface for filesystem path operations. The `Path` class combines path manipulation with filesystem access methods. Key features include the `/` operator for path joining, properties like `.parent`, `.name`, `.stem`, `.suffix`, recursive file matching with `rglob()`, and direct file I/O with `read_text()`/`write_text()`. `pathlib` replaces most `os.path` functions and is the recommended approach for path handling in modern Python.
-
-## Related Topics
-
-- `48_file_operations.md` - File I/O operations that work with Path objects
-- `49_json.md` - JSON file reading/writing with pathlib
+- `48_file_operations.md` - File I/O operations
+- `49_json.md` - JSON file reading with Path
 - `50_csv.md` - CSV file path management
-- `51_pickle.md` - Pickle file path handling
-- `53_temp_files.md` - Temporary file management with pathlib
-- os.path module - The legacy string-based path API
-- glob module - Legacy file pattern matching
-- shutil module - High-level file operations using pathlib
+- `51_pickle.md` - Pickle file handling
+- `53_temp_files.md` - Temporary file management
+- `os.path` module - Legacy string-based path API
+- `glob` module - Legacy file pattern matching
+- `shutil` module - High-level file operations

@@ -1,785 +1,711 @@
 # Caching - lru_cache, redis, memoization, cache invalidation strategies
 
 ## Introduction
+Caching is the practice of storing the results of expensive computations so that future requests for the same input can be served in constant time. Python provides built-in caching via `functools.lru_cache` and `functools.cache` (Python 3.9+), while external systems like Redis provide distributed, persistent, and TTL-based caches. Choosing the right caching strategy — memoization, LRU, TTL, or write-through — directly impacts application latency, throughput, and consistency.
 
-Caching is a technique that stores computed results so that future requests for the same data can be served faster. Python provides built-in caching mechanisms like `functools.lru_cache` and `functools.cache`, as well as third-party libraries like `cachetools` and `redis` for distributed caching.
+## lru_cache
 
-## Why It Is Important
+### What It Is
+`functools.lru_cache` is a decorator that wraps a function with a least-recently-used (LRU) cache. It stores the results of function calls keyed by the arguments. When the cache reaches `maxsize`, the least recently used entries are evicted. In Python 3.9+, `functools.cache` is an alias for `lru_cache(maxsize=None)` — an unbounded cache.
 
-Caching significantly improves application performance by avoiding redundant computations, reducing database load, and minimizing network requests. It is essential for scaling web applications, optimizing expensive function calls, and improving user experience through faster response times.
+### Why It Is Important
+LRU caching eliminates redundant computation for pure functions (functions whose return value depends only on their arguments). It is especially effective for recursive algorithms (Fibonacci, dynamic programming), database query results (same query, same result), and expensive mathematical computations.
 
-## Syntax
+### How It Works Internally
+lru_cache uses a Python dict for O(1) lookups combined with a doubly-linked list for LRU ordering:
+1. **Dict**: maps `key` (derived from positional and keyword arguments) to `(result, link)`.
+2. **Linked list**: each entry is a `_Link` node with `prev` and `next` pointers. The list head is the most recently used; the tail is the least recently used.
+3. **On hit**: the link is moved to the head of the list.
+4. **On miss and full**: the tail link is popped, its dict entry deleted, and the new entry is inserted at the head.
+5. **Hashing**: arguments are hashed via `_make_key(args, kwds, typed)` — `typed=True` distinguishes `3` from `3.0`.
 
+### Syntax
 ```python
-# LRU Cache (Least Recently Used)
-from functools import lru_cache
-
-@lru_cache(maxsize=128)
-def expensive_function(n):
-    return n ** 2
-
-# Simple cache (Python 3.9+)
-from functools import cache
-
-@cache
-def cached_function(n):
-    return n ** 2
-
-# Cachetools library
-from cachetools import cached, LRUCache, TTLCache
-
-@cached(cache=LRUCache(maxsize=100))
-def cached_func(n):
-    return n ** 2
-
-@cached(cache=TTLCache(maxsize=100, ttl=300))
-def ttl_cached_func(n):
-    return n ** 2
-
-# Manual dict-based cache
-cache = {}
-def get_or_compute(key, compute_func):
-    if key not in cache:
-        cache[key] = compute_func(key)
-    return cache[key]
-```
-
-## Examples
-
-```python
-import time
 from functools import lru_cache, cache
 
-
-def fibonacci_without_cache(n: int) -> int:
-    if n < 2:
-        return n
-    return fibonacci_without_cache(n - 1) + fibonacci_without_cache(n - 2)
-
+@lru_cache(maxsize=128)
+def expensive_function(x):
+    ...
 
 @lru_cache(maxsize=None)
-def fibonacci_with_cache(n: int) -> int:
-    if n < 2:
-        return n
-    return fibonacci_with_cache(n - 1) + fibonacci_with_cache(n - 2)
+def deterministic(x):
+    ...
 
+@cache
+def cached_func(x):
+    ...
 
-start = time.perf_counter()
-fib_without = fibonacci_without_cache(35)
-t1 = time.perf_counter() - start
-print(f"Without cache: {t1:.4f}s")
-
-start = time.perf_counter()
-fib_with = fibonacci_with_cache(35)
-t2 = time.perf_counter() - start
-print(f"With cache: {t2:.4f}s")
-print(f"Speedup: {t1 / t2:.0f}x")
+cached_func.cache_info()
+cached_func.cache_clear()
 ```
 
-## Beginner Examples
-
+### Beginner Examples
 ```python
-import time
 from functools import lru_cache
 
+@lru_cache(maxsize=None)
+def fibonacci(n):
+    if n < 2:
+        return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
 
-def lru_cache_basics():
-    print("LRU Cache Basics:")
-    print("1. @lru_cache(maxsize=128) caches recent calls")
-    print("2. maxsize=None for unlimited cache")
-    print("3. Cache is thread-safe")
-    print("4. Arguments must be hashable")
+print(fibonacci(100))
+print(fibonacci.cache_info())
+fibonacci.cache_clear()
+```
 
+### Intermediate Examples
+```python
+from functools import lru_cache
+import time
 
-lru_cache_basics()
-
-
-@lru_cache(maxsize=32)
-def compute_square(n: int) -> int:
-    print(f"Computing square of {n}")
+@lru_cache(maxsize=256)
+def fetch_user_data(user_id):
     time.sleep(0.1)
-    return n * n
+    return {'id': user_id, 'name': f'User_{user_id}', 'score': user_id * 10}
 
+t0 = time.perf_counter()
+data1 = fetch_user_data(42)
+t1 = time.perf_counter()
+data2 = fetch_user_data(42)
+t2 = time.perf_counter()
+print(f'First call: {t1-t0:.3f}s, Cached: {t2-t1:.3f}s')
 
-def demonstrate_caching():
-    print("First calls (will compute):")
-    print(f"  square(5) = {compute_square(5)}")
-    print(f"  square(10) = {compute_square(10)}")
-    print(f"  square(5) = {compute_square(5)}")
-    print("  square(5) retrieved from cache!")
-    print(f"Cache info: {compute_square.cache_info()}")
-    compute_square.cache_clear()
-    print("Cache cleared")
-    print(f"  square(5) = {compute_square(5)}")
+@lru_cache(maxsize=128, typed=True)
+def multiply(a, b):
+    return a * b
 
-
-demonstrate_caching()
-
-
-@lru_cache(maxsize=128)
-def expensive_string_operation(text: str) -> str:
-    print(f"Processing: {text}")
-    time.sleep(0.2)
-    return text.upper()[::-1]
-
-
-def demonstrate_string_caching():
-    print("\nString caching:")
-    print(expensive_string_operation("hello"))
-    print(expensive_string_operation("world"))
-    print(expensive_string_operation("hello"))
-    print(f"Cache info: {expensive_string_operation.cache_info()}")
-
-
-demonstrate_string_caching()
+multiply(3, 4); multiply(3.0, 4.0)
+print(multiply.cache_info())
 ```
 
-## Intermediate Examples
-
+### Advanced Examples
 ```python
-import time
-from functools import lru_cache, cache
-from cachetools import cached, LRUCache, TTLCache
-from typing import Any, Callable, Dict, Tuple, List
-import threading
-
-
-class CacheDecorators:
-    def __init__(self):
-        pass
-
-    def functools_cache(self):
-        print("functools.cache (Python 3.9+):")
-        print("""
-    from functools import cache
-
-    @cache
-    def compute(data):
-        return data ** 2
-
-    # Same as @lru_cache(maxsize=None)
-    # Simpler, unlimited cache
-        """)
-
-    def cachetools_lru(self):
-        print("cachetools LRUCache:")
-        print("""
-    from cachetools import cached, LRUCache
-
-    @cached(cache=LRUCache(maxsize=100))
-    def expensive_func(n):
-        return n ** n
-        """)
-
-    def cachetools_ttl(self):
-        print("cachetools TTLCache (time-to-live):")
-        print("""
-    from cachetools import cached, TTLCache
-
-    @cached(cache=TTLCache(maxsize=100, ttl=300))
-    def get_data_from_db(id):
-        # Expires after 5 minutes
-        return database.query(id)
-        """)
-
-
-decorators = CacheDecorators()
-decorators.functools_cache()
-decorators.cachetools_lru()
-decorators.cachetools_ttl()
-
-
-class FibonacciCache:
-    def __init__(self):
-        self._cache: Dict[int, int] = {0: 0, 1: 1}
-        self._lock = threading.Lock()
-
-    def get(self, n: int) -> int:
-        with self._lock:
-            if n not in self._cache:
-                self._cache[n] = self.get(n - 1) + self.get(n - 2)
-            return self._cache[n]
-
-    def clear(self):
-        with self._lock:
-            self._cache.clear()
-            self._cache[0] = 0
-            self._cache[1] = 1
-
-
-fib_cache = FibonacciCache()
-start = time.perf_counter()
-result = fib_cache.get(100)
-print(f"Fibonacci(100) = {result}")
-print(f"Time: {time.perf_counter() - start:.6f}s")
-print(f"Cache size: {len(fib_cache._cache)}")
-
-
-def lru_cache_with_args():
-    print("\nLRU cache with keyword arguments:")
-
-    @lru_cache(maxsize=128)
-    def complex_func(a: int, b: int, c: int = 0) -> int:
-        return a * b + c
-
-    print(complex_func(2, 3))
-    print(complex_func(2, 3, 1))
-    print(complex_func(2, 3))
-    print(f"Cache info: {complex_func.cache_info()}")
-
-
-lru_cache_with_args()
-```
-
-## Advanced Examples
-
-```python
-import time
-import json
-import pickle
-import hashlib
 from functools import lru_cache, wraps
-from typing import Any, Callable, Dict, Tuple, Optional, Union
-import threading
+import time
+import pickle
 
-
-class AdvancedCaching:
-    def __init__(self):
-        pass
-
-    def redis_caching(self):
-        print("Redis Caching Pattern:")
-        print("""
-    import redis
-    import json
-
-    r = redis.Redis(host='localhost', port=6379, db=0)
-
-    def get_user(user_id):
-        cache_key = f'user:{user_id}'
-        cached = r.get(cache_key)
-        if cached:
-            return json.loads(cached)
-        user = database.query(f"SELECT * FROM users WHERE id = {user_id}")
-        r.setex(cache_key, 300, json.dumps(user))
-        return user
-        """)
-
-    def multi_level_cache(self):
-        print("Multi-level caching strategy:")
-        print("""
-    Level 1: Local memory cache (fastest, limited)
-    Level 2: Redis cache (fast, distributed)
-    Level 3: Database (slow, authoritative)
-        """)
-
-    def cache_invalidation(self):
-        print("Cache invalidation strategies:")
-        print("1. TTL (Time To Live) - expire after time")
-        print("2. Write-through - update cache on write")
-        print("3. Write-behind - async cache update")
-        print("4. Event-driven - invalidate on changes")
-        print("5. Manual - explicit cache clearing")
-
-
-adv = AdvancedCaching()
-adv.redis_caching()
-adv.multi_level_cache()
-adv.cache_invalidation()
-
-
-class GenericCache:
-    def __init__(self, maxsize: int = 128, ttl: Optional[float] = None):
-        self._cache: Dict[str, Tuple[Any, float]] = {}
-        self._maxsize = maxsize
-        self._ttl = ttl
-        self._lock = threading.Lock()
-
-    def _make_key(self, args, kwargs) -> str:
-        key = str(args) + str(sorted(kwargs.items()))
-        return hashlib.md5(key.encode()).hexdigest()
-
-    def get(self, key: str) -> Optional[Any]:
-        with self._lock:
-            if key in self._cache:
-                value, timestamp = self._cache[key]
-                if self._ttl is None or time.time() - timestamp < self._ttl:
-                    return value
-                del self._cache[key]
-        return None
-
-    def set(self, key: str, value: Any):
-        with self._lock:
-            if len(self._cache) >= self._maxsize:
-                oldest = min(self._cache.keys(), key=lambda k: self._cache[k][1])
-                del self._cache[oldest]
-            self._cache[key] = (value, time.time())
-
-    def clear(self):
-        with self._lock:
-            self._cache.clear()
-
-
-def cached_with_ttl(ttl: Optional[float] = None, maxsize: int = 128):
-    def decorator(func: Callable):
-        cache = GenericCache(maxsize=maxsize, ttl=ttl)
-
+def ttl_cache(seconds=60, maxsize=128):
+    def decorator(func):
+        cache = {}
         @wraps(func)
         def wrapper(*args, **kwargs):
-            key = cache._make_key(args, kwargs)
-            result = cache.get(key)
-            if result is not None:
-                return result
+            key = pickle.dumps((args, tuple(sorted(kwargs.items()))))
+            now = time.monotonic()
+            if key in cache:
+                result, timestamp = cache[key]
+                if now - timestamp < seconds:
+                    return result
             result = func(*args, **kwargs)
-            cache.set(key, result)
+            cache[key] = (result, now)
+            if len(cache) > maxsize:
+                oldest = min(cache.keys(), key=lambda k: cache[k][1])
+                del cache[oldest]
             return result
+        wrapper.cache_clear = lambda: cache.clear()
         return wrapper
     return decorator
 
+@ttl_cache(seconds=30)
+def get_weather(city):
+    return {'city': city, 'temp': 22.5}
 
-@cached_with_ttl(ttl=10, maxsize=100)
-def expensive_data_fetch(query: str) -> dict:
-    print(f"Fetching: {query}")
-    time.sleep(0.5)
-    return {'query': query, 'result': 'data', 'timestamp': time.time()}
-
-
-print(expensive_data_fetch("SELECT * FROM users"))
-print(expensive_data_fetch("SELECT * FROM users"))
-time.sleep(11)
-print(expensive_data_fetch("SELECT * FROM users"))
-
-
-class CacheStatistics:
-    def __init__(self):
-        self.hits = 0
-        self.misses = 0
-
-    @property
-    def hit_rate(self) -> float:
-        total = self.hits + self.misses
-        return self.hits / total if total > 0 else 0.0
-
-    def record_hit(self):
-        self.hits += 1
-
-    def record_miss(self):
-        self.misses += 1
-
-    def report(self) -> dict:
-        return {'hits': self.hits, 'misses': self.misses, 'hit_rate': self.hit_rate}
+class Calculator:
+    def __init__(self, name):
+        self.name = name
+    @lru_cache(maxsize=32)
+    def compute(self, x, y):
+        return (x ** y + y ** x) ** 0.5
 ```
 
-## Real-World Use Cases
+### Real-World Use Cases
+- **Web framework view caching**: Django/Flask views decorated with `lru_cache` to cache rendered templates.
+- **Recursive dynamic programming**: memoising Fibonacci, edit distance, knapsack problems.
+- **API response normalisation**: cache parsed and validated API responses keyed by raw payload hash.
 
+### Common Mistakes
+- Caching functions with unhashable arguments (lists, dicts).
+- Using `lru_cache` on non-pure functions that depend on global state or I/O.
+- Forgetting that `lru_cache` key includes `self` for methods — every instance has a separate cache.
+
+### Best Practices
+- Use `lru_cache` only for pure functions — same inputs always produce same outputs.
+- Set `maxsize` to a power of 2 (128, 256, 1024) based on expected working set.
+- Monitor `cache_info()` in production to tune `maxsize`.
+- Use `typed=True` when `3` and `3.0` should be cached separately.
+
+### Performance Considerations
+- Cache lookup is O(1) hash + dict lookup; overhead is ~50–100 ns.
+- Each cached entry stores the return value — be careful with large result objects.
+- `maxsize=None` can cause unbounded memory growth in long-running processes.
+
+### Interview Questions
+- **Q**: How does `lru_cache` evict entries when the cache is full?  
+  **A**: It maintains a doubly-linked list; the tail (LRU) link is removed, its dict entry deleted, and the new entry inserted at the head.
+- **Q**: What happens if you apply `lru_cache` to a method with many instances?  
+  **A**: Each instance gets its own cache because `self` is part of the key, potentially causing memory leaks.
+
+### Coding Challenges
+- Implement your own LRU cache from scratch using `OrderedDict`.
+- Write a decorator combining LRU eviction with TTL expiry.
+
+### Related Topics
+- [Redis caching](#redis-caching)
+- [Memoization](#memoization)
+- [Cache invalidation](#cache-invalidation-strategies)
+
+---
+
+## Redis Caching
+
+### What It Is
+Redis is an in-memory key-value store that serves as a distributed, persistent, high-throughput cache. Python interacts with Redis via `redis-py`. Redis caches survive process restarts, are shareable across application instances, and support TTL, pub/sub, and atomic operations.
+
+### Why It Is Important
+Unlike `lru_cache`, Redis is external to the Python process: cached data survives restarts, is accessible by multiple workers, and supports rich data structures (strings, hashes, lists, sets, sorted sets) beyond simple key-value pairs. Redis is the standard for production caching in web applications.
+
+### How It Works Internally
+Redis stores all data in memory with sub-millisecond latency. It uses a single-threaded event loop for commands (no race conditions per key) with optional RDB snapshots and AOF logs for persistence. The `redis-py` client communicates via the Redis Serialization Protocol (RESP) over TCP with connection pooling.
+
+### Syntax
 ```python
-import time
+import redis
 import json
-from functools import lru_cache
-from typing import Dict, List, Optional
 
+r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
-def web_api_caching():
-    print("Real-world: Web API Response Caching")
+r.set('key', 'value')
+r.set('key', 'value', ex=60)
+r.set('key', 'value', nx=True)
 
-    @lru_cache(maxsize=256)
-    def get_user_profile(user_id: int) -> dict:
-        print(f"Fetching profile for user {user_id}")
-        time.sleep(0.2)
-        return {'id': user_id, 'name': f'User_{user_id}', 'email': f'user{user_id}@example.com'}
+value = r.get('key')
+r.delete('key')
+r.exists('key')
 
-    for uid in [1, 2, 3, 1, 2, 3]:
-        profile = get_user_profile(uid)
-        print(f"  User {uid}: {profile['name']}")
-    print(f"Cache info: {get_user_profile.cache_info()}")
+r.set('user:42', json.dumps({'name': 'Alice', 'score': 100}))
+user = json.loads(r.get('user:42'))
 
-
-def database_query_caching():
-    print("Real-world: Database Query Caching")
-
-    class QueryCache:
-        def __init__(self, maxsize: int = 100):
-            self._cache: Dict[str, List[dict]] = {}
-            self._maxsize = maxsize
-
-        def get(self, sql: str) -> Optional[List[dict]]:
-            return self._cache.get(sql)
-
-        def set(self, sql: str, results: List[dict]):
-            if len(self._cache) >= self._maxsize:
-                self._cache.pop(next(iter(self._cache)))
-            self._cache[sql] = results
-
-        def invalidate(self, table: str):
-            keys_to_delete = [k for k in self._cache if table in k]
-            for k in keys_to_delete:
-                del self._cache[k]
-
-    cache = QueryCache()
-    sql1 = "SELECT * FROM users WHERE id = 1"
-    sql2 = "SELECT * FROM users WHERE id = 2"
-    cache.set(sql1, [{'id': 1, 'name': 'Alice'}])
-    cache.set(sql2, [{'id': 2, 'name': 'Bob'}])
-    print(f"Cache hit: {cache.get(sql1)}")
-    cache.invalidate('users')
-    print(f"After invalidation: {cache.get(sql1)}")
-
-
-def http_caching():
-    print("Real-world: HTTP Response Caching")
-    print("""
-    import requests
-    from cachetools import cached, TTLCache
-
-    session = requests.Session()
-    api_cache = TTLCache(maxsize=100, ttl=60)
-
-    @cached(api_cache)
-    def fetch_api(endpoint):
-        return session.get(f'https://api.example.com/{endpoint}').json()
-    """)
-
-
-def memoization_pattern():
-    print("Real-world: Memoization for Dynamic Programming")
-
-    @lru_cache(maxsize=None)
-    def edit_distance(s1: str, s2: str) -> int:
-        if not s1:
-            return len(s2)
-        if not s2:
-            return len(s1)
-        if s1[0] == s2[0]:
-            return edit_distance(s1[1:], s2[1:])
-        return 1 + min(
-            edit_distance(s1[1:], s2),
-            edit_distance(s1, s2[1:]),
-            edit_distance(s1[1:], s2[1:])
-        )
-
-    print(f"Edit distance 'kitten' vs 'sitting': {edit_distance('kitten', 'sitting')}")
-    print(f"Cache info: {edit_distance.cache_info()}")
-
-
-web_api_caching()
-database_query_caching()
-http_caching()
-memoization_pattern()
+r.incr('counter')
+r.incrby('counter', 10)
 ```
 
-## Common Mistakes
+### Beginner Examples
+```python
+import redis
+import json
+import time
 
+r = redis.Redis(decode_responses=True)
+
+def get_user(user_id):
+    cache_key = f'user:{user_id}'
+    cached = r.get(cache_key)
+    if cached is not None:
+        return json.loads(cached)
+    time.sleep(0.1)
+    user = {'id': user_id, 'name': f'User_{user_id}'}
+    r.setex(cache_key, 3600, json.dumps(user))
+    return user
+```
+
+### Intermediate Examples
+```python
+import redis
+import json
+
+r = redis.Redis(decode_responses=True)
+
+# Cache-aside pattern
+def get_product(product_id):
+    key = f'product:{product_id}'
+    data = r.get(key)
+    if data is not None:
+        return json.loads(data)
+    data = query_database(product_id)
+    r.setex(key, 300, json.dumps(data))
+    return data
+
+# Session store with hash
+def store_session(session_id, user_data):
+    r.hset(f'session:{session_id}', mapping=user_data)
+    r.expire(f'session:{session_id}', 1800)
+
+def get_session(session_id):
+    return r.hgetall(f'session:{session_id}')
+
+# Rate limiting
+def check_rate_limit(user_id, max_requests=100, window=60):
+    key = f'ratelimit:{user_id}:{int(time.time() / window)}'
+    count = r.incr(key)
+    if count == 1:
+        r.expire(key, window + 1)
+    return count <= max_requests
+
+# Distributed lock
+def acquire_lock(lock_name, timeout=10):
+    return r.set(f'lock:{lock_name}', '1', nx=True, ex=timeout)
+
+def release_lock(lock_name):
+    r.delete(f'lock:{lock_name}')
+```
+
+### Advanced Examples
+```python
+import redis
+import json
+import hashlib
+
+r = redis.Redis(decode_responses=True)
+
+# Cache stampede protection with locking
+def get_expensive_data(key, recompute_func, ttl=300):
+    data = r.get(key)
+    if data is not None:
+        return json.loads(data)
+
+    lock_key = f'lock:{key}'
+    if r.set(lock_key, '1', nx=True, ex=10):
+        try:
+            data = recompute_func()
+            r.setex(key, ttl, json.dumps(data))
+            return data
+        finally:
+            r.delete(lock_key)
+    else:
+        import time
+        time.sleep(0.05)
+        return get_expensive_data(key, recompute_func, ttl)
+
+# Redis pipeline for batching
+def bulk_lookup(keys):
+    pipe = r.pipeline()
+    for k in keys:
+        pipe.get(k)
+    results = pipe.execute()
+    return {k: json.loads(v) if v else None for k, v in zip(keys, results)}
+
+# Sorted set for leaderboard
+def update_score(user_id, score):
+    r.zadd('leaderboard', {user_id: score})
+
+def get_top(n=10):
+    return r.zrevrange('leaderboard', 0, n-1, withscores=True)
+
+# Pub/sub for cache invalidation
+def publish_invalidation(pattern):
+    r.publish('cache:invalidate', pattern)
+
+def subscribe_invalidation():
+    pubsub = r.pubsub()
+    pubsub.subscribe('cache:invalidate')
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            pattern = message['data']
+            for key in r.scan_iter(match=pattern):
+                r.delete(key)
+```
+
+### Real-World Use Cases
+- **Web application session storage**: storing user sessions across multiple web server instances.
+- **API response caching**: cache entire API responses in Redis and serve them in <1ms.
+- **Job queue**: use Redis lists as a lightweight queue with `r.lpush` / `r.brpop`.
+
+### Common Mistakes
+- Not setting TTL on cache entries — causes stale data and unbounded memory growth.
+- Using Redis for every cache operation without considering serialisation overhead.
+- Forgetting connection pooling — creating a new connection per request is slow.
+
+### Best Practices
+- Always set `decode_responses=True` for string-based data.
+- Use `pipeline()` for batch operations to reduce round trips.
+- Monitor memory with `INFO memory` and set `maxmemory` / `maxmemory-policy`.
+- Use connection pooling via `redis.ConnectionPool`.
+
+### Performance Considerations
+- Redis operations take ~0.1–1 ms on a local network.
+- Serialisation (JSON/pickle) can dominate for large objects; use binary protocols (MessagePack, protobuf) when needed.
+- Pipeline batching reduces latency from O(N * RTT) to O(RTT + N * process_time).
+
+### Interview Questions
+- **Q**: How does Redis evict keys when memory is full?  
+  **A**: Based on `maxmemory-policy` — common policies: `allkeys-lru`, `volatile-lru`, `allkeys-lfu`, `noeviction`.
+- **Q**: What is the cache-aside pattern and how is it implemented with Redis?  
+  **A**: On read, check cache; on miss, load from DB, store in cache. On write, update DB and delete/update cache entry.
+
+### Coding Challenges
+- Implement a distributed rate limiter using Redis sorted sets (sliding window algorithm).
+- Build a Redis-backed job queue with retry and dead-letter queue support.
+
+### Related Topics
+- [lru_cache](#lru-cache)
+- [Memoization](#memoization)
+- [Cache invalidation](#cache-invalidation-strategies)
+
+---
+
+## Memoization
+
+### What It Is
+Memoization is a specific caching technique where a function's return value is cached based on its input arguments. The first call with a given set of arguments computes the result and stores it; subsequent calls with the same arguments return the cached result. Python's `functools.lru_cache` and `functools.cache` are implementations of memoization.
+
+### Why It Is Important
+Memoization transforms exponential-time recursive algorithms into polynomial or linear time (e.g., Fibonacci from O(2^n) to O(n)). It is one of the simplest and most impactful performance optimisations available.
+
+### How It Works Internally
+A memoized function maintains a dictionary (or similar mapping) from argument tuples to results. The dictionary is checked before any computation; if a key exists, the stored value is returned without executing the function body. This is conceptually identical to `lru_cache(maxsize=None)`.
+
+### Syntax
+```python
+from functools import lru_cache, cache
+
+@cache
+def f(x): ...
+
+# Manual memoization
+memo = {}
+def f(x):
+    if x not in memo:
+        memo[x] = expensive_compute(x)
+    return memo[x]
+```
+
+### Beginner Examples
 ```python
 from functools import lru_cache
-from typing import List
 
+@lru_cache(maxsize=None)
+def factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
 
-def mistake_1_mutable_arguments():
-    print("Mistake 1: Using unhashable types as arguments")
-    print("Lists, dicts, sets can't be cached")
-
-    @lru_cache(maxsize=128)
-    def process_list(items: tuple) -> int:
-        return sum(items)
-
-    print(f"Process tuple: {process_list((1, 2, 3))}")
-    print("Fix: Convert to tuple before caching")
-
-
-def mistake_2_unlimited_cache_growth():
-    print("Mistake 2: Using maxsize=None without limits")
-    print("Can lead to memory exhaustion")
-    print("Always set a reasonable maxsize")
-
-
-def mistake_3_caching_side_effects():
-    print("Mistake 3: Caching functions with side effects")
-    print("Cache assumes pure functions (same input -> same output)")
-    print("Don't cache functions that modify global state")
-
-
-def mistake_4_caching_io_operations():
-    print("Mistake 4: Caching stale I/O results")
-    print("File contents, DB queries, API responses change")
-    print("Use TTL-based caching for dynamic data")
-
-
-def mistake_5_over_caching():
-    print("Mistake 5: Caching too aggressively")
-    print("Cache overhead can exceed computation cost")
-    print("Profile to verify caching is beneficial")
-
-
-def mistake_6_not_clearing_cache():
-    print("Mistake 6: Never clearing the cache")
-    print("Implement cache invalidation strategy")
-    print("Use .cache_clear() when data changes")
-
-
-mistake_1_mutable_arguments()
-mistake_2_unlimited_cache_growth()
-mistake_3_caching_side_effects()
-mistake_4_caching_io_operations()
-mistake_5_over_caching()
-mistake_6_not_clearing_cache()
+# Without memoization: factorial recursively recomputes
+# With memoization: each n computed exactly once
+print(factorial(500))
 ```
 
-## Best Practices
-
+### Intermediate Examples
 ```python
-from functools import lru_cache, wraps
-from typing import Any, Callable, TypeVar
+from functools import lru_cache
 
-F = TypeVar('F', bound=Callable[..., Any])
+@lru_cache(maxsize=2048)
+def edit_distance(s1, s2):
+    if not s1:
+        return len(s2)
+    if not s2:
+        return len(s1)
+    if s1[0] == s2[0]:
+        return edit_distance(s1[1:], s2[1:])
+    return 1 + min(
+        edit_distance(s1[1:], s2),      # delete
+        edit_distance(s1, s2[1:]),      # insert
+        edit_distance(s1[1:], s2[1:]),  # replace
+    )
 
+# Manual memoization decorator
+def memoize(func):
+    cache = {}
+    def wrapper(*args):
+        if args not in cache:
+            cache[args] = func(*args)
+        return cache[args]
+    wrapper.cache = cache
+    return wrapper
 
-def best_practice_1_measure_benefit():
-    print("Best Practice 1: Measure cache effectiveness")
-    print("Track hit/miss ratios")
-
-
-def best_practice_2_set_reasonable_maxsize():
-    print("Best Practice 2: Set appropriate maxsize")
-    print("Too small: low hit rate")
-    print("Too large: memory waste")
-
-
-def best_practice_3_use_ttl_for_dynamic_data():
-    print("Best Practice 3: Use TTL for time-sensitive data")
-    print("API responses, DB queries, file contents")
-
-
-def best_practice_4_cache_pure_functions():
-    print("Best Practice 4: Only cache pure functions")
-    print("No side effects, deterministic output")
-
-
-def best_practice_5_implement_invalidation():
-    print("Best Practice 5: Implement cache invalidation")
-    print("Write-through, write-behind, or event-driven")
-
-
-def best_practice_6_use_cachetools_for_complex():
-    print("Best Practice 6: Use cachetools for advanced needs")
-    print("TTLCache, LRUCache, LFUCache, FIFOCache")
-
-
-def best_practice_7_serialize_for_redis():
-    print("Best Practice 7: Serialize for distributed caches")
-    print("Use pickle or JSON for Redis caching")
-
-
-best_practice_1_measure_benefit()
-best_practice_2_set_reasonable_maxsize()
-best_practice_3_use_ttl_for_dynamic_data()
-best_practice_4_cache_pure_functions()
-best_practice_5_implement_invalidation()
-best_practice_6_use_cachetools_for_complex()
-best_practice_7_serialize_for_redis()
+@memoize
+def knapsack(capacity, weights, values, n):
+    if n == 0 or capacity == 0:
+        return 0
+    if weights[n-1] > capacity:
+        return knapsack(capacity, weights, values, n-1)
+    return max(
+        values[n-1] + knapsack(capacity - weights[n-1], weights, values, n-1),
+        knapsack(capacity, weights, values, n-1)
+    )
 ```
 
-## Interview Questions
-
+### Advanced Examples
 ```python
-def interview_q1():
-    print("Q: What is the difference between LRU and LFU?")
-    print("A: LRU removes least recently used items.")
-    print("   LFU removes least frequently used items.")
+from functools import lru_cache
+import functools
 
+# Memoization with cache eviction based on external events
+def memoized_with_invalidation(func):
+    cache = {}
+    version = [0]
 
-def interview_q2():
-    print("Q: How does functools.lru_cache work?")
-    print("A: Uses a dictionary to store results.")
-    print("   Evicts oldest items when maxsize exceeded.")
+    def invalidate():
+        version[0] += 1
+        cache.clear()
 
+    @functools.wraps(func)
+    def wrapper(*args):
+        key = (version[0], args)
+        if key not in cache:
+            cache[key] = func(*args)
+        return cache[key]
 
-def interview_q3():
-    print("Q: What is cache invalidation?")
-    print("A: The process of removing stale data from cache.")
-    print("   Hardest problem in computer science.")
+    wrapper.invalidate = invalidate
+    wrapper.cache_clear = cache.clear
+    return wrapper
 
+# Memoization for class methods with per-instance cache
+class DataProcessor:
+    def __init__(self, name):
+        self.name = name
+        self._cache = {}
 
-def interview_q4():
-    print("Q: What is a write-through cache?")
-    print("A: Data written to cache and DB simultaneously.")
-    print("   Ensures consistency, higher write latency.")
+    def process(self, key):
+        if key not in self._cache:
+            self._cache[key] = self._expensive_transform(key)
+        return self._cache[key]
 
-
-def interview_q5():
-    print("Q: How do you implement TTL-based caching?")
-    print("A: Store timestamp with each cached value.")
-    print("   Check expiration on retrieval.")
-
-
-def interview_q6():
-    print("Q: What are cache stampede issues?")
-    print("A: Multiple requests for expired cache simultaneously.")
-    print("   Use dog-pile prevention or early recomputation.")
-
-
-def interview_q7():
-    print("Q: What is memoization?")
-    print("A: Caching function results based on arguments.")
-    print("   Common in dynamic programming.")
-
-
-interview_q1()
-interview_q2()
-interview_q3()
-interview_q4()
-interview_q5()
-interview_q6()
-interview_q7()
+    def _expensive_transform(self, key):
+        return sum(ord(c) * i for i, c in enumerate(str(key) * 1000))
 ```
 
-## Coding Challenges
+### Real-World Use Cases
+- **Compiler optimisation**: memoise the results of constant folding and common subexpression elimination.
+- **Parsing**: memoise parse results for ambiguous grammars (e.g., with `pyparsing` or `lark`).
+- **Image processing**: memoise tile rendering results in map/reduce pipelines.
 
+### Common Mistakes
+- Memoizing functions with side effects — cached results may not reflect updated global state.
+- Using mutable objects as keys — they are unhashable and cause `TypeError`.
+- Memoizing functions that depend on I/O (file reads, network requests) without considering staleness.
+
+### Best Practices
+- Use `@functools.cache` for pure functions with no side effects.
+- For methods, be aware that `self` is included in the cache key — each instance has its own cache.
+- Clear caches explicitly when underlying data changes.
+
+### Performance Considerations
+- Memoization trades memory for speed — a highly memoized function can consume significant memory.
+- The cost of dictionary lookup (~50 ns) is negligible compared to most expensive computations.
+- For functions with many unique arguments, memoization is ineffective — the cache fills with one-hit entries.
+
+### Interview Questions
+- **Q**: What is the space-time tradeoff in memoization?  
+  **A**: Memoization uses additional memory (stores all computed results) in exchange for O(1) retrieval of previously computed values, reducing time from exponential to polynomial or linear.
+- **Q**: How would you memoize a function with keyword arguments?  
+  **A**: Convert `kwargs` to a sorted tuple of `(key, value)` pairs and combine with positional args as a single hashable key.
+
+### Coding Challenges
+- Implement a memoization decorator that supports a `maxsize` parameter and uses LRU eviction with `OrderedDict`.
+- Write a memoized version of the Ackermann function and measure its performance.
+
+### Related Topics
+- [lru_cache](#lru-cache)
+- [Cache invalidation](#cache-invalidation-strategies)
+- [Algorithms (dynamic programming)](#algorithms---sorting-searching-recursion-dynamic-programming)
+
+---
+
+## Cache Invalidation Strategies
+
+### What It Is
+Cache invalidation is the process of removing or updating cached data when the underlying source data changes. It is famously one of the two hard things in computer science. Common strategies include TTL (time-to-live), write-through, write-behind, and event-driven invalidation.
+
+### Why It Is Important
+Without invalidation, caches serve stale data — users see outdated information, calculations are based on obsolete inputs, and system correctness is compromised. Proper invalidation ensures cache consistency without sacrificing performance.
+
+### How It Works Internally
+Each invalidation strategy uses different mechanisms:
+- **TTL**: a timestamp or expiry duration is stored with each cache entry; on access, expired entries are treated as misses.
+- **Write-through**: the application updates the cache synchronously whenever it writes to the database.
+- **Write-behind**: updates are queued and applied to the cache asynchronously after a delay.
+- **Event-driven**: the data source publishes invalidation events (via Redis pub/sub, RabbitMQ, Kafka) that cache consumers listen to and react to.
+
+### Syntax
+```python
+# TTL-based invalidation (setex)
+r.setex('key', 3600, value)
+
+# Write-through
+def update_user(user_id, data):
+    db_update(user_id, data)
+    r.set(f'user:{user_id}', json.dumps(data))
+
+# Manual invalidation
+def invalidate_user(user_id):
+    r.delete(f'user:{user_id}')
+
+# Pattern-based invalidation
+def invalidate_pattern(pattern):
+    for key in r.scan_iter(match=pattern):
+        r.delete(key)
+```
+
+### Beginner Examples
 ```python
 import time
 from functools import lru_cache
-from typing import List, Tuple
 
+# TTL-based cache without external dependencies
+class TTLCache:
+    def __init__(self, ttl_seconds=60):
+        self.ttl = ttl_seconds
+        self.cache = {}
 
-def challenge_1_implement_lru():
-    print("Challenge 1: Implement your own LRU Cache")
+    def get(self, key):
+        if key in self.cache:
+            value, timestamp = self.cache[key]
+            if time.monotonic() - timestamp < self.ttl:
+                return value
+            del self.cache[key]
+        return None
 
-    class LRUCache:
-        def __init__(self, capacity: int):
-            self.capacity = capacity
-            self._cache = {}
-            self._order = []
+    def set(self, key, value):
+        self.cache[key] = (value, time.monotonic())
 
-        def get(self, key: int) -> int:
-            if key in self._cache:
-                self._order.remove(key)
-                self._order.append(key)
-                return self._cache[key]
-            return -1
+cache = TTLCache(30)
+cache.set('weather', 'sunny')
+print(cache.get('weather'))
+```
 
-        def put(self, key: int, value: int):
-            if key in self._cache:
-                self._order.remove(key)
-            elif len(self._cache) >= self.capacity:
-                oldest = self._order.pop(0)
-                del self._cache[oldest]
-            self._cache[key] = value
-            self._order.append(key)
+### Intermediate Examples
+```python
+# Cache invalidation with version keys
+class VersionedCache:
+    def __init__(self, redis_client):
+        self.r = redis_client
 
-    cache = LRUCache(2)
-    cache.put(1, 1)
-    cache.put(2, 2)
-    print(f"Get 1: {cache.get(1)}")
-    cache.put(3, 3)
-    print(f"Get 2 (should be -1): {cache.get(2)}")
-    cache.put(4, 4)
-    print(f"Get 1 (should be -1): {cache.get(1)}")
-    print(f"Get 3: {cache.get(3)}")
-    print(f"Get 4: {cache.get(4)}")
+    def get(self, key):
+        version = self.r.get(f'version:{key}')
+        data = self.r.get(f'data:{key}')
+        if data and version:
+            stored_version = self.r.hget(data, '_version')
+            if stored_version == version:
+                return data
+        return None
 
+    def set(self, key, value, ttl=300):
+        import time
+        version = str(time.time())
+        self.r.set(f'version:{key}', version)
+        value['_version'] = version
+        self.r.setex(f'data:{key}', ttl, json.dumps(value))
 
-def challenge_2_memoize_fibonacci():
-    print("Challenge 2: Memoize Fibonacci and compare")
+    def invalidate(self, key):
+        self.r.incr(f'version:{key}')
 
-    def fib_recursive(n):
-        if n < 2:
-            return n
-        return fib_recursive(n - 1) + fib_recursive(n - 2)
+# Bulk invalidation with tags
+class TaggedCache:
+    def __init__(self, redis_client):
+        self.r = redis_client
 
-    @lru_cache(maxsize=None)
-    def fib_memoized(n):
-        if n < 2:
-            return n
-        return fib_memoized(n - 1) + fib_memoized(n - 2)
+    def set(self, key, value, tags=None, ttl=300):
+        self.r.setex(f'cache:{key}', ttl, json.dumps(value))
+        if tags:
+            for tag in tags:
+                self.r.sadd(f'tag:{tag}', key)
+                self.r.expire(f'tag:{tag}', ttl + 60)
 
-    import time
-    start = time.perf_counter()
-    fib_recursive(35)
-    t1 = time.perf_counter() - start
+    def invalidate_tag(self, tag):
+        keys = self.r.smembers(f'tag:{tag}')
+        if keys:
+            self.r.delete(*[f'cache:{k}' for k in keys])
+            self.r.delete(f'tag:{tag}')
+```
 
-    start = time.perf_counter()
-    fib_memoized(35)
-    t2 = time.perf_counter() - start
+### Advanced Examples
+```python
+# Stale-while-revalidate pattern
+class StaleWhileRevalidate:
+    def __init__(self, redis_client, stale_ttl=60, revalidate_func=None):
+        self.r = redis_client
+        self.stale_ttl = stale_ttl
+        self.revalidate = revalidate_func
 
-    print(f"Recursive: {t1:.4f}s")
-    print(f"Memoized: {t2:.6f}s")
-    print(f"Speedup: {t1 / t2:.0f}x")
-
-
-def challenge_3_ttl_cache_implementation():
-    print("Challenge 3: Implement TTL Cache")
-
-    class TTLCache:
-        def __init__(self, ttl: float = 60.0):
-            self._cache = {}
-            self._ttl = ttl
-
-        def get(self, key: str):
-            if key in self._cache:
-                value, timestamp = self._cache[key]
-                if time.time() - timestamp < self._ttl:
-                    return value
-                del self._cache[key]
+    def get(self, key):
+        data = self.r.get(key)
+        if data is None:
             return None
 
-        def set(self, key: str, value):
-            self._cache[key] = (value, time.time())
+        entry = json.loads(data)
+        if entry['fresh_until'] > time.time():
+            return entry['value']
 
-    cache = TTLCache(ttl=2.0)
-    cache.set('key1', 'value1')
-    print(f"Immediate: {cache.get('key1')}")
-    time.sleep(3)
-    print(f"After TTL: {cache.get('key1')}")
+        if entry.get('stale_until', 0) > time.time() and self.revalidate:
+            import threading
+            threading.Thread(target=self._revalidate, args=(key,), daemon=True).start()
+            return entry['value']
 
+        return None
 
-def challenge_4_cache_decorator():
-    print("Challenge 4: Write a generic cache decorator")
+    def set(self, key, value, fresh_ttl=60):
+        entry = {
+            'value': value,
+            'fresh_until': time.time() + fresh_ttl,
+            'stale_until': time.time() + fresh_ttl + self.stale_ttl,
+        }
+        self.r.setex(key, fresh_ttl + self.stale_ttl, json.dumps(entry))
 
-    def memoize(maxsize: int = 128):
-        def decorator(func):
-            cache = {}
-            order = []
+    def _revalidate(self, key):
+        if self.revalidate:
+            new_value = self.revalidate(key)
+            if new_value is not None:
+                self.set(key, new_value)
 
-            def wrapper(*args):
-                if args in cache:
-                    order.remove(args)
-                    order.append(args)
-                    return cache[args]
-                result = func(*args)
-                if len(cache) >= maxsize:
-                    oldest = order.pop(0)
-                    del cache[oldest]
-                cache[args] = result
-                order.append(args)
-                return result
+# Cache invalidation with database triggers
+def setup_invalidation_triggers(db_connection, redis_client):
+    def on_row_update(table, row_id):
+        redis_client.delete(f'cache:{table}:{row_id}')
+        redis_client.publish('cache:invalidate', f'{table}:{row_id}')
+    return on_row_update
 
-            wrapper.cache_info = lambda: {'size': len(cache), 'maxsize': maxsize}
-            wrapper.cache_clear = lambda: (cache.clear(), order.clear())
-            return wrapper
-        return decorator
+# Read-through cache with write-invalidate
+class ReadThroughCache:
+    def __init__(self, redis_client, loader, ttl=300):
+        self.r = redis_client
+        self.loader = loader
+        self.ttl = ttl
 
-    @memoize(maxsize=10)
-    def slow_square(n):
-        time.sleep(0.1)
-        return n * n
+    def get(self, key):
+        data = self.r.get(key)
+        if data is not None:
+            return json.loads(data)
+        value = self.loader(key)
+        self.r.setex(key, self.ttl, json.dumps(value))
+        return value
 
-    print(slow_square(5))
-    print(slow_square(5))
-    print(f"Cache info: {slow_square.cache_info()}")
-
-
-challenge_1_implement_lru()
-challenge_2_memoize_fibonacci()
-challenge_3_ttl_cache_implementation()
-challenge_4_cache_decorator()
+    def invalidate(self, key):
+        self.r.delete(key)
 ```
 
-## Summary
+### Real-World Use Cases
+- **E-commerce product catalogue**: invalidate product cache when price or inventory changes.
+- **Content management systems**: purge CDN/page cache when a page is published or edited.
+- **Social media feeds**: invalidate user feed cache when new posts or follows occur.
 
-Caching is crucial for application performance. Python provides functools.lru_cache and functools.cache for simple memoization, cachetools for advanced strategies (LRU, TTL, LFU), and Redis for distributed caching. Key considerations include cache invalidation, TTL management, and avoiding common pitfalls like caching impure functions.
+### Common Mistakes
+- Using TTL too long — users see stale data until the TTL expires.
+- Using TTL too short — cache hit ratio drops, defeating the purpose of caching.
+- Forgetting to invalidate related caches when data changes — e.g., invalidating both `user:42` and `feed:42` when a user updates their profile.
+- Implementing write-behind without handling failures — the cache may permanently diverge from the source of truth.
 
-## Related Topics
+### Best Practices
+- Prefer TTL-based invalidation for data that changes infrequently and where slight staleness is acceptable.
+- Use event-driven invalidation (Redis pub/sub, database triggers) for data that changes frequently or where consistency is critical.
+- Use write-through for critical data where stale reads are unacceptable.
+- Always measure cache hit ratio — a low hit ratio suggests the invalidation strategy is too aggressive or TTL is too short.
 
-- Data Structures (97_data_structures.md)
-- Memory Management (92_memory_management.md)
-- Profiling (91_profiling.md)
-- Algorithms (98_algorithms.md)
+### Performance Considerations
+- TTL checks add no overhead — Redis lazily evicts on access or when the key is next scanned.
+- Event-driven invalidation has propagation delay (milliseconds via pub/sub, potentially seconds via polling).
+- Write-through adds latency to write operations; for write-heavy workloads, consider write-behind or TTL.
+
+### Interview Questions
+- **Q**: What are the two hard things in computer science according to the famous quote?  
+  **A**: Cache invalidation, naming things, and off-by-one errors.
+- **Q**: Compare TTL invalidation vs event-driven invalidation.  
+  **A**: TTL is simple and decoupled but allows stale data for up to the TTL period. Event-driven is immediate but requires infrastructure (pub/sub, message bus) and adds system complexity.
+
+### Coding Challenges
+- Implement a write-through cache layer in front of a simulated database, ensuring that every write updates both the DB and the cache atomically.
+- Design and implement a two-level cache (L1 in-memory LRU, L2 Redis) with write-invalidate propagation from L2 to L1 using pub/sub.
+
+### Related Topics
+- [lru_cache](#lru-cache)
+- [Redis caching](#redis-caching)
+- [Memoization](#memoization)

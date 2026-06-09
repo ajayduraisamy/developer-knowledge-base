@@ -2,456 +2,480 @@
 
 ## Introduction
 
-Slicing is a powerful feature in Python that allows you to extract portions of sequences (strings, lists, tuples, bytes, etc.) using the `[start:stop:step]` syntax. Slicing creates a new sequence containing the specified elements without modifying the original. It supports negative indexing and can reverse sequences.
+Slicing extracts subsequences from ordered sequences (strings, lists, tuples, bytes, ranges) using the concise `[start:stop:step]` syntax. It creates a new sequence containing the specified range without modifying the original. Combined with negative indexing (counting from the end), slicing enables elegant reversal, striding, and partial-copy patterns. Python also provides the `slice()` built-in for programmatic slicing and supports slice assignment on mutable sequences.
 
-## Why It Is Important
+## sequence[start:stop:step]
 
-Slicing is important because:
-- It provides concise syntax for extracting subsequences
-- It supports negative indexing for accessing from the end
-- It enables reversing sequences easily
-- It works on strings, lists, tuples, and other sequences
-- It is more readable and efficient than manual loops
-- The `slice()` object allows programmatic slicing
+### What It Is
 
-## Syntax
+The slice notation `s[start:stop:step]` extracts elements from `start` up to (but not including) `stop`, taking every `step`-th element. All three components are optional. With positive step, default `start` is 0 and default `stop` is the sequence length. Python slices never raise `IndexError` — out-of-bounds indices are silently clamped to the sequence boundaries.
+
+### Why It Is Important
+
+Slicing replaces explicit loops for subsequence extraction, making code more readable and less error-prone. It is used universally in data processing (extracting columns, windows, strides), string parsing, sequence reversal, and pagination.
+
+### How It Works Internally
+
+CPython implements slicing via `PySlice_New()` and the `sq_slice` or `mp_subscript` slot. When Python encounters `s[start:stop:step]`, the compiler generates a `BUILD_SLICE` opcode that creates a `PySliceObject` containing `start`, `stop`, `step` (any can be `None`). The sequence's `__getitem__` method receives this slice object and computes the actual indices using `PySlice_AdjustIndices()` and `PySlice_Unpack()`. For lists and tuples, the result is a new container with copied element references (shallow). For strings, it creates a new string by copying the relevant characters (or using a compact representation in newer Python versions).
+
+### Syntax
 
 ```python
-# Basic slicing
-sequence[start:stop]     # Elements from start to stop-1
-sequence[start:]         # Elements from start to end
-sequence[:stop]          # Elements from beginning to stop-1
-sequence[:]              # Full copy (shallow)
-
-# With step
-sequence[start:stop:step]  # Every step-th element
-
-# Negative indices
-sequence[-1]              # Last element
-sequence[-3:-1]           # Elements from third-last to second-last
-
-# Reverse
-sequence[::-1]            # Reversed copy
-
-# Slice object
-s = slice(start, stop, step)
-sequence[s]
+s[start:stop]       # Elements from start to stop-1
+s[start:]           # From start to end
+s[:stop]            # From beginning to stop-1
+s[:]                # Full shallow copy
+s[::step]           # Every step-th element
+s[start:stop:step]  # Strided extraction
 ```
 
-## Examples
-
-### String Slicing
+### Beginner Examples
 
 ```python
+# Basic string slicing
 text = "Python Programming"
-print(f"String: '{text}'")
-print(f"Length: {len(text)}")
+print(text[0:6])     # Python
+print(text[7:])      # Programming
+print(text[:6])      # Python
+print(text[:])       # Full copy
 
-# Basic slicing
-print(f"text[0:6]: '{text[0:6]}'")      # Python
-print(f"text[7:]: '{text[7:]}'")        # Programming
-print(f"text[:6]: '{text[:6]}'")        # Python
-print(f"text[:]: '{text[:]}'")          # Full copy
-
-# With step
-print(f"text[::2]: '{text[::2]}'")      # Pto rgamn (every other char)
-print(f"text[1::2]: '{text[1::2]}'")    # yhnPormig
-
-# Reverse
-print(f"text[::-1]: '{text[::-1]}'")    # gnimmargorP nohtyP
-
-# Negative indexing
-print(f"text[-1]: '{text[-1]}'")        # g
-print(f"text[-11:]: '{text[-11:]}'")    # Programming
-print(f"text[:-7]: '{text[:-7]}'")      # Python
-```
-
-### List Slicing
-
-```python
-numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-print(f"Original: {numbers}")
-
-# Basic slicing
-print(f"numbers[2:5]: {numbers[2:5]}")     # [2, 3, 4]
-print(f"numbers[:5]: {numbers[:5]}")       # [0, 1, 2, 3, 4]
-print(f"numbers[5:]: {numbers[5:]}")       # [5, 6, 7, 8, 9]
-print(f"numbers[:]: {numbers[:]}")         # Full copy
+# List slicing
+nums = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+print(nums[2:5])     # [2, 3, 4]
+print(nums[:5])      # [0, 1, 2, 3, 4]
+print(nums[5:])      # [5, 6, 7, 8, 9]
 
 # With step
-print(f"numbers[::2]: {numbers[::2]}")     # [0, 2, 4, 6, 8]
-print(f"numbers[1::2]: {numbers[1::2]}")   # [1, 3, 5, 7, 9]
-print(f"numbers[2:8:3]: {numbers[2:8:3]}") # [2, 5]
+print(nums[::2])     # [0, 2, 4, 6, 8]
+print(nums[1::2])    # [1, 3, 5, 7, 9]
+print(nums[2:8:3])   # [2, 5]
 
 # Reverse
-print(f"numbers[::-1]: {numbers[::-1]}")   # [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
-
-# Negative step from middle
-print(f"numbers[7:2:-1]: {numbers[7:2:-1]}")  # [7, 6, 5, 4, 3]
+print(nums[::-1])    # [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
 ```
 
-## Beginner Examples
+### Intermediate Examples
 
 ```python
-# Extracting substrings
-email = "user@example.com"
+# Dynamic slicing with variables
+data = list(range(20))
+start, stop, step = 5, 15, 2
+print(data[start:stop:step])  # [5, 7, 9, 11, 13]
 
-# Get username (everything before @)
-username = email[:email.index("@")]
-print(f"Username: {username}")
-
-# Get domain (everything after @)
-domain = email[email.index("@") + 1:]
-print(f"Domain: {domain}")
-
-# Extract parts of a date
-date = "2024-01-15"
-year = date[:4]
-month = date[5:7]
-day = date[8:]
-print(f"Year: {year}, Month: {month}, Day: {day}")
-
-# Get first/last N characters
-word = "PythonProgramming"
-print(f"First 6: {word[:6]}")     # Python
-print(f"Last 11: {word[-11:]}")   # Programming
-
-# Skip first and last
-print(f"Middle: {word[1:-1]}")    # ythonProgrammin
-
-# Every other element
-items = [10, 20, 30, 40, 50, 60]
-print(f"Even indices: {items[::2]}")   # [10, 30, 50]
-print(f"Odd indices: {items[1::2]}")   # [20, 40, 60]
-
-# Using slicing to split a list
-data = [1, 2, 3, 4, 5, 6, 7, 8]
-mid = len(data) // 2
-first_half = data[:mid]
-second_half = data[mid:]
-print(f"First half: {first_half}")
-print(f"Second half: {second_half}")
-```
-
-## Intermediate Examples
-
-### Slicing with Variables
-
-```python
-text = "Hello, World!"
-
-# Dynamic slicing
-start = 7
-end = 12
-print(f"text[{start}:{end}]: '{text[start:end]}'")  # World
-
-# Slicing with computed positions
-sentence = "The quick brown fox"
-words = sentence.split()
-word_lengths = [len(w) for w in words]
-positions = []
-pos = 0
-for length in word_lengths:
-    positions.append((pos, pos + length))
-    pos += length + 1  # +1 for space
-
-for start, end in positions:
-    print(f"  word: '{sentence[start:end]}'")
-```
-
-### Slice Assignment (Mutable Sequences)
-
-```python
-# List slice assignment
-numbers = [1, 2, 3, 4, 5]
-print(f"Original: {numbers}")
-
-# Replace a slice
-numbers[1:3] = [20, 30]
-print(f"After replacement: {numbers}")
+# Slice assignment on lists
+nums = [1, 2, 3, 4, 5]
+nums[1:3] = [20, 30]
+print(nums)  # [1, 20, 30, 4, 5]
 
 # Replace with different length
-numbers[1:3] = [100, 200, 300, 400]
-print(f"After longer replacement: {numbers}")
+nums[1:3] = [100, 200, 300, 400]
+print(nums)  # [1, 100, 200, 300, 400, 4, 5]
 
-# Delete a slice
-numbers[1:3] = []
-print(f"After deletion: {numbers}")
+# Delete via slice
+nums[1:5] = []
+print(nums)  # [1, 4, 5]
 
-# Insert without removing
-numbers[1:1] = [50, 60]  # Insert at index 1
-print(f"After insertion: {numbers}")
+# Insert at position
+nums[1:1] = [2, 3]
+print(nums)  # [1, 2, 3, 4, 5]
 
-# Extend at end
-numbers[len(numbers):] = [999]
-print(f"After extend: {numbers}")
+# Slicing tuples
+t = (10, 20, 30, 40, 50)
+print(t[1:4])    # (20, 30, 40)
+print(t[::-1])   # (50, 40, 30, 20, 10)
 ```
 
-### Slice Object
+### Advanced Examples
 
 ```python
-# Creating slice objects
+# Slice object for programmatic slicing
 s = slice(2, 8, 2)
-numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-print(f"numbers[{s.start}:{s.stop}:{s.step}]: {numbers[s]}")
+nums = list(range(10))
+print(nums[s])  # [2, 4, 6]
+print(s.start, s.stop, s.step)  # 2 8 2
 
-# Slice object attributes
-print(f"start: {s.start}")
-print(f"stop: {s.stop}")
-print(f"step: {s.step}")
-
-# Using slice for data extraction
-def extract_sections(data, section_size):
-    """Extract sections of equal size from data."""
-    sections = []
-    for i in range(0, len(data), section_size):
-        section = data[i:i + section_size]
-        sections.append(section)
-    return sections
-
-data = list(range(20))
-sections = extract_sections(data, 5)
-for i, section in enumerate(sections):
-    print(f"Section {i}: {section}")
-```
-
-## Advanced Examples
-
-### Custom Class with Slicing Support
-
-```python
-class CustomList:
-    """A custom class that supports slicing."""
-    def __init__(self, items):
-        self._items = list(items)
-    
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            return CustomList(self._items[index])
-        return self._items[index]
-    
-    def __setitem__(self, index, value):
-        if isinstance(index, slice):
-            self._items[index] = list(value)
-        else:
-            self._items[index] = value
-    
+# Custom class with slicing support
+class Frame:
+    def __init__(self, data):
+        self.data = data
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            return Frame(self.data[idx])
+        return self.data[idx]
     def __repr__(self):
-        return f"CustomList({self._items})"
-    
-    def __len__(self):
-        return len(self._items)
+        return f"Frame({self.data})"
 
-cl = CustomList([1, 2, 3, 4, 5, 6, 7, 8])
-print(f"Original: {cl}")
-print(f"cl[2:5]: {cl[2:5]}")
-print(f"cl[::-1]: {cl[::-1]}")
-cl[1:4] = [20, 30, 40]
-print(f"After assignment: {cl}")
-```
+f = Frame([1, 2, 3, 4, 5, 6])
+print(f[1:4])    # Frame([2, 3, 4])
+print(f[::-1])   # Frame([6, 5, 4, 3, 2, 1])
 
-### Advanced Slicing Patterns
+# Chunking with slicing
+def chunks(lst, n):
+    return [lst[i:i+n] for i in range(0, len(lst), n)]
 
-```python
-# Palindrome check with slicing
+print(chunks(list(range(10)), 3))  # [[0,1,2], [3,4,5], [6,7,8], [9]]
+
+# Moving average with slicing
+def moving_avg(data, window):
+    return [sum(data[i:i+window])/window for i in range(len(data)-window+1)]
+
+prices = [10, 12, 13, 15, 18, 20, 22]
+print(moving_avg(prices, 3))  # [11.67, 13.33, 15.33, 17.67, 20.0]
+
+# Palindrome check
 def is_palindrome(s):
     s = s.lower().replace(" ", "")
     return s == s[::-1]
 
-print(f"racecar: {is_palindrome('racecar')}")
-print(f"A man a plan a canal Panama: {is_palindrome('A man a plan a canal Panama')}")
-
-# Rotating a list with slicing
-def rotate_left(lst, k):
-    if not lst:
-        return lst
-    k = k % len(lst)
-    return lst[k:] + lst[:k]
-
-def rotate_right(lst, k):
-    if not lst:
-        return lst
-    k = k % len(lst)
-    return lst[-k:] + lst[:-k]
-
-nums = [1, 2, 3, 4, 5]
-print(f"Original: {nums}")
-print(f"Rotate left by 2: {rotate_left(nums, 2)}")
-print(f"Rotate right by 2: {rotate_right(nums, 2)}")
-
-# Sliding window with slicing
-def sliding_window(data, window_size):
-    """Generate all windows of given size."""
-    for i in range(len(data) - window_size + 1):
-        yield data[i:i + window_size]
-
-data = [1, 2, 3, 4, 5, 6]
-print("Sliding windows of size 3:")
-for window in sliding_window(data, 3):
-    print(f"  {window}")
-
-# Chunking with slicing
-def chunk_list(lst, chunk_size):
-    """Split a list into chunks."""
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
-
-data = list(range(10))
-print(f"Chunks of 3: {chunk_list(data, 3)}")
-
-# Strided convolution-like access
-matrix = [
-    [1, 2, 3, 4],
-    [5, 6, 7, 8],
-    [9, 10, 11, 12],
-    [13, 14, 15, 16]
-]
-
-# Extract 2x2 submatrix
-row_slice = slice(1, 3)
-col_slice = slice(1, 3)
-submatrix = [row[col_slice] for row in matrix[row_slice]]
-print(f"2x2 submatrix: {submatrix}")
+print(is_palindrome("racecar"))  # True
 ```
 
-## Real-World Use Cases
+### Real-World Use Cases
 
-- **Data Processing**: Extracting specific columns from datasets
-- **String Parsing**: Extracting substrings from formatted text
-- **Sequence Reversal**: Reversing lists, strings for algorithms
-- **Data Sampling**: Taking every nth element from a dataset
-- **Signal Processing**: Windowing, strided convolution
-- **Image Processing**: Cropping, region-of-interest extraction
-- **Paginated Results**: Slicing API results into pages
+- **Data processing**: Extracting columns from matrix rows
+- **String parsing**: Extracting substrings from fixed-format text
+- **Pagination**: Slicing API results into pages: `data[page*size:(page+1)*size]`
+- **Signal processing**: Windowing and strided convolution
+- **Image processing**: Cropping 2D regions via row/col slices
+- **Sequence reversal**: Algorithmic problems requiring reversal
+- **Data sampling**: Taking every nth element from a dataset
 
-## Common Mistakes
+### Common Mistakes
 
 ```python
-# Mistake 1: Off-by-one errors with stop index
+# Mistake 1: Off-by-one on stop index
 text = "Python"
-print(text[0:5])   # "Pytho" (NOT "Python"!)
+print(text[0:5])   # "Pytho" (not "Python"!)
 print(text[0:6])   # "Python" (correct)
 
-# Mistake 2: Forgetting that slicing creates a copy
+# Mistake 2: Slicing creates a copy (for lists)
 original = [1, 2, 3]
-sliced = original[1:2]  # Creates a new list
+sliced = original[1:2]
 sliced[0] = 99
 print(original)  # [1, 2, 3] (unchanged)
 
-# Mistake 3: Slicing with stop < start and positive step
-nums = [0, 1, 2, 3, 4, 5]
-print(nums[5:2])   # [] (empty - need negative step)
-print(nums[5:2:-1])  # [5, 4, 3]
+# Mistake 3: stop < start with positive step
+print(nums[5:2])   # [] (empty!)
+print(nums[5:2:-1])  # [5, 4, 3] (use negative step)
 
-# Mistake 4: Using step=0
+# Mistake 4: step=0
 # nums[::0]  # ValueError: slice step cannot be zero
 
-# Mistake 5: Modifying string via slice assignment
-# s = "hello"
-# s[0] = "H"  # TypeError: 'str' object does not support item assignment
-# s[0:1] = "H"  # Also TypeError
-
-# Mistake 6: Confusing slice bounds
-text = "hello"
-print(text[-4:4])  # 'ell' (from index -4 to index 3)
-
-# Mistake 7: Slicing beyond bounds doesn't error
+# Mistake 5: Slicing beyond bounds is silent
 nums = [1, 2, 3]
-print(nums[1:100])  # [2, 3] (no IndexError, just stops at end)
+print(nums[1:100])  # [2, 3] (no error, stops at end)
+
+# Mistake 6: String slice assignment
+# s = "hello"
+# s[0:1] = "H"  # TypeError: 'str' object does not support item assignment
 ```
 
-## Best Practices
+### Best Practices
 
-- Use negative indexing for accessing from the end
-- Use `[::-1]` for reversing sequences
-- Use slice objects when programmatically building slices
-- Remember stop index is exclusive
-- Use `[:]` for shallow copies of sequences
-- Use slicing for readable subsequence extraction
-- Avoid modifying mutable sequences while slicing them
-- Use `step` for sampling every nth element
-- Use slice assignment for efficient list modifications
-- Combine slicing with `len()` for dynamic extraction
+- Remember stop is exclusive; use negative indices for end-relative access
+- Use `[::-1]` for reversing any sequence
+- Use `[:]` for shallow copies
+- Use slice objects for reusable/computed slices
+- Prefer slicing over manual loops for subsequence extraction
+- Use slice assignment for efficient list modification
+- Combine with `len()` for dynamic end-relative slicing
 
-## Interview Questions
+### Performance Considerations
 
-1. What is the syntax for slicing in Python?
-2. How does negative indexing work in slicing?
-3. How do you reverse a string or list using slicing?
-4. What is the difference between `list[1:5]` and `list[1:5:2]`?
-5. Can you slice a tuple? What about a string?
-6. How does slice assignment work on lists?
-7. What is a slice object and how do you use it?
-8. What happens if `start` > `stop` with a positive step?
-9. How do you create a shallow copy of a list using slicing?
-10. Can slicing raise an IndexError?
+Slicing is O(k) where k is the length of the result. String slicing creates a new string (O(k) character copy). List and tuple slicing creates a new container copying element references (O(k), shallow). Slice assignment on lists is O(n + k) because elements may need to be shifted. Using `s[:] = iterable` is an efficient way to replace a list's contents without creating a new object.
 
-## Coding Challenges
+### Interview Questions
+
+1. What is the syntax for slicing and what do the defaults mean?
+2. Does slicing ever raise IndexError?
+3. How do you reverse a sequence with slicing?
+4. What is the difference between slice assignment on lists (mutable) and strings (immutable)?
+5. How does the slice object work?
+6. What happens with `s[start:stop:-1]` when start < stop?
+7. How do you implement `__getitem__` for a custom class that supports slicing?
+8. What is the time complexity of list slicing?
+
+### Coding Challenges
 
 ```python
-# Challenge 1: Custom substring function
-def substring(text, start, end=None, step=1):
-    """Extract substring with default end."""
-    if end is None:
-        end = len(text)
-    return text[start:end:step]
-
-print(substring("Python Programming", 0, 6))    # Python
-print(substring("Python Programming", 7))        # Programming
-print(substring("Python Programming", ::-1))     # Reversed
-
-# Challenge 2: Rotate list using slicing
+# Challenge 1: Rotate list using slicing
 def rotate(lst, k):
     if not lst:
         return lst
     k = k % len(lst)
-    if k < 0:
-        k += len(lst)
     return lst[-k:] + lst[:-k]
 
 print(rotate([1, 2, 3, 4, 5], 2))   # [4, 5, 1, 2, 3]
 print(rotate([1, 2, 3, 4, 5], -1))  # [2, 3, 4, 5, 1]
 
-# Challenge 3: Extract every nth element
+# Challenge 2: Extract every nth element
 def every_nth(data, n, offset=0):
     return data[offset::n]
 
-print(every_nth([1, 2, 3, 4, 5, 6, 7, 8], 3))       # [1, 4, 7]
-print(every_nth([1, 2, 3, 4, 5, 6, 7, 8], 3, 1))    # [2, 5, 8]
+print(every_nth([1, 2, 3, 4, 5, 6, 7, 8], 3))      # [1, 4, 7]
+print(every_nth([1, 2, 3, 4, 5, 6, 7, 8], 3, 1))   # [2, 5, 8]
 
-# Challenge 4: Windowed average
-def moving_average(data, window_size):
-    return [sum(data[i:i+window_size])/window_size 
-            for i in range(len(data)-window_size+1)]
+# Challenge 3: Get submatrix via slicing
+def submatrix(matrix, r_start, r_end, c_start, c_end):
+    return [row[c_start:c_end] for row in matrix[r_start:r_end]]
 
-prices = [10, 12, 13, 15, 18, 20, 22, 25]
-averages = moving_average(prices, 3)
-print(f"Prices: {prices}")
-print(f"3-day averages: {[f'{a:.1f}' for a in averages]}")
+matrix = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]
+print(submatrix(matrix, 0, 2, 1, 3))  # [[2, 3], [6, 7]]
 
-# Challenge 5: Matrix slicing
-def get_submatrix(matrix, row_start, row_end, col_start, col_end):
-    return [row[col_start:col_end] for row in matrix[row_start:row_end]]
+# Challenge 4: Sliding window generator
+def sliding_window(data, n):
+    for i in range(len(data) - n + 1):
+        yield data[i:i+n]
 
-matrix = [
-    [1, 2, 3, 4],
-    [5, 6, 7, 8],
-    [9, 10, 11, 12],
-    [13, 14, 15, 16]
-]
-sub = get_submatrix(matrix, 1, 3, 1, 3)
-print(f"Submatrix: {sub}")  # [[6, 7], [10, 11]]
+for w in sliding_window([1, 2, 3, 4, 5], 3):
+    print(w)  # [1,2,3] [2,3,4] [3,4,5]
 ```
 
-## Summary
+### Related Topics
 
-Slicing provides a concise syntax for extracting portions of sequences using `[start:stop:step]`. It supports negative indexing, defaults for omitted values, and works on strings, lists, tuples, and other sequences. Slicing creates new copies for immutable types and can be used for assignment on mutable types. Understanding slicing is essential for efficient Python programming.
+- Negative indexing
+- slice() built-in
+- List slice assignment
+- __getitem__ and __setitem__
+- Sequence protocol
+- Shallow vs deep copy
 
-## Related Topics
+## Negative indices
 
-- Strings (Indexing and Slicing)
-- Lists (Indexing and Slicing)
-- Tuples
-- Sequence Types
-- Slice Objects
-- Negative Indexing
-- List Comprehensions
+### What It Is
+
+Negative indices count from the end of a sequence: `-1` is the last element, `-2` is the second-to-last, and so on. In slicing, negative start/stop/step values can create sophisticated extraction patterns, especially when combined with negative step for reversed traversal.
+
+### Why It Is Important
+
+Negative indices eliminate the need for `len(s) - 1` boilerplate, making end-relative access concise and natural. They are essential for extracting suffixes, trailing elements, and implementing reverse-aware slicing.
+
+### How It Works Internally
+
+When Python's `PySlice_AdjustIndices()` processes a slice, negative indices are converted to positive by adding the sequence length. For example, `s[-2:]` becomes `s[len(s)-2:]`. The adjustment logic clamps values to `[0, length]`. For negative step, the default start becomes `-1` (last element) and default stop becomes `0` (before first element), enabling reverse traversal.
+
+### Syntax
+
+```python
+s[-1]        # Last element
+s[-3:]       # Last 3 elements
+s[:-2]       # All but last 2
+s[-5:-2]     # From 5th-last to 2nd-last
+s[::-1]      # Reverse
+s[-2:0:-1]   # From 2nd-last down to (but not including) first
+```
+
+### Beginner Examples
+
+```python
+text = "Python"
+print(text[-1])     # n (last char)
+print(text[-2])     # o (second last)
+print(text[-3:])    # hon (last 3)
+print(text[:-2])    # Pyth (all but last 2)
+print(text[-4:-1])  # tho (4th-last to last-1)
+
+nums = [10, 20, 30, 40, 50]
+print(nums[-1])     # 50
+print(nums[-3:])    # [30, 40, 50]
+print(nums[:-2])    # [10, 20, 30]
+
+# Removing suffix
+filename = "document.txt"
+print(filename[:-4])  # document
+```
+
+### Intermediate Examples
+
+```python
+# Last N elements
+data = list(range(10))
+last_three = data[-3:]
+print(last_three)  # [7, 8, 9]
+
+# All but last N
+all_but_last_two = data[:-2]
+print(all_but_last_two)  # [0, 1, 2, 3, 4, 5, 6, 7]
+
+# Middle segment from end
+print(data[-7:-2])  # [3, 4, 5, 6, 7]
+
+# Negative step from end
+print(data[-2:0:-1])  # [8, 7, 6, 5, 4, 3, 2, 1]
+
+# Skip last N
+print(data[:-3])  # [0, 1, 2, 3, 4, 5, 6]
+
+# Practical: URL parsing
+url = "https://example.com/page"
+domain = url.split("//")[1].split("/")[0]
+print(domain)  # example.com
+
+# Extraction from the end
+log_line = "2024-01-15 ERROR: Connection failed [42]"
+error_code = log_line[-4:-1]
+print(error_code)  # [42]
+
+# Negative indexing with step
+seq = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+print(seq[-1::-2])  # [9, 7, 5, 3, 1] (reversed, every other)
+```
+
+### Advanced Examples
+
+```python
+# Tail extraction (like Unix tail)
+def tail(seq, n=10):
+    return seq[-n:] if n > 0 else seq[:]
+
+lines = list(range(100))
+print(tail(lines, 3))  # [97, 98, 99]
+
+# Negative index edge cases
+empty = []
+# print(empty[-1])  # IndexError: list index out of range
+
+# When abs(index) > length
+# s = "hi"
+# print(s[-10])  # IndexError
+
+# But slicing handles it gracefully:
+print([1, 2, 3][-10:])   # [1, 2, 3] (clamped to start)
+print([1, 2, 3][:-10])   # [] (clamped before start)
+
+# Negative start with negative step
+s = list(range(10))
+print(s[-1:-5:-1])   # [9, 8, 7, 6]
+print(s[-5:-1:1])    # [5, 6, 7, 8]
+
+# Symmetric padding extraction
+def extract_center(seq, window):
+    mid = len(seq) // 2
+    half = window // 2
+    return seq[mid-half:mid+half+1]
+
+print(extract_center(list(range(10)), 3))  # [4, 5, 6]
+
+# Boundary conditions
+def safe_last(seq, n=1):
+    return seq[-n:] if seq else []
+
+print(safe_last([1, 2, 3], 2))  # [2, 3]
+print(safe_last([], 2))         # []
+
+# Nested negative indexing
+matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+print(matrix[-1][-1])  # 9 (last row, last col)
+```
+
+### Real-World Use Cases
+
+- **File extensions**: `filename[-3:]` for extension extraction
+- **Log analysis**: `log_line[-50:]` for recent entries
+- **Paginated APIs**: `data[-page_size:]` for most recent page
+- **Circular buffers**: Using negative indices for wrap-around access
+- **URL routing**: Path suffix extraction for routing
+- **Data trimming**: Removing first/last N elements from arrays
+- **Recent history**: Accessing most recent N items
+
+### Common Mistakes
+
+```python
+# Mistake 1: IndexError on empty sequence
+# empty = []
+# print(empty[-1])  # IndexError
+# Check first: if empty: ...
+
+# Mistake 2: Confusing -1 indexing with slicing
+s = [1, 2, 3]
+print(s[-1])     # 3 (element)
+print(s[-1:])    # [3] (list slice)
+
+# Mistake 3: Out-of-bounds negative index on access
+# s = [1, 2]
+# print(s[-10])  # IndexError (but slicing works!)
+
+# Mistake 4: Negative step with wrong start/stop
+s = [0, 1, 2, 3, 4, 5]
+print(s[4:1:-1])   # [4, 3, 2] (correct)
+print(s[-2:-5:-1]) # [4, 3, 2] (negative indices with negative step)
+
+# Mistake 5: Forgetting that -0 is still 0
+s = [1, 2, 3]
+print(s[-0])  # 1 (not 3!)
+```
+
+### Best Practices
+
+- Use `s[-1]` for last element instead of `s[len(s)-1]`
+- Use `s[-n:]` to get the last n elements
+- Use `s[:-n]` to drop the last n elements
+- Always check for empty sequences before negative indexing (single element)
+- For slicing, negative indices beyond bounds are clamped safely
+- Combine negative indices with positive step for suffix extraction
+
+### Performance Considerations
+
+Negative index adjustment is O(1) — it's just an addition. There is no performance penalty compared to positive indices. The adjustment happens once during the slice or access operation. Python's internals handle negative indices at the C level with no Python-level overhead.
+
+### Interview Questions
+
+1. How does Python handle negative indices internally?
+2. What is the difference between `s[-1]` and `s[-1:]`?
+3. What happens when you use an out-of-bounds negative index in a slice vs direct access?
+4. How do you get the last N elements of a sequence?
+5. How do you remove the last N elements using slicing?
+6. Can you use negative step with negative indices?
+7. What is `-0` in Python indexing?
+8. How do you safely handle negative indexing on empty sequences?
+
+### Coding Challenges
+
+```python
+# Challenge 1: Tail function
+def tail(seq, n=10):
+    return seq[-max(0, n):] if seq else []
+
+print(tail([1, 2, 3, 4, 5], 3))  # [3, 4, 5]
+print(tail([1], 5))               # [1]
+
+# Challenge 2: Drop last N
+def drop_last(seq, n=1):
+    return seq[:-n] if n < len(seq) else type(seq)()
+
+print(drop_last([1, 2, 3, 4, 5], 2))  # [1, 2, 3]
+
+# Challenge 3: Alternating from end
+def alternate_from_end(seq):
+    return seq[-1::-2]
+
+print(alternate_from_end([1, 2, 3, 4, 5, 6]))  # [6, 4, 2]
+
+# Challenge 4: Safe negative accessor
+class SafeSeq:
+    def __init__(self, data):
+        self.data = data
+    def get(self, idx):
+        if not self.data:
+            raise IndexError("empty sequence")
+        return self.data[idx]
+
+s = SafeSeq([10, 20, 30])
+print(s.get(-1))  # 30
+
+# Challenge 5: Circular negative index
+def circular_get(seq, idx):
+    return seq[idx % len(seq)] if seq else None
+
+print(circular_get([1, 2, 3], -1))  # 3
+print(circular_get([1, 2, 3], -4))  # 3
+```
+
+### Related Topics
+
+- Positive indexing (0-based)
+- slice() built-in
+- Slice start/stop/step defaults
+- Sequence protocol
+- IndexError handling
+- Circular buffers

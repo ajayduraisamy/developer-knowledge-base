@@ -2,118 +2,85 @@
 
 ## Introduction
 
-Sets are unordered collections of unique, hashable elements. They are mutable (can add/remove elements) but cannot contain mutable elements (like lists or dicts). Sets are optimized for membership testing, deduplication, and mathematical set operations like union, intersection, and difference. Python also provides `frozenset`, an immutable version of set.
+Sets are unordered collections of unique, hashable elements. They are mutable (elements can be added or removed) but cannot contain mutable elements (lists, dicts, or other sets). Sets are optimized for O(1) average-time membership testing, deduplication, and mathematical set operations such as union, intersection, difference, and symmetric difference. Python also provides `frozenset`, an immutable, hashable variant. Sets are fundamental to algorithms that require fast membership queries, uniqueness constraints, and set algebra.
 
-## Why It Is Important
+## set() constructor
 
-Sets are important because:
-- They provide O(1) average-time membership testing
-- They automatically eliminate duplicates
-- They support mathematical set operations efficiently
-- They are useful for data cleaning and validation
-- They enable fast intersection/union operations on collections
+### What It Is
 
-## Syntax
+The `set()` constructor creates a set from any iterable — lists, strings, tuples, ranges, generators, or other iterables. With no argument, it returns an empty set. Note that `{}` creates an empty dictionary, not a set.
+
+### Why It Is Important
+
+The constructor is the primary mechanism for creating sets programmatically. It enables deduplication, type conversion for hashability checks, and transformation of sequence data into an efficiently queryable form.
+
+### How It Works Internally
+
+CPython implements sets as hash tables very similar to dictionaries — a `PySetObject` uses a sparse array of `setentry` structs with open addressing and quadratic probing. When `set()` is called on an iterable, Python iterates the input and inserts each element using the hash function, skipping duplicates. The table resizes when the load factor exceeds 2/3. Unlike dicts, set entries store only keys (no associated values), making them slightly more memory-efficient than dicts with dummy values.
+
+### Syntax
 
 ```python
-# Creating sets
-empty_set = set()  # {} creates an empty dict, not set!
-numbers = {1, 2, 3, 4, 5}
-mixed = {1, "hello", (1, 2)}  # Hashable elements only
+# Empty set
+s = set()
 
-# From other iterables
-from_list = set([1, 2, 2, 3])  # {1, 2, 3}
-from_string = set("hello")  # {'h', 'e', 'l', 'o'}
+# From iterable
+s = set([1, 2, 3])
+s = set("hello")    # {'h', 'e', 'l', 'o'}
+s = set(range(5))
+s = set(x**2 for x in range(3))
 
-# Set comprehension
-squares = {x**2 for x in range(5)}  # {0, 1, 4, 9, 16}
-
-# Frozenset (immutable)
-fs = frozenset([1, 2, 3])
+# Note: {} is empty dict, not set
+empty_set = set()      # Correct
+empty_dict = {}        # Not a set!
 ```
 
-## Examples
-
-### Creating Sets
+### Beginner Examples
 
 ```python
-# Different creation methods
-empty = set()  # Must use set(), not {}
-print(f"Empty set: {empty}, type: {type(empty)}")
+# Converting list to set (deduplication)
+numbers = [1, 2, 2, 3, 3, 3, 4]
+unique = set(numbers)
+print(unique)  # {1, 2, 3, 4}
 
-# Literal syntax
-numbers = {1, 2, 3, 4, 5}
-print(f"Numbers: {numbers}")
+# From string
+chars = set("mississippi")
+print(chars)  # {'m', 'i', 's', 'p'} (order may vary)
 
-# Eliminating duplicates
-duplicates = {1, 2, 2, 3, 3, 3, 4}
-print(f"Duplicates removed: {duplicates}")
+# From range
+evens = set(range(0, 10, 2))
+print(evens)  # {0, 2, 4, 6, 8}
 
-# From various iterables
-from_list = set([3, 1, 4, 1, 5, 9])
-from_string = set("mississippi")
-from_range = set(range(5))
-print(f"From list: {from_list}")
-print(f"From string 'mississippi': {from_string}")
-print(f"From range: {from_range}")
+# Empty set
+s = set()
+s.add("first")
+print(s)  # {'first'}
 
-# Mixed types (all must be hashable)
-mixed = {1, "hello", (1, 2), 3.14}
-print(f"Mixed set: {mixed}")
-
-# Frozenset
-fs = frozenset([1, 2, 3, 3, 4])
-print(f"Frozenset: {fs}")
-print(f"Frozenset is hashable: {hash(fs)}")
+# From generator
+s = set(x**2 for x in range(5))
+print(s)  # {0, 1, 4, 9, 16}
 ```
 
-### Basic Set Operations
+### Intermediate Examples
 
 ```python
-# Adding elements
-fruits = {"apple", "banana"}
-fruits.add("cherry")
-print(f"After add: {fruits}")
+# Set from dict keys/values
+d = {"a": 1, "b": 2, "c": 3}
+keys_set = set(d.keys())
+values_set = set(d.values())
+print(keys_set)    # {'a', 'b', 'c'}
 
-# Removing elements
-fruits.discard("banana")  # No error if missing
-print(f"After discard: {fruits}")
-fruits.remove("apple")  # KeyError if missing
-# fruits.remove("grape")  # KeyError!
+# Set comprehension vs set()
+comp = {x for x in range(10) if x % 2 == 0}
+func = set(x for x in range(10) if x % 2 == 0)
+print(comp == func)  # True
 
-# Pop (remove and return arbitrary element)
-numbers = {1, 2, 3}
-popped = numbers.pop()
-print(f"Popped: {popped}, Remaining: {numbers}")
+# Nested iteration to set
+matrix = [[1, 2], [2, 3], [3, 4]]
+all_values = set(item for row in matrix for item in row)
+print(all_values)  # {1, 2, 3, 4}
 
-# Clear
-numbers.clear()
-print(f"After clear: {numbers}")
-
-# Membership testing (fast, O(1))
-fruits = {"apple", "banana", "cherry"}
-print(f"'banana' in fruits: {'banana' in fruits}")  # True
-print(f"'grape' not in fruits: {'grape' not in fruits}")  # True
-
-# Length
-print(f"Number of fruits: {len(fruits)}")
-
-# Iteration
-for fruit in fruits:
-    print(f"  {fruit}")
-```
-
-## Beginner Examples
-
-```python
-# Removing duplicates from a list
-numbers = [1, 2, 3, 2, 4, 3, 5, 1, 6]
-unique = list(set(numbers))
-print(f"Original: {numbers}")
-print(f"Unique: {unique}")
-
-# But note: set() does not preserve order
-# To preserve order while removing duplicates:
+# Removing duplicates while preserving order (using set for tracking)
 def unique_ordered(items):
     seen = set()
     result = []
@@ -123,254 +90,110 @@ def unique_ordered(items):
             result.append(item)
     return result
 
-numbers = [3, 1, 2, 1, 3, 4, 3, 5]
-print(f"Unique ordered: {unique_ordered(numbers)}")
-
-# Finding common elements between two lists
-list_a = [1, 2, 3, 4, 5]
-list_b = [4, 5, 6, 7, 8]
-common = set(list_a) & set(list_b)
-print(f"Common elements: {common}")
-
-# Finding unique elements
-only_in_a = set(list_a) - set(list_b)
-only_in_b = set(list_b) - set(list_a)
-print(f"Only in A: {only_in_a}")
-print(f"Only in B: {only_in_b}")
-
-# Checking if all items are unique
-def all_unique(items):
-    return len(items) == len(set(items))
-
-print(f"[1,2,3] all unique: {all_unique([1, 2, 3])}")  # True
-print(f"[1,2,2] all unique: {all_unique([1, 2, 2])}")  # False
-
-# Counting vowels
-def count_vowels(text):
-    vowels = set("aeiouAEIOU")
-    return sum(1 for char in text if char in vowels)
-
-print(f"Vowels in 'Hello World': {count_vowels('Hello World')}")
+print(unique_ordered([3, 1, 2, 1, 3, 4]))  # [3, 1, 2, 4]
 ```
 
-## Intermediate Examples
+### Advanced Examples
 
 ```python
-# Mathematical set operations
-a = {1, 2, 3, 4, 5}
-b = {4, 5, 6, 7, 8}
+# Frozen set from set
+s = set([1, 2, 3])
+fs = frozenset(s)
+print(hash(fs))  # Hashable
 
-print(f"A: {a}")
-print(f"B: {b}")
+# Set of frozensets (nested sets workaround)
+set_of_sets = {frozenset([1, 2]), frozenset([3, 4])}
+print(set_of_sets)
 
-# Union | : elements in A or B
-print(f"Union (A | B): {a | b}")           # {1, 2, 3, 4, 5, 6, 7, 8}
-print(f"Union (A.union(B)): {a.union(b)}")
+# Memory-efficient duplicate detection with set
+import sys
 
-# Intersection & : elements in both A and B
-print(f"Intersection (A & B): {a & b}")    # {4, 5}
-print(f"Intersection (A.intersection(B)): {a.intersection(b)}")
+def has_duplicates(items):
+    seen = set()
+    for item in items:
+        if item in seen:
+            return True
+        seen.add(item)
+    return False
 
-# Difference - : elements in A but not B
-print(f"Difference (A - B): {a - b}")      # {1, 2, 3}
-print(f"Difference (B - A): {b - a}")      # {6, 7, 8}
-print(f"Difference (A.difference(b)): {a.difference(b)}")
+# Early exit on duplicate
+print(has_duplicates([1, 2, 3, 4, 2]))  # True
 
-# Symmetric difference ^ : elements in A or B but not both
-print(f"Symmetric diff (A ^ B): {a ^ b}")  # {1, 2, 3, 6, 7, 8}
-print(f"Symmetric diff: {a.symmetric_difference(b)}")
+# Building sets from complex objects
+class User:
+    def __init__(self, uid, name):
+        self.uid = uid
+        self.name = name
+    def __hash__(self):
+        return hash(self.uid)
+    def __eq__(self, other):
+        return isinstance(other, User) and self.uid == other.uid
 
-# Subset / Superset
-x = {1, 2, 3}
-y = {1, 2, 3, 4, 5}
-print(f"X: {x}, Y: {y}")
-print(f"X is subset of Y: {x.issubset(y)}")       # True
-print(f"Y is superset of X: {y.issuperset(x)}")    # True
-print(f"X is proper subset of Y: {x < y}")         # True (strict)
-
-# Disjoint sets (no common elements)
-c = {10, 20, 30}
-print(f"X and C are disjoint: {x.isdisjoint(c)}")  # True
-
-# Update operations (modify in-place)
-a = {1, 2, 3}
-b = {3, 4, 5}
-a.update(b)  # Add all elements from b to a
-print(f"After update: {a}")  # {1, 2, 3, 4, 5}
-
-a.intersection_update({1, 2, 3, 6})
-print(f"After intersection_update: {a}")  # {1, 2, 3}
-
-a.difference_update({1})
-print(f"After difference_update: {a}")  # {2, 3}
-
-a.symmetric_difference_update({3, 4, 5})
-print(f"After symmetric_difference_update: {a}")  # {2, 4, 5}
+users = {User(1, "Alice"), User(2, "Bob"), User(1, "Alicia")}
+print(len(users))  # 2 (uid 1 deduplicated)
 ```
 
-## Advanced Examples
+### Real-World Use Cases
+
+- **Data deduplication**: Removing duplicate rows, IDs, or emails
+- **Membership testing**: Checking if a user is in an allowed set
+- **Tag/flag systems**: Tracking unique tags across documents
+- **Crawling**: Tracking visited URLs in web scrapers
+- **Access control**: Maintaining sets of authorized tokens
+- **Analytics**: Finding unique visitors across time periods
+
+### Common Mistakes
 
 ```python
-# Set comprehensions
-squares = {x**2 for x in range(10)}
-print(f"Squares: {squares}")
-
-# Conditional set comprehension
-evens = {x for x in range(20) if x % 2 == 0}
-print(f"Even numbers: {evens}")
-
-# Set comprehension with multiple loops
-pairs = {(a, b) for a in range(3) for b in range(3) if a != b}
-print(f"Pairs: {pairs}")
-
-# Using sets for graph algorithms (adjacency)
-graph = {
-    "A": {"B", "C"},
-    "B": {"A", "D", "E"},
-    "C": {"A", "F"},
-    "D": {"B"},
-    "E": {"B", "F"},
-    "F": {"C", "E"}
-}
-
-def bfs_shortest_path(graph, start, goal):
-    """Find shortest path using sets for visited tracking."""
-    if start == goal:
-        return [start]
-    visited = {start}
-    queue = [[start]]
-    while queue:
-        path = queue.pop(0)
-        node = path[-1]
-        for neighbor in graph[node] - visited:
-            if neighbor == goal:
-                return path + [neighbor]
-            visited.add(neighbor)
-            queue.append(path + [neighbor])
-    return None
-
-print(f"Path A to F: {bfs_shortest_path(graph, 'A', 'F')}")
-
-# Using frozenset as dictionary keys
-# Sets can't be dict keys, but frozensets can
-teams = {
-    frozenset({"Alice", "Bob"}): "Team Alpha",
-    frozenset({"Charlie", "Diana"}): "Team Beta"
-}
-team_members = frozenset({"Alice", "Bob"})
-print(f"Team: {teams[team_members]}")
-
-# Finding unique elements across multiple lists using sets
-def unique_across(*lists):
-    """Return elements that appear in exactly one list."""
-    all_elements = set()
-    duplicates = set()
-    for lst in lists:
-        for item in lst:
-            if item in all_elements:
-                duplicates.add(item)
-            all_elements.add(item)
-    return all_elements - duplicates
-
-list1 = [1, 2, 3, 4]
-list2 = [3, 4, 5, 6]
-list3 = [5, 6, 7, 8]
-print(f"Unique across lists: {unique_across(list1, list2, list3)}")
-
-# Anagram groups using frozenset of character counts
-from collections import Counter
-def anagram_groups(words):
-    groups = {}
-    for word in words:
-        # Use frozenset of (char, count) as key
-        signature = frozenset(Counter(word).items())
-        groups.setdefault(signature, []).append(word)
-    return list(groups.values())
-
-words = ["eat", "tea", "tan", "ate", "nat", "bat"]
-print(f"Anagram groups: {anagram_groups(words)}")
-```
-
-## Real-World Use Cases
-
-- **Data Deduplication**: Removing duplicates from large datasets
-- **Membership Testing**: Checking if items exist in a collection
-- **Access Control**: Tracking user permissions and roles
-- **Graph Algorithms**: Tracking visited nodes in BFS/DFS
-- **Data Analysis**: Finding common/unique elements across datasets
-- **Database Operations**: Implementing set-based SQL operations
-- **Spam Filtering**: Maintaining sets of known spam addresses
-
-## Common Mistakes
-
-```python
-# Mistake 1: Using {} to create empty set
-empty = {}  # This is a dict, not a set!
-print(type(empty))  # <class 'dict'>
-
+# Mistake 1: Using {} for empty set
+s = {}  # This is a dict!
+print(type(s))  # <class 'dict'>
 # Correct:
-empty = set()
-print(type(empty))  # <class 'set'>
+s = set()
 
-# Mistake 2: Adding mutable elements
-# s = set()
+# Mistake 2: Adding unhashable types
+s = set()
 # s.add([1, 2])  # TypeError: unhashable type: 'list'
-# Use tuple instead:
-s.add((1, 2))
+s.add((1, 2))  # Correct (tuple is hashable)
 
-# Mistake 3: Assuming sets are ordered
-s = {3, 1, 2}
-print(s)  # May not be {1, 2, 3} - sets are unordered!
+# Mistake 3: Assuming set() preserves order
+s = set([3, 1, 2])
+print(s)  # Likely {1, 2, 3} but NOT guaranteed!
 
-# Mistake 4: Forgetting that set operations return new sets
-a = {1, 2, 3}
-b = {3, 4, 5}
-result = a.union(b)  # Returns new set, does NOT modify a
-print(a)  # Still {1, 2, 3}
-
-# For in-place modification:
-a.update(b)
-print(a)  # {1, 2, 3, 4, 5}
-
-# Mistake 5: Using set on list of lists
+# Mistake 4: set() on list of lists
 # set([[1, 2], [3, 4]])  # TypeError
-# Correct:
-set_of_tuples = {(1, 2), (3, 4)}
+set_of_tuples = {(1, 2), (3, 4)}  # Correct
 
-# Mistake 6: Set.pop() removes arbitrary element
-# Don't rely on order when using pop()
+# Mistake 5: Forgetting set() is O(n) with hash collisions
+# In worst-case (all hashes collide), set() becomes O(n^2)
 ```
 
-## Best Practices
+### Best Practices
 
-- Use `set()` for creating empty sets
-- Use sets for O(1) membership testing instead of lists
-- Use `frozenset` for hashable, immutable sets
-- Prefer set operators (`|`, `&`, `-`, `^`) over method calls
-- Use set comprehensions for clarity
-- Use `.discard()` instead of `.remove()` when unsure about existence
-- Convert to list with `list()` if you need ordered output
-- Use `isdisjoint()` instead of `len(a & b) == 0`
-- Use `<=` and `>=` for subset/superset checks
-- Use `all_unique = len(items) == len(set(items))` for dup check
+- Use `set()` for empty sets (never `{}`)
+- Use set comprehensions for clarity when transforming elements
+- Use `frozenset()` when hashability is required
+- Prefer `set(iterable)` over manual `for` loops with `.add()`
+- Be explicit about hash/eq for custom objects in sets
 
-## Interview Questions
+### Performance Considerations
 
-1. What is the difference between set and list?
-2. How does membership testing differ between sets and lists?
-3. What is a frozenset and when would you use it?
-4. Explain the different set operations (union, intersection, etc.)
-5. What are the time complexities of set operations?
-6. Can a set contain a set? How can you achieve nested sets?
-7. How do you remove duplicates from a list while preserving order?
-8. What is a set comprehension?
-9. How are sets implemented in Python (internally)?
-10. When should you use a set instead of a list?
+`set()` construction is O(n) average, O(n^2) worst-case (hash collisions). Sets consume ~72 bytes + 8 bytes per entry (CPython). For large datasets, pre-allocating capacity is not directly supported; Python resizes automatically. Repeated `add()` calls are amortized O(1). Sets are significantly faster than lists for membership testing (O(1) vs O(n)).
 
-## Coding Challenges
+### Interview Questions
+
+1. Why does `set()` exist when `{}` creates dicts?
+2. What happens when you pass a generator to `set()`?
+3. How does CPython implement sets internally?
+4. What is the time complexity of `set(iterable)`?
+5. Can you create a set of sets? How?
+6. How does `set()` interact with user-defined hash functions?
+7. What is the difference between `set()` and `frozenset()`?
+
+### Coding Challenges
 
 ```python
-# Challenge 1: Find duplicates in a list
+# Challenge 1: Find duplicates using set
 def find_duplicates(items):
     seen = set()
     duplicates = set()
@@ -379,67 +202,771 @@ def find_duplicates(items):
             duplicates.add(item)
         else:
             seen.add(item)
-    return list(duplicates)
+    return duplicates
 
-print(find_duplicates([1, 2, 3, 2, 4, 3, 5]))  # [2, 3]
+print(find_duplicates([1, 2, 3, 2, 4, 3, 5]))  # {2, 3}
 
-# Challenge 2: Check if two strings are anagrams
-def are_anagrams(s1, s2):
-    return set(s1.lower()) == set(s2.lower()) and len(s1) == len(s2)
+# Challenge 2: Unique elements across multiple lists
+def unique_elements(*lists):
+    all_set = set()
+    duplicate_set = set()
+    for lst in lists:
+        for item in lst:
+            if item in all_set:
+                duplicate_set.add(item)
+            all_set.add(item)
+    return all_set - duplicate_set
 
-print(are_anagrams("listen", "silent"))  # True
-print(are_anagrams("hello", "world"))    # False
+print(unique_elements([1, 2], [2, 3], [3, 4]))  # {1, 4}
 
-# Challenge 3: Jaccard similarity between sets
-def jaccard_similarity(a, b):
+# Challenge 3: Set-based Jaccard similarity
+def jaccard(a, b):
     if not a and not b:
         return 1.0
     return len(a & b) / len(a | b)
 
-a = {1, 2, 3, 4}
-b = {3, 4, 5, 6}
-print(f"Jaccard similarity: {jaccard_similarity(a, b):.2f}")
-
-# Challenge 4: Find symmetric difference of three sets
-def symmetric_diff_three(a, b, c):
-    return (a ^ b) ^ c
-
-a = {1, 2, 3}
-b = {2, 3, 4}
-c = {3, 4, 5}
-print(f"Symmetric diff of three: {symmetric_diff_three(a, b, c)}")
-
-# Challenge 5: Set-based spell checker
-def spell_check(word, dictionary):
-    """Find words in dictionary that are 1 edit away."""
-    candidates = set()
-    # Deletes
-    for i in range(len(word)):
-        candidates.add(word[:i] + word[i+1:])
-    # Replaces
-    for i in range(len(word)):
-        for c in "abcdefghijklmnopqrstuvwxyz":
-            candidates.add(word[:i] + c + word[i+1:])
-    # Inserts
-    for i in range(len(word) + 1):
-        for c in "abcdefghijklmnopqrstuvwxyz":
-            candidates.add(word[:i] + c + word[i:])
-    return candidates & dictionary
-
-dictionary = {"hello", "world", "help", "held", "helm", "hell"}
-print(f"Suggestions for 'helo': {spell_check('helo', dictionary)}")
+a = set([1, 2, 3, 4])
+b = set([3, 4, 5, 6])
+print(f"{jaccard(a, b):.2f}")  # 0.33
 ```
 
-## Summary
+### Related Topics
 
-Sets are unordered collections of unique, hashable elements with fast membership testing and mathematical set operations. They support union, intersection, difference, and symmetric difference operations. Frozensets provide immutable, hashable sets. Sets excel at deduplication, membership checking, and set-based algorithms. Using them appropriately can significantly improve code clarity and performance.
+- Hashable types and __hash__
+- frozenset
+- set comprehensions
+- CPython hash table implementation
+- dict keys (similar hash table)
 
-## Related Topics
+## Union
 
-- Dictionaries (set-like keys)
-- Hashable Types
-- Frozenset
-- Set Comprehensions
-- Collections Module
-- Graph Algorithms
-- Boolean Algebra
+### What It Is
+
+Union combines elements from two or more sets, returning a new set containing all unique elements from all input sets. In Python, union is performed with the `|` operator or the `.union()` method.
+
+### Why It Is Important
+
+Union is fundamental to set algebra and appears in data merging, tag aggregation, permission combination, and any scenario where you need the complete set of unique items across multiple collections.
+
+### How It Works Internally
+
+The `|` operator calls `PySet_Union()` internally. CPython creates a new empty set, then copies all elements from the first set, then iterates the second set and inserts elements not already present. The `|` operator is more efficient than `a.union(b)` when both operands are sets because it can optimize capacity pre-allocation based on the sum of sizes.
+
+### Syntax
+
+```python
+a = {1, 2, 3}
+b = {3, 4, 5}
+
+# Operator
+result = a | b
+
+# Method
+result = a.union(b)
+
+# Multiple sets
+result = a | b | {7, 8}
+result = a.union(b, {6, 7})
+
+# In-place update
+a |= b  # a becomes a | b
+a.update(b)  # Same as |=
+```
+
+### Beginner Examples
+
+```python
+a = {1, 2, 3}
+b = {3, 4, 5}
+
+union_op = a | b
+union_method = a.union(b)
+print(union_op)      # {1, 2, 3, 4, 5}
+print(union_method)  # {1, 2, 3, 4, 5}
+
+# Strings as sets
+a = set("abc")
+b = set("bcd")
+print(a | b)  # {'a', 'b', 'c', 'd'}
+
+# Empty set union
+empty = set()
+print(empty | {1, 2})  # {1, 2}
+
+# Union of identical sets
+a = {1, 2, 3}
+print(a | a)  # {1, 2, 3} (no duplicates)
+```
+
+### Intermediate Examples
+
+```python
+# Multiple set union
+a = {1, 2}
+b = {3, 4}
+c = {5, 6}
+result = a | b | c
+print(result)  # {1, 2, 3, 4, 5, 6}
+
+# Union with generators
+def generate_numbers():
+    yield from range(3)
+
+s = {10, 20}.union(generate_numbers())
+print(s)  # {0, 1, 2, 10, 20}
+
+# Union for tag aggregation
+user1_tags = {"python", "data-science", "ml"}
+user2_tags = {"python", "web-dev", "devops"}
+all_tags = user1_tags | user2_tags
+print(all_tags)
+
+# Performance comparison
+import time
+a = set(range(100000))
+b = set(range(50000, 150000))
+
+start = time.perf_counter()
+c = a | b
+print(f"Operator: {time.perf_counter() - start:.4f}s")
+
+start = time.perf_counter()
+c = a.union(b)
+print(f"Method: {time.perf_counter() - start:.4f}s")
+```
+
+### Advanced Examples
+
+```python
+# Union of set of frozensets
+set_of_frozen = {frozenset([1, 2]), frozenset([3, 4])}
+unioned = set()
+for fs in set_of_frozen:
+    unioned |= fs
+print(unioned)  # {1, 2, 3, 4}
+
+# Reducer pattern for union
+from functools import reduce
+sets = [{1, 2}, {2, 3}, {3, 4}, {4, 5}]
+result = reduce(lambda a, b: a | b, sets, set())
+print(result)  # {1, 2, 3, 4, 5}
+
+# Tag-based content recommendation
+def recommended_content(user_tags, content_tags):
+    overlapping = user_tags & content_tags
+    total = user_tags | content_tags
+    if not total:
+        return 0.0
+    return len(overlapping) / len(total)
+
+user = {"python", "ml", "data"}
+content = {"python", "web", "api"}
+print(f"Relevance: {recommended_content(user, content):.2f}")  # 0.20
+```
+
+### Real-World Use Cases
+
+- **Permission aggregation**: Combining permissions from multiple roles
+- **Tag expansion**: Collecting all tags across a document set
+- **User base merge**: Combining user lists from multiple sources
+- **Feature sets**: Union of feature sets in ML pipelines
+- **Query expansion**: Union of related search terms in information retrieval
+- **Access control**: Union of allowed IP ranges
+
+### Common Mistakes
+
+```python
+# Mistake 1: Using | with non-set types
+# {1, 2} | [3, 4]  # TypeError: unsupported operand type(s) for |: 'set' and 'list'
+{1, 2}.union([3, 4])  # Works -- method accepts any iterable
+
+# Mistake 2: Forgetting union creates a new set
+a = {1, 2}
+b = {2, 3}
+c = a | b
+print(a)  # {1, 2} -- unchanged
+print(c)  # {1, 2, 3} -- new set
+
+# Use |= for in-place:
+a |= b
+print(a)  # {1, 2, 3}
+
+# Mistake 3: Assuming union preserves original order
+# Sets are unordered -- don't rely on element order
+```
+
+### Best Practices
+
+- Prefer `|` operator over `.union()` when both operands are sets (more readable)
+- Use `.union()` when one argument is a non-set iterable
+- Use `|=` for in-place updates
+- Use `functools.reduce` for union of many sets
+- Chain unions with `|` for readability
+
+### Performance Considerations
+
+`|` is O(len(a) + len(b)) average. CPython optimizes the operation by pre-allocating the result set to the size of a + b. `.union(*many_sets)` is O(total elements across all sets). The `|=` operator modifies in-place and may avoid reallocation if the target set has sufficient capacity.
+
+### Interview Questions
+
+1. What is the difference between `|` and `.union()`?
+2. Can `|` work with non-set types?
+3. How does Python compute union internally?
+4. What is the time complexity of set union?
+5. How do you union more than two sets efficiently?
+6. Does union mutate the original sets?
+
+### Coding Challenges
+
+```python
+# Challenge 1: Union of variable number of sets
+def multi_union(*sets):
+    result = set()
+    for s in sets:
+        result |= s
+    return result
+
+print(multi_union({1}, {2, 3}, {3, 4, 5}))  # {1, 2, 3, 4, 5}
+
+# Challenge 2: Symmetric aggregation
+def symmetric_union(a, b):
+    return (a - b) | (b - a)  # Equivalent to a ^ b
+
+print(symmetric_union({1, 2, 3}, {2, 3, 4}))  # {1, 4}
+
+# Challenge 3: Union-based spell checker
+def spell_check(word, dictionary):
+    letters = set("abcdefghijklmnopqrstuvwxyz")
+    candidates = set()
+    # One-character edits: union of all possible edits
+    for i in range(len(word)):
+        candidates |= {word[:i] + c + word[i+1:] for c in letters}
+    return candidates & dictionary
+
+dictionary = {"hello", "hallo", "helly", "world"}
+print(spell_check("hello", dictionary))
+```
+
+### Related Topics
+
+- set intersection (&)
+- set difference (-)
+- set symmetric difference (^)
+- update methods (|=, &=, -=, ^=)
+- frozenset operations
+
+## Intersection
+
+### What It Is
+
+Intersection returns a new set containing only elements present in all input sets. In Python, intersection uses the `&` operator or `.intersection()` method.
+
+### Why It Is Important
+
+Intersection is essential for finding commonality — common tags, shared users, overlapping permissions, mutual connections, and any scenario requiring elements that satisfy multiple criteria simultaneously.
+
+### How It Works Internally
+
+The `&` operator calls `PySet_Intersection()`. CPython iterates over the smaller set and checks membership in the other set(s), yielding only elements found in all sets. This "iterate smallest first" strategy minimizes membership tests. The result set is pre-allocated to the size of the smallest input set.
+
+### Syntax
+
+```python
+a = {1, 2, 3, 4}
+b = {3, 4, 5, 6}
+
+# Operator
+result = a & b
+
+# Method
+result = a.intersection(b)
+
+# Multiple sets
+result = a & b & {4, 5}
+result = a.intersection(b, {2, 4})
+
+# In-place
+a &= b  # a becomes a & b
+a.intersection_update(b)  # Same as &=
+```
+
+### Beginner Examples
+
+```python
+a = {1, 2, 3, 4}
+b = {3, 4, 5, 6}
+
+common = a & b
+print(common)  # {3, 4}
+
+# With strings
+a = set("hello")
+b = set("world")
+print(a & b)  # {'l', 'o'}
+
+# Empty intersection
+a = {1, 2}
+b = {3, 4}
+print(a & b)  # set()
+
+# Single set
+print(a & a)  # {1, 2}
+
+# Check disjoint sets
+def are_disjoint(a, b):
+    return len(a & b) == 0
+
+print(are_disjoint({1, 2}, {3, 4}))  # True
+```
+
+### Intermediate Examples
+
+```python
+# Three-way intersection
+a = {1, 2, 3, 4}
+b = {2, 3, 4, 5}
+c = {3, 4, 5, 6}
+print(a & b & c)  # {3, 4}
+
+# Intersection with non-set iterable
+a = {1, 2, 3, 4}
+print(a.intersection([3, 4, 5]))  # {3, 4}
+
+# Use case: common friends
+alice_friends = {"bob", "charlie", "diana"}
+bob_friends = {"alice", "charlie", "eve"}
+mutual = alice_friends & bob_friends
+print(mutual)  # {'charlie'}
+
+# Intersection as filter
+valid_ids = {101, 102, 103, 104}
+selected = {102, 104, 106}
+valid_selected = valid_ids & selected
+print(valid_selected)  # {102, 104}
+
+# Intersection for word analysis
+def common_letters(words):
+    if not words:
+        return set()
+    result = set(words[0])
+    for word in words[1:]:
+        result &= set(word)
+    return result
+
+print(common_letters(["hello", "world", "help"]))  # {'l'}
+```
+
+### Advanced Examples
+
+```python
+# Optimized multi-set intersection
+def fast_intersection(*sets):
+    if not sets:
+        return set()
+    smallest = min(sets, key=len)
+    return smallest.intersection(*[s for s in sets if s is not smallest])
+
+sets = [set(range(1000)), set(range(500, 1500)), set(range(300, 800))]
+result = fast_intersection(*sets)
+print(len(result))  # 300
+
+# Intersection of dict key views
+d1 = {"a": 1, "b": 2, "c": 3}
+d2 = {"b": 4, "c": 5, "d": 6}
+common_keys = d1.keys() & d2.keys()
+print(common_keys)  # {'b', 'c'}
+
+# Tag-based filtering
+class Document:
+    def __init__(self, title, tags):
+        self.title = title
+        self.tags = set(tags)
+
+docs = [
+    Document("Py", ["python", "programming"]),
+    Document("ML", ["python", "ml", "data"]),
+    Document("Web", ["python", "web", "api"]),
+]
+
+required = {"python", "ml"}
+matching = [d for d in docs if d.tags & required]
+print([d.title for d in matching])  # ['Py', 'ML']
+
+# Graph intersection for recommendation
+def shared_interests(user1_tags, user2_tags):
+    return len(user1_tags & user2_tags) / len(user1_tags | user2_tags)
+
+print(f"Similarity: {shared_interests({'a', 'b', 'c'}, {'b', 'c', 'd'}):.2f}")
+```
+
+### Real-World Use Cases
+
+- **Database JOINs**: Finding matching rows across tables
+- **Social networks**: Mutual friends or common interests
+- **E-commerce**: Product filtering by multiple criteria
+- **Access control**: Users with all required permissions
+- **Analytics**: Customers who bought multiple products
+- **Search**: Results matching all query terms
+- **Tags**: Content matching multiple tag filters
+
+### Common Mistakes
+
+```python
+# Mistake 1: & with non-set types
+# {1, 2} & [2, 3]  # TypeError
+{1, 2}.intersection([2, 3])  # Works
+
+# Mistake 2: Confusing intersection with union
+a = {1, 2}
+b = {2, 3}
+print(a & b)  # {2} (not {1, 2, 3}!)
+
+# Mistake 3: Forgetting & creates new set
+a = {1, 2, 3}
+b = {2, 3, 4}
+c = a & b
+print(a)  # {1, 2, 3} -- unchanged
+a &= b
+print(a)  # {2, 3} -- modified
+
+# Mistake 4: Assuming intersection of many sets is O(n*m)
+# It's optimized: iterates smallest set first
+```
+
+### Best Practices
+
+- Use `&` over `.intersection()` for set-set operations
+- Use `.intersection()` when including non-set iterables
+- Use `&=` for in-place intersection update
+- Prefer `a & b & c` over chained `.intersection()` calls
+- Use `min(sets, key=len).intersection(*others)` for many sets
+- Use dict view intersection for common-key analysis
+
+### Performance Considerations
+
+`&` is O(min(len(a), len(b))) average for two sets. For multiple sets, iteration order is optimized to start with the smallest set. The result set is pre-allocated to the smallest input size. Dict view intersection (`.keys() & .keys()`) is as efficient as set intersection because dict keys are backed by a hash table.
+
+### Interview Questions
+
+1. How does CPython optimize set intersection?
+2. Why is `a & b & c` efficient?
+3. Can you intersect more than two sets?
+4. How does dict view intersection work?
+5. What is the time complexity of intersection?
+6. What happens when intersecting with an empty set?
+
+### Coding Challenges
+
+```python
+# Challenge 1: Multi-set intersection reducer
+def intersect_all(sets):
+    if not sets:
+        return set()
+    return set.intersection(*sets)
+
+sets = [{1, 2, 3}, {2, 3, 4}, {3, 4, 5}]
+print(intersect_all(sets))  # {3}
+
+# Challenge 2: Intersection-based tag search
+def search_docs(docs, required_tags):
+    required = set(required_tags)
+    return [doc for doc in docs if required & set(doc["tags"]) == required]
+
+docs = [
+    {"title": "A", "tags": ["python", "ml"]},
+    {"title": "B", "tags": ["python", "web"]},
+    {"title": "C", "tags": ["python", "ml", "data"]},
+]
+print([d["title"] for d in search_docs(docs, ["python", "ml"])])
+
+# Challenge 3: Common element across all sublists
+def common_in_all(lists):
+    if not lists:
+        return []
+    common = set(lists[0])
+    for lst in lists[1:]:
+        common &= set(lst)
+    return list(common)
+
+data = [[1, 2, 3, 4], [2, 3, 4, 5], [3, 4, 5, 6]]
+print(common_in_all(data))  # [3, 4]
+```
+
+### Related Topics
+
+- set union (a | b)
+- set difference (a - b)
+- set symmetric difference (a ^ b)
+- dict view intersection
+- Boolean algebra
+- Venn diagrams
+
+## Difference
+
+### What It Is
+
+Difference returns elements present in one set but not in another. Python provides two forms: difference (`-` or `.difference()`) returns elements in the left set but not the right, and symmetric difference (`^` or `.symmetric_difference()`) returns elements in either set but not both.
+
+### Why It Is Important
+
+Difference is essential for exclusion filtering, finding unique elements, change detection (A - B shows what was removed), and data reconciliation. Symmetric difference is crucial for identifying elements that are exclusive to each set.
+
+### How It Works Internally
+
+The `-` operator calls `PySet_Difference()`. CPython iterates over the left set and checks membership in the right set, collecting elements not found in the right. The result is pre-allocated to the size of the left set. `^` (symmetric difference) is implemented as `(a - b) | (b - a)` internally, or directly as `PySet_SymmetricDifference()`, which iterates both sets and tracks elements that appear in only one.
+
+### Syntax
+
+```python
+a = {1, 2, 3, 4}
+b = {3, 4, 5, 6}
+
+# Difference
+result = a - b      # Elements in a but not b
+result = a.difference(b)
+
+# Symmetric difference
+result = a ^ b      # Elements in a or b but not both
+result = a.symmetric_difference(b)
+
+# In-place
+a -= b               # a becomes a - b
+a.difference_update(b)
+
+a ^= b               # a becomes a ^ b
+a.symmetric_difference_update(b)
+```
+
+### Beginner Examples
+
+```python
+a = {1, 2, 3, 4}
+b = {3, 4, 5, 6}
+
+# Difference
+print(a - b)  # {1, 2}
+print(b - a)  # {5, 6}
+
+# Symmetric difference
+print(a ^ b)  # {1, 2, 5, 6}
+
+# With strings
+a = set("hello")
+b = set("world")
+print(a - b)  # {'h', 'e'}
+print(a ^ b)  # {'h', 'e', 'w', 'r', 'd'}
+
+# Empty difference
+print({1, 2} - {1, 2})  # set()
+
+# Single set
+print(a - a)  # set()
+```
+
+### Intermediate Examples
+
+```python
+# Finding unique elements
+all_users = {"alice", "bob", "charlie", "diana"}
+active_users = {"alice", "charlie"}
+inactive = all_users - active_users
+print(inactive)  # {'bob', 'diana'}
+
+# Change detection
+old_permissions = {"read", "write", "delete", "admin"}
+new_permissions = {"read", "write", "export"}
+added = new_permissions - old_permissions
+removed = old_permissions - new_permissions
+print(f"Added: {added}, Removed: {removed}")  # Added: {'export'}, Removed: {'delete', 'admin'}
+
+# Symmetric difference for comparison
+a = {1, 2, 3, 4}
+b = {3, 4, 5, 6}
+exclusive = a ^ b
+print(exclusive)  # {1, 2, 5, 6}
+
+# Difference with non-set
+print(a.difference([3, 4, 5]))  # {1, 2}
+
+# Chaining differences
+a = {1, 2, 3, 4, 5}
+b = {2, 3}
+c = {4}
+result = a - b - c
+print(result)  # {1, 5}
+```
+
+### Advanced Examples
+
+```python
+# Symmetric difference of multiple sets
+def symmetric_diff_all(*sets):
+    if not sets:
+        return set()
+    result = sets[0]
+    for s in sets[1:]:
+        result ^= s
+    return result
+
+sets = [{1, 2}, {2, 3}, {3, 4}]
+print(symmetric_diff_all(*sets))  # {1, 4}
+
+# Difference with dict views
+d1 = {"a": 1, "b": 2, "c": 3}
+d2 = {"b": 4, "c": 5, "d": 6}
+only_in_d1 = d1.keys() - d2.keys()
+only_in_d2 = d2.keys() - d1.keys()
+print(only_in_d1, only_in_d2)  # {'a'} {'d'}
+
+# Symmetric difference for data validation
+def validate_sets(expected, actual):
+    missing = expected - actual
+    extra = actual - expected
+    report = {}
+    if missing:
+        report["missing"] = missing
+    if extra:
+        report["extra"] = extra
+    return report
+
+expected = {"required": 1, "optional": 2}
+actual = {"required": 1, "extra_field": 3}
+print(validate_sets(set(expected), set(actual)))
+
+# Exclusive content recommendation
+user1 = {"python", "ml", "data"}
+user2 = {"python", "web", "devops"}
+exclusive_to_user1 = user1 - user2
+exclusive_to_user2 = user2 - user1
+print(f"Recommend to user2: {exclusive_to_user1}")
+print(f"Recommend to user1: {exclusive_to_user2}")
+```
+
+### Real-World Use Cases
+
+- **Data reconciliation**: Finding differences between two datasets
+- **Permission diffing**: Determining added/removed permissions
+- **Sync operations**: Identifying files to add/delete in backups
+- **A/B testing**: Finding unique users in test vs control groups
+- **Schema migration**: Detecting added/removed columns
+- **Access control**: Users with exclusive access to resources
+- **Inventory**: Items in one warehouse but not another
+
+### Common Mistakes
+
+```python
+# Mistake 1: Forgetting difference is not commutative
+a = {1, 2, 3}
+b = {2, 3, 4}
+print(a - b)  # {1}
+print(b - a)  # {4} (different!)
+
+# Mistake 2: Using - with non-set types
+# a - [3, 4]  # TypeError
+a.difference([3, 4])  # Works
+
+# Mistake 3: Confusing - with ^
+a = {1, 2}
+b = {2, 3}
+print(a - b)  # {1}
+print(a ^ b)  # {1, 3}
+
+# Mistake 4: Forgetting -= creates in-place modification
+a = {1, 2, 3}
+b = {2}
+c = a - b
+print(a)  # {1, 2, 3} -- unchanged
+a -= b
+print(a)  # {1, 3} -- modified
+
+# Mistake 5: Using difference with overlapping in-place updates
+a = {1, 2}
+b = {2, 3}
+a -= b
+# a is now {1}
+# If you need both a and b after, use a - b first, then assign
+```
+
+### Best Practices
+
+- Use `-` for set-set difference (more readable)
+- Use `.difference()` when the right operand is not a set
+- Use `^` for symmetric difference (exclusive elements)
+- Use `-=` and `^=` for in-place updates
+- Use dict key view difference (`d1.keys() - d2.keys()`)
+- Use difference for change detection patterns
+- Combine symmetric difference with intersection for full set comparison
+
+### Performance Considerations
+
+`-` is O(len(a)) average — CPython iterates a and checks membership in b. `^` is O(len(a) + len(b)). Dict key view difference is as efficient as set difference. Pre-allocating the result set avoids resizing overhead. For very large sets, difference is more efficient than union followed by filter.
+
+### Interview Questions
+
+1. What is the difference between `-` and `.difference()`?
+2. What is symmetric difference and when is it useful?
+3. How does CPython implement set difference?
+4. Is set difference commutative?
+5. What is the time complexity of `a - b`?
+6. How do you compute symmetric difference of more than 2 sets?
+7. How can dict key views be used with difference?
+
+### Coding Challenges
+
+```python
+# Challenge 1: Change tracker
+def detect_changes(old, new):
+    added = new - old
+    removed = old - new
+    unchanged = old & new
+    return {"added": added, "removed": removed, "unchanged": unchanged}
+
+old = {"read", "write", "delete"}
+new = {"read", "write", "export"}
+print(detect_changes(old, new))
+
+# Challenge 2: Exclusive items
+def exclusive_items(a, b):
+    return {"only_a": a - b, "only_b": b - a, "both": a & b}
+
+a = {"alice", "bob", "charlie"}
+b = {"bob", "diana", "eve"}
+print(exclusive_items(a, b))
+
+# Challenge 3: Set diff for backup sync
+def backup_sync(local, remote):
+    to_upload = local - remote
+    to_download = remote - local
+    return to_upload, to_download
+
+local = {"f1.txt", "f2.txt", "f3.txt"}
+remote = {"f1.txt", "f4.txt"}
+upload, download = backup_sync(local, remote)
+print(f"Upload: {upload}, Download: {download}")
+
+# Challenge 4: Symmetric difference for A/B test exclusivity
+def ab_exclusive(users_a, users_b):
+    return {"only_a": len(users_a - users_b), "only_b": len(users_b - users_a)}
+
+a = set(range(1000))
+b = set(range(800, 1800))
+print(ab_exclusive(a, b))  # only_a: 800, only_b: 800
+
+# Challenge 5: Set difference for tag-based unsubscription
+def recommend_unsubscribes(user_tags, content_tags):
+    return content_tags - user_tags
+
+user = {"python", "data"}
+content = {"python", "web", "ml"}
+print(recommend_unsubscribes(user, content))  # {'web', 'ml'}
+```
+
+### Related Topics
+
+- set union
+- set intersection
+- symmetric difference
+- frozenset operations
+- Dict key views
+- Boolean algebra
+- Change detection patterns

@@ -1,898 +1,683 @@
-# Thread Safety - race conditions, Lock, RLock, deadlock prevention
-
+﻿# Thread Safety - race conditions, Lock, RLock, deadlock prevention
 ## Introduction
+Thread safety is a critical concern in concurrent programming. When multiple threads access shared data without proper synchronization, the program can produce incorrect results, crash, or enter an unrecoverable state. This file covers the fundamental problems (race conditions, deadlocks), the synchronization primitives that solve them (Lock, RLock), and strategies for writing safe concurrent code.
 
-Thread safety refers to code that functions correctly when multiple threads access shared data concurrently. In Python, thread safety is achieved through synchronization primitives like locks, reentrant locks, semaphores, and thread-local storage to prevent race conditions and ensure data consistency.
+## Race conditions
+### What It Is
+A race condition occurs when the behavior of a program depends on the relative timing or interleaving of multiple threads accessing shared data. The outcome becomes unpredictable because thread scheduling is nondeterministic.
 
-## Why It Is Important
+### Why It Is Important
+Race conditions are the most common concurrency bug. They can cause data corruption, crashes, security vulnerabilities, and bugs that are extremely hard to reproduce and debug. They may pass testing and only manifest under specific timing conditions in production.
 
-Without thread safety, concurrent access to shared data can lead to race conditions, corrupted state, deadlocks, and subtle bugs that are difficult to reproduce and debug. Understanding thread safety is crucial for writing reliable multi-threaded applications, especially in server environments, GUI applications, and data processing pipelines.
+### How It Works Internally
+A race condition typically involves a "read-modify-write" operation that is not atomic at the hardware level. For example, counter += 1 compiles to multiple CPU instructions:
+1. Load counter value into register
+2. Add 1 to register
+3. Store register back to memory
 
-## Syntax
+If two threads execute this concurrently, the interleaving can cause one increment to be lost:
+- Thread A loads counter=5, Thread B loads counter=5
+- Thread A stores counter=6, Thread B stores counter=6 (overwrites A increment!)
+- Final value = 6, expected 7
 
+### Beginner Examples
 ```python
 import threading
-from threading import Lock, RLock, Semaphore, local
-from concurrent.futures import ThreadPoolExecutor
 
-# Lock
-lock = Lock()
-lock.acquire()
-try:
-    # critical section
-finally:
-    lock.release()
+counter = 0
 
-# with statement (preferred)
-with lock:
-    # critical section
+def increment():
+    global counter
+    for _ in range(100000):
+        counter += 1  # Read-modify-write -- not atomic!
 
-# RLock for reentrant locking
-rlock = RLock()
+threads = [threading.Thread(target=increment) for _ in range(10)]
+for t in threads: t.start()
+for t in threads: t.join()
 
-# Thread-local storage
-local_data = threading.local()
-local_data.value = 42
-
-# concurrent.futures
-with ThreadPoolExecutor(max_workers=4) as executor:
-    future = executor.submit(func, arg)
-    result = future.result()
+print(f"Expected: 1000000, Got: {counter}")
 ```
 
-## Examples
-
-### Race Condition Demonstration
-
+### Intermediate Examples
 ```python
 import threading
 import time
 
-counter = 0
+class BankAccount:
+    def __init__(self, balance=0):
+        self.balance = balance
 
-def increment_without_lock(amount):
-    global counter
-    for _ in range(amount):
-        temp = counter
-        time.sleep(0.000001)
-        counter = temp + 1
+    def deposit(self, amount):
+        new_balance = self.balance + amount
+        time.sleep(0.0001)
+        self.balance = new_balance
 
-threads = [
-    threading.Thread(target=increment_without_lock, args=(10000,))
-    for _ in range(5)
-]
+    def withdraw(self, amount):
+        if self.balance >= amount:
+            new_balance = self.balance - amount
+            time.sleep(0.0001)
+            self.balance = new_balance
+            return True
+        return False
 
-for t in threads:
-    t.start()
-for t in threads:
-    t.join()
+account = BankAccount(100)
 
-print(f"Without lock: counter = {counter} (expected: {50000})")
+def deposit_thread():
+    for _ in range(100):
+        account.deposit(10)
+
+def withdraw_thread():
+    for _ in range(100):
+        account.withdraw(10)
+
+t1 = threading.Thread(target=deposit_thread)
+t2 = threading.Thread(target=withdraw_thread)
+t1.start(); t2.start()
+t1.join(); t2.join()
+
+print(f"Expected: 100, Got: {account.balance}")
+```
+
+### Advanced Examples
+```python
+import threading
+
+# Check-then-act race condition
+shared_dict = {}
+
+def writer():
+    for i in range(10000):
+        shared_dict[i] = i
+        del shared_dict[i]
+
+def reader():
+    for _ in range(10000):
+        try:
+            for key in list(shared_dict.keys()):
+                value = shared_dict[key]
+        except KeyError:
+            print("KeyError race condition!")
+            break
+
+t1 = threading.Thread(target=writer)
+t2 = threading.Thread(target=reader)
+t1.start(); t2.start()
+t1.join(); t2.join()
+```
+
+### Real-World Use Cases
+- E-commerce double-charging due to race on balance check
+- Banking overdraft when balance read then debited without lock
+- Inventory overselling when two requests decrement count simultaneously
+- Caching stale data when cache updates race with reads
+
+### Common Mistakes
+- Assuming x += 1 is atomic
+- Reading a value, computing, then writing without lock
+- Check-then-act patterns without locking
+- Iterating a collection while another thread modifies it
+
+### Best Practices
+- Protect shared mutable state with locks
+- Keep critical sections short
+- Prefer immutable data structures
+- Use queue.Queue for thread-safe data transfer
+
+### Performance Considerations
+- Locking adds overhead
+- Contended locks reduce parallelism
+- Fine-grained locking increases throughput with more complexity
+
+### Interview Questions
+1. What is a race condition and how does it occur?
+2. Why is x += 1 not thread-safe in Python?
+3. How can you detect race conditions?
+
+### Coding Challenges
+- Write a program demonstrating a race condition and fix it
+- Create a test that reproduces a specific race condition
+
+### Related Topics
+- Lock, RLock, deadlock, thread safety, synchronization
+
+## Lock
+### What It Is
+threading.Lock ensures mutual exclusion -- only one thread holds the lock at a time, protecting critical sections that access shared data.
+
+### Why It Is Important
+Lock is the most fundamental tool for preventing race conditions. It makes non-atomic read-modify-write sequences atomic by ensuring exclusive access.
+
+### How It Works Internally
+acquire() blocks until the lock is acquired. release() transitions back to unlocked and wakes one waiting thread. CPython uses OS-level mutexes (pthread_mutex_t on Linux, CRITICAL_SECTION on Windows).
+
+### Syntax
+```python
+import threading
+lock = threading.Lock()
+
+with lock:  # preferred
+    shared_data += 1
+
+lock.acquire()
+try:
+    shared_data += 1
+finally:
+    lock.release()
+```
+
+### Beginner Examples
+```python
+import threading
 
 counter = 0
 lock = threading.Lock()
 
-def increment_with_lock(amount):
+def safe_increment():
     global counter
-    for _ in range(amount):
+    for _ in range(100000):
         with lock:
             counter += 1
 
-threads = [
-    threading.Thread(target=increment_with_lock, args=(10000,))
-    for _ in range(5)
-]
-
-for t in threads:
-    t.start()
-for t in threads:
-    t.join()
-
-print(f"With lock: counter = {counter} (expected: {50000})")
-```
-
-### Lock vs RLock
-
-```python
-import threading
-import time
-
-lock = threading.Lock()
-
-def recursive_function_with_lock(n):
-    with lock:
-        print(f"Level {n} with Lock")
-        if n > 0:
-            recursive_function_with_lock(n - 1)
-
-# This will deadlock
-try:
-    t = threading.Thread(target=recursive_function_with_lock, args=(3,))
-    t.start()
-    t.join(timeout=2)
-    if t.is_alive():
-        print("DEADLOCK with Lock!")
-except RuntimeError as e:
-    print(f"Error: {e}")
-
-rlock = threading.RLock()
-
-def recursive_function_with_rlock(n):
-    with rlock:
-        print(f"Level {n} with RLock")
-        if n > 0:
-            recursive_function_with_rlock(n - 1)
-
-t = threading.Thread(target=recursive_function_with_rlock, args=(3,))
-t.start()
-t.join()
-print("RLock works fine with recursive calls")
-
-# RLock ownership tracking
-print(f"\nRLock owned by thread: {rlock._is_owned()}")
-```
-
-### Deadlock Example and Prevention
-
-```python
-import threading
-import time
-
-def deadlock_example():
-    lock_a = threading.Lock()
-    lock_b = threading.Lock()
-
-    def worker_a():
-        with lock_a:
-            print("Worker A: acquired lock A")
-            time.sleep(0.01)
-            print("Worker A: waiting for lock B...")
-            with lock_b:  # Deadlock if B holds B
-                print("Worker A: acquired lock B")
-
-    def worker_b():
-        with lock_b:
-            print("Worker B: acquired lock B")
-            time.sleep(0.01)
-            print("Worker B: waiting for lock A...")
-            with lock_a:  # Deadlock if A holds A
-                print("Worker B: acquired lock A")
-
-    t1 = threading.Thread(target=worker_a)
-    t2 = threading.Thread(target=worker_b)
-
-    t1.start()
-    t2.start()
-
-    t1.join(timeout=2)
-    t2.join(timeout=2)
-
-    if t1.is_alive() and t2.is_alive():
-        print("DEADLOCK detected!")
-
-def deadlock_prevention():
-    lock_a = threading.Lock()
-    lock_b = threading.Lock()
-
-    def worker(lock_first, lock_second, name):
-        with lock_first:
-            print(f"{name}: acquired first lock")
-            time.sleep(0.01)
-            with lock_second:
-                print(f"{name}: acquired second lock")
-
-    t1 = threading.Thread(target=worker, args=(lock_a, lock_b, "Worker-1"))
-    t2 = threading.Thread(target=worker, args=(lock_a, lock_b, "Worker-2"))
-
-    t1.start()
-    t2.start()
-    t1.join()
-    t2.join()
-    print("No deadlock with consistent lock ordering")
-
-deadlock_example()
-time.sleep(0.5)
-print("\n--- Prevention ---")
-deadlock_prevention()
-```
-
-### Livelock Example
-
-```python
-import threading
-import time
-
-def livelock_example():
-    lock_a = threading.Lock()
-    lock_b = threading.Lock()
-
-    def worker_a():
-        while True:
-            if lock_a.acquire(blocking=False):
-                time.sleep(0.01)
-                if lock_b.acquire(blocking=False):
-                    print("Worker A: acquired both locks")
-                    lock_b.release()
-                    lock_a.release()
-                    break
-                else:
-                    print("Worker A: backing off...")
-                    lock_a.release()
-                    time.sleep(0.01)
-
-    def worker_b():
-        while True:
-            if lock_b.acquire(blocking=False):
-                time.sleep(0.01)
-                if lock_a.acquire(blocking=False):
-                    print("Worker B: acquired both locks")
-                    lock_a.release()
-                    lock_b.release()
-                    break
-                else:
-                    print("Worker B: backing off...")
-                    lock_b.release()
-                    time.sleep(0.01)
-
-    t1 = threading.Thread(target=worker_a, daemon=True)
-    t2 = threading.Thread(target=worker_b, daemon=True)
-    t1.start()
-    t2.start()
-
-    time.sleep(2)
-    print("Livelock: threads are still running, making no progress")
-
-livelock_example()
-```
-
-### threading.local() — Thread-Local Storage
-
-```python
-import threading
-import time
-import random
-
-thread_data = threading.local()
-
-class RequestContext:
-    def __init__(self, user_id, request_id):
-        self.user_id = user_id
-        self.request_id = request_id
-
-def process_request(user_id):
-    thread_data.context = RequestContext(user_id, random.randint(1000, 9999))
-    thread_data.user_id = user_id
-
-    time.sleep(random.uniform(0.1, 0.3))
-    ctx = thread_data.context
-    print(f"Thread {threading.current_thread().name}: "
-          f"processing request {ctx.request_id} for user {ctx.user_id}")
-
-def main():
-    threads = [
-        threading.Thread(target=process_request, args=(i,), name=f"Worker-{i}")
-        for i in range(5)
-    ]
-
-    for t in threads:
-        t.start()
-
-    try:
-        ctx = thread_data.context
-    except AttributeError:
-        print("Main thread: no thread-local context (expected)")
-
-    for t in threads:
-        t.join()
-
-    print("Thread-local storage ensures data isolation")
-
-main()
-```
-
-### Atomic Operations
-
-```python
-import threading
-import time
-import dis
-
-def show_non_atomic():
-    counter = 0
-
-    def increment():
-        nonlocal counter
-        counter += 1
-
-    print("Bytecode for 'counter += 1':")
-    for instr in dis.get_instructions(increment):
-        if 'counter' in str(instr):
-            print(f"  {instr.opname}")
-
-    print("\nThe operation requires multiple bytecode instructions")
-    print("This is why increment is NOT atomic without a lock")
-
-show_non_atomic()
-
-def demonstrate_race_condition():
-    counter = 0
-    iterations = 50000
-
-    def increment():
-        nonlocal counter
-        for _ in range(iterations):
-            counter += 1
-
-    t1 = threading.Thread(target=increment)
-    t2 = threading.Thread(target=increment)
-
-    t1.start()
-    t2.start()
-    t1.join()
-    t2.join()
-
-    expected = iterations * 2
-    print(f"\nNon-atomic increment: counter = {counter}, expected = {expected}")
-    print(f"Difference: {expected - counter} (race condition)")
-
-demonstrate_race_condition()
-```
-
-### concurrent.futures.ThreadPoolExecutor
-
-```python
-import concurrent.futures
-import threading
-import time
-import random
-
-shared_results = []
-results_lock = threading.Lock()
-
-def worker_task(task_id):
-    time.sleep(random.uniform(0.1, 0.3))
-    result = task_id * task_id
-
-    with results_lock:
-        shared_results.append(result)
-
-    return result
-
-with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-    futures = [executor.submit(worker_task, i) for i in range(10)]
-
-    for future in concurrent.futures.as_completed(futures):
-        try:
-            result = future.result(timeout=5)
-            print(f"Completed: {result}")
-        except Exception as e:
-            print(f"Failed: {e}")
-
-print(f"\nShared results: {sorted(shared_results)}")
-
-with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-    numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    results = list(executor.map(lambda x: x * 2, numbers))
-
-print(f"Map results: {results}")
-
-def future_callbacks():
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-
-    def on_complete(future):
-        try:
-            result = future.result()
-            print(f"Callback: result = {result}")
-        except Exception as e:
-            print(f"Callback: error = {e}")
-
-    future = executor.submit(threading.current_thread, None)
-    future.add_done_callback(on_complete)
-    time.sleep(0.1)
-    executor.shutdown()
-
-future_callbacks()
-```
-
-## Beginner Examples
-
-```python
-# Safe counter class
-import threading
-
-class ThreadSafeCounter:
-    def __init__(self):
-        self._value = 0
-        self._lock = threading.Lock()
-
-    def increment(self):
-        with self._lock:
-            self._value += 1
-
-    def decrement(self):
-        with self._lock:
-            self._value -= 1
-
-    def get_value(self):
-        with self._lock:
-            return self._value
-
-counter = ThreadSafeCounter()
-
-def worker(increment_count):
-    for _ in range(increment_count):
-        counter.increment()
-
-threads = [threading.Thread(target=worker, args=(10000,)) for _ in range(5)]
+threads = [threading.Thread(target=safe_increment) for _ in range(10)]
 for t in threads: t.start()
 for t in threads: t.join()
 
-print(f"Thread-safe counter: {counter.get_value()} (expected: {50000})")
-
-# Safe singleton pattern
-class ThreadSafeSingleton:
-    _instance = None
-    _lock = threading.Lock()
-
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance.initialized = False
-        return cls._instance
-
-    def initialize(self):
-        if not self.initialized:
-            with self._lock:
-                if not self.initialized:
-                    self.initialized = True
-                    self.value = 42
-
-def test_singleton():
-    s1 = ThreadSafeSingleton()
-    s2 = ThreadSafeSingleton()
-    print(f"Singleton test: s1 is s2 = {s1 is s2}")
-
-t1 = threading.Thread(target=test_singleton)
-t2 = threading.Thread(target=test_singleton)
-t1.start(); t2.start()
-t1.join(); t2.join()
+print(f"Expected: 1000000, Got: {counter}")
 ```
 
-## Intermediate Examples
-
+### Intermediate Examples
 ```python
-# Thread-safe queue implementation
 import threading
 import time
-from collections import deque
 
-class ThreadSafeBoundedQueue:
-    def __init__(self, maxsize=0):
-        self._queue = deque()
-        self._maxsize = maxsize
-        self._mutex = threading.Lock()
-        self._not_empty = threading.Condition(self._mutex)
-        self._not_full = threading.Condition(self._mutex)
+class SafeBankAccount:
+    def __init__(self, balance=0):
+        self.balance = balance
+        self.lock = threading.Lock()
 
-    def put(self, item, timeout=None):
-        with self._not_full:
-            if self._maxsize > 0:
-                deadline = time.monotonic() + timeout if timeout else None
-                while len(self._queue) >= self._maxsize:
-                    remaining = deadline - time.monotonic() if deadline else None
-                    if remaining is not None and remaining <= 0:
-                        raise TimeoutError("Queue full")
-                    self._not_full.wait(timeout=remaining)
-            self._queue.append(item)
-            self._not_empty.notify()
+    def deposit(self, amount):
+        with self.lock:
+            new_balance = self.balance + amount
+            time.sleep(0.0001)
+            self.balance = new_balance
 
-    def get(self, timeout=None):
-        with self._not_empty:
-            deadline = time.monotonic() + timeout if timeout else None
-            while not self._queue:
-                remaining = deadline - time.monotonic() if deadline else None
-                if remaining is not None and remaining <= 0:
-                    raise TimeoutError("Queue empty")
-                self._not_empty.wait(timeout=remaining)
-            item = self._queue.popleft()
-            self._not_full.notify()
-            return item
+    def withdraw(self, amount):
+        with self.lock:
+            if self.balance >= amount:
+                new_balance = self.balance - amount
+                time.sleep(0.0001)
+                self.balance = new_balance
+                return True
+            return False
 
-    def qsize(self):
-        with self._mutex:
-            return len(self._queue)
+    def get_balance(self):
+        with self.lock:
+            return self.balance
 
-bq = ThreadSafeBoundedQueue(maxsize=3)
+account = SafeBankAccount(1000)
 
-def producer():
-    for i in range(6):
-        bq.put(f"item-{i}")
-        print(f"Produced: item-{i}")
-        time.sleep(0.1)
+def safe_deposits():
+    for _ in range(100):
+        account.deposit(10)
 
-def consumer():
-    for _ in range(6):
-        item = bq.get()
-        print(f"Consumed: {item}")
-        time.sleep(0.3)
+def safe_withdrawals():
+    for _ in range(100):
+        account.withdraw(10)
 
-t1 = threading.Thread(target=producer)
-t2 = threading.Thread(target=consumer)
-t1.start(); t2.start()
-t1.join(); t2.join()
-print("Bounded queue example completed")
+threads = [threading.Thread(target=safe_deposits), threading.Thread(target=safe_withdrawals)]
+for t in threads: t.start()
+for t in threads: t.join()
+print(f"Balance: {account.get_balance()}")
+```
 
-# Thread-safe read-write lock
+### Advanced Examples
+```python
+import threading
+import time
+
 class ReadWriteLock:
     def __init__(self):
-        self._read_ready = threading.Condition(threading.Lock())
+        self._read_lock = threading.Lock()
+        self._write_lock = threading.Lock()
         self._readers = 0
 
     def acquire_read(self):
-        with self._read_ready:
+        with self._read_lock:
             self._readers += 1
+            if self._readers == 1:
+                self._write_lock.acquire()
 
     def release_read(self):
-        with self._read_ready:
+        with self._read_lock:
             self._readers -= 1
             if self._readers == 0:
-                self._read_ready.notify_all()
+                self._write_lock.release()
 
     def acquire_write(self):
-        self._read_ready.acquire()
-        while self._readers > 0:
-            self._read_ready.wait()
+        self._write_lock.acquire()
 
     def release_write(self):
-        self._read_ready.release()
+        self._write_lock.release()
 
-    def reader_lock(self):
-        return _ReadLock(self)
+class ReadLock:
+    def __init__(self, rw_lock):
+        self.rw_lock = rw_lock
+    def __enter__(self):
+        self.rw_lock.acquire_read()
+    def __exit__(self, *args):
+        self.rw_lock.release_read()
 
-    def writer_lock(self):
-        return _WriteLock(self)
+class WriteLock:
+    def __init__(self, rw_lock):
+        self.rw_lock = rw_lock
+    def __enter__(self):
+        self.rw_lock.acquire_write()
+    def __exit__(self, *args):
+        self.rw_lock.release_write()
 
-class _ReadLock:
-    def __init__(self, rwlock): self.rwlock = rwlock
-    def __enter__(self): self.rwlock.acquire_read()
-    def __exit__(self, *args): self.rwlock.release_read()
+rw = ReadWriteLock()
+shared_data = []
 
-class _WriteLock:
-    def __init__(self, rwlock): self.rwlock = rwlock
-    def __enter__(self): self.rwlock.acquire_write()
-    def __exit__(self, *args): self.rwlock.release_write()
+def reader():
+    with ReadLock(rw):
+        print(f"Reading: {len(shared_data)} items")
 
-rwlock = ReadWriteLock()
-shared_resource = {}
-read_count = 0
-write_count = 0
+def writer():
+    with WriteLock(rw):
+        shared_data.append("data")
+```
 
-def reader(id):
-    global read_count
-    for _ in range(3):
-        with rwlock.reader_lock():
-            read_count += 1
-            value = shared_resource.get("key", "N/A")
-            print(f"Reader {id}: read '{value}' (reads: {read_count})")
-        time.sleep(0.1)
+### Real-World Use Cases
+- Database transactions -- atomic read-modify-write on records
+- Cache updates -- preventing stale reads during refresh
+- Resource pools -- thread-safe connection checkout
 
-def writer(id):
-    global write_count
-    for i in range(2):
-        with rwlock.writer_lock():
-            write_count += 1
-            shared_resource["key"] = f"value-{id}-{i}"
-            print(f"Writer {id}: wrote 'value-{id}-{i}' (writes: {write_count})")
-        time.sleep(0.3)
+### Common Mistakes
+- Forgetting to release lock (always use with lock)
+- Holding lock during I/O or network calls
+- Acquiring locks in different order (deadlocks)
 
-threads = []
-for i in range(3): threads.append(threading.Thread(target=reader, args=(i,)))
-for i in range(2): threads.append(threading.Thread(target=writer, args=(i,)))
+### Best Practices
+- Always use with lock: context manager
+- Keep critical sections as short as possible
+- Use consistent lock ordering
+- Use RLock if same thread needs to re-acquire
+
+### Performance Considerations
+- Uncontended lock acquire/release is fast (tens of nanoseconds)
+- Contended locks cause context switches (microseconds)
+
+### Interview Questions
+1. What is the difference between a mutex and a semaphore?
+2. Why use with lock: instead of acquire/release?
+3. What happens calling acquire on a lock already held by the same thread?
+
+### Coding Challenges
+- Implement a thread-safe stack using Lock
+- Build a reader-writer lock using threading.Lock
+
+### Related Topics
+- RLock, Semaphore, Condition, Event, deadlock
+
+## RLock
+### What It Is
+threading.RLock (Reentrant Lock) can be acquired multiple times by the same thread without blocking. It maintains an ownership count -- each acquire increments it, each release decrements it. The lock is fully released only when count reaches zero.
+
+### Why It Is Important
+RLock prevents self-deadlock when a function holding a lock calls another function (or itself) that also needs the same lock.
+
+### How It Works Internally
+RLock tracks owning thread ID and acquire count. When a thread calls acquire():
+- If unlocked, ownership = current thread, count = 1
+- If owned by current thread, count += 1 (no blocking)
+- If owned by another thread, block until released
+
+release() decrements count. When count = 0, ownership is cleared.
+
+### Syntax
+```python
+import threading
+rlock = threading.RLock()
+
+with rlock:
+    with rlock:  # Same thread -- no deadlock
+        pass
+```
+
+### Beginner Examples
+```python
+import threading
+
+rlock = threading.RLock()
+
+def outer():
+    with rlock:
+        print("Outer acquired lock")
+        inner()
+
+def inner():
+    with rlock:
+        print("Inner acquired lock (reentrant)")
+
+t = threading.Thread(target=outer)
+t.start()
+t.join()
+```
+
+### Intermediate Examples
+```python
+import threading
+
+class Counter:
+    def __init__(self):
+        self.value = 0
+        self.lock = threading.RLock()
+
+    def increment(self):
+        with self.lock:
+            self.value += 1
+
+    def increment_by(self, n):
+        with self.lock:
+            if n > 1:
+                self.increment_by(n - 1)
+            self.increment()
+
+counter = Counter()
+threads = [threading.Thread(target=lambda: counter.increment_by(50)) for _ in range(5)]
 for t in threads: t.start()
 for t in threads: t.join()
-print(f"Read-write lock: {read_count} reads, {write_count} writes")
+print(f"Counter: {counter.value}")
 ```
 
-## Advanced Examples
-
+### Advanced Examples
 ```python
-# Lock-free data structure (Treiber stack) demonstration
 import threading
-import time
-import random
 
-class LockFreeStack:
-    def __init__(self):
-        self._top = None
-        self._lock = threading.Lock()
+class TreeNode:
+    def __init__(self, value):
+        self.value = value
+        self.children = []
+        self.lock = threading.RLock()
 
-    def push(self, value):
-        with self._lock:
-            self._top = (value, self._top)
+    def add_child(self, child):
+        with self.lock:
+            self.children.append(child)
 
-    def pop(self):
-        with self._lock:
-            if self._top is None:
-                return None
-            value, self._top = self._top
-            return value
-
-    def is_empty(self):
-        with self._lock:
-            return self._top is None
-
-lfs = LockFreeStack()
-
-def worker_push(stack, count):
-    for i in range(count):
-        stack.push(f"item-{threading.current_thread().name}-{i}")
-        time.sleep(random.uniform(0.001, 0.01))
-
-def worker_pop(stack, count):
-    popped = 0
-    while popped < count:
-        item = stack.pop()
-        if item is not None:
-            popped += 1
-
-threads = []
-for i in range(4):
-    t = threading.Thread(target=worker_push, args=(lfs, 100), name=f"P-{i}")
-    threads.append(t)
-
-for i in range(2):
-    t = threading.Thread(target=worker_pop, args=(lfs, 200), name=f"C-{i}")
-    threads.append(t)
-
-for t in threads:
-    t.start()
-for t in threads:
-    t.join()
-
-print(f"Stack empty: {lfs.is_empty()}")
-print(f"Remaining items: {sum(1 for _ in iter(lambda: lfs.pop(), None))}")
-
-# Thread-safe event bus
-class ThreadSafeEventBus:
-    def __init__(self):
-        self._handlers = {}
-        self._lock = threading.Lock()
-
-    def subscribe(self, event_type, handler):
-        with self._lock:
-            if event_type not in self._handlers:
-                self._handlers[event_type] = []
-            self._handlers[event_type].append(handler)
-
-    def unsubscribe(self, event_type, handler):
-        with self._lock:
-            if event_type in self._handlers:
-                self._handlers[event_type].remove(handler)
-
-    def publish(self, event_type, *args, **kwargs):
-        handlers = []
-        with self._lock:
-            if event_type in self._handlers:
-                handlers = list(self._handlers[event_type])
-
-        for handler in handlers:
-            try:
-                handler(event_type, *args, **kwargs)
-            except Exception as e:
-                print(f"Handler error: {e}")
-
-    def publish_safe(self, event_type, *args, **kwargs):
-        handlers = []
-        with self._lock:
-            if event_type in self._handlers:
-                handlers = list(self._handlers[event_type])
-
-        results = []
-        for handler in handlers:
-            try:
-                result = handler(event_type, *args, **kwargs)
-                results.append(result)
-            except Exception as e:
-                results.append(e)
-        return results
-
-bus = ThreadSafeEventBus()
-
-def on_data(event, data):
-    print(f"Data handler: {data}")
-    return f"processed-{data}"
-
-def on_error(event, code, message):
-    print(f"Error handler: {code} - {message}")
-
-bus.subscribe("data", on_data)
-bus.subscribe("error", on_error)
-
-def publisher_thread():
-    for i in range(5):
-        bus.publish("data", f"value-{i}")
-        time.sleep(0.1)
-    bus.publish("error", 500, "Internal Server Error")
-
-pub = threading.Thread(target=publisher_thread)
-pub.start()
-pub.join()
-
-print("Event bus example completed")
-
-# Concurrent data structure: Thread-safe LRU Cache
-import time
-from collections import OrderedDict
-
-class ThreadSafeLRUCache:
-    def __init__(self, capacity=100):
-        self.capacity = capacity
-        self._cache = OrderedDict()
-        self._lock = threading.Lock()
-        self._hits = 0
-        self._misses = 0
-
-    def get(self, key):
-        with self._lock:
-            if key in self._cache:
-                self._cache.move_to_end(key)
-                self._hits += 1
-                return self._cache[key]
-            self._misses += 1
+    def find(self, value):
+        with self.lock:
+            if self.value == value:
+                return self
+            for child in self.children:
+                result = child.find(value)
+                if result is not None:
+                    return result
             return None
 
-    def put(self, key, value):
-        with self._lock:
-            if key in self._cache:
-                self._cache.move_to_end(key)
-            self._cache[key] = value
-            if len(self._cache) > self.capacity:
-                self._cache.popitem(last=False)
-
-    def stats(self):
-        with self._lock:
-            total = self._hits + self._misses
-            hit_rate = (self._hits / total * 100) if total > 0 else 0
-            return {
-                "hits": self._hits,
-                "misses": self._misses,
-                "hit_rate": f"{hit_rate:.1f}%",
-                "size": len(self._cache),
-                "capacity": self.capacity
-            }
-
-cache = ThreadSafeLRUCache(capacity=5)
-
-def cache_worker(name):
-    for i in range(10):
-        key = f"key-{i % 7}"
-        value = cache.get(key)
-        if value is None:
-            cache.put(key, f"value-{i}")
-            print(f"{name}: cache miss for {key}")
-        else:
-            print(f"{name}: cache hit for {key}: {value}")
-        time.sleep(random.uniform(0.05, 0.15))
-
-workers = [threading.Thread(target=cache_worker, args=(f"W-{i}",)) for i in range(4)]
-for w in workers: w.start()
-for w in workers: w.join()
-
-print(f"\nCache stats: {cache.stats()}")
-
-# Non-blocking vs blocking operations benchmark
-def benchmark_lock_approaches():
-    import time
-    from queue import Queue
-
-    iterations = 100000
-
-    results = {}
-
-    lock = threading.Lock()
-    value = [0]
-
-    def lock_increment():
-        for _ in range(iterations):
-            with lock:
-                value[0] += 1
-
-    start = time.time()
-    t1 = threading.Thread(target=lock_increment)
-    t2 = threading.Thread(target=lock_increment)
-    t1.start(); t2.start()
-    t1.join(); t2.join()
-    lock_time = time.time() - start
-    results["lock"] = (lock_time, value[0])
-
-    value[0] = 0
-
-    rlock = threading.RLock()
-    def rlock_increment():
-        for _ in range(iterations):
-            with rlock:
-                value[0] += 1
-
-    start = time.time()
-    t1 = threading.Thread(target=rlock_increment)
-    t2 = threading.Thread(target=rlock_increment)
-    t1.start(); t2.start()
-    t1.join(); t2.join()
-    rlock_time = time.time() - start
-    results["rlock"] = (rlock_time, value[0])
-
-    for name, (elapsed, final) in results.items():
-        print(f"{name}: {elapsed:.3f}s, final value: {final}, expected: {iterations * 2}")
-
-benchmark_lock_approaches()
+root = TreeNode("A")
+root.add_child(TreeNode("B"))
+root.children[0].add_child(TreeNode("C"))
+print(f"Found: {root.find("C").value}")
 ```
 
-## Real-World Use Cases
+### Real-World Use Cases
+- Recursive algorithms -- tree/graph traversal with thread safety
+- Nested method calls -- public API calling internal locked methods
+- Decorators adding locking to methods that may be recursive
 
-- **Web servers**: Handling concurrent requests with thread-safe request/response handling
-- **Database connection pools**: Thread-safe pool management with borrow/return semantics
-- **Caching systems**: Thread-safe LRU caches in multi-threaded applications
-- **Event systems**: Thread-safe publish-subscribe in GUI frameworks
-- **Logging**: Thread-safe loggers that don't interleave log messages
-- **State management**: Thread-safe configuration and state updates in server applications
+### Common Mistakes
+- Using Lock when RLock is needed (causes deadlocks)
+- Using RLock when Lock suffices (slightly more overhead)
 
-## Common Mistakes
+### Best Practices
+- Use RLock when same thread may acquire lock multiple times
+- Prefer Lock for simple mutual exclusion
 
-- Assuming simple operations like `x += 1` are atomic (they require multiple bytecode instructions)
-- Using Lock when RLock is needed (causes deadlocks with recursive calls)
-- Inconsistent lock ordering leading to deadlocks
-- Holding locks during I/O operations or slow calls (reduces concurrency)
-- Forgetting to release locks in exception paths (use `with lock:` to avoid this)
-- Not using `try/except` or `timeout` in lock acquisition can cause indefinite blocking
-- Using `threading.local()` for data that needs to be shared between threads
-- Over-locking (using locks when thread-local storage would suffice)
+### Performance Considerations
+- RLock has slightly more overhead than Lock
+- Nearly identical performance in practice
 
-## Best Practices
+### Interview Questions
+1. Difference between Lock and RLock?
+2. When should you use RLock?
+3. How does RLock track ownership internally?
 
-- Always use `with lock:` context manager instead of manual `acquire()`/`release()`
-- Use `RLock` over `Lock` when the same thread might need to re-acquire
-- Use `queue.Queue` for thread-safe communication instead of shared variables with locks
-- Use `threading.local()` for data that is inherently thread-specific
-- Keep critical sections as small as possible to maximize concurrency
-- Use consistent lock ordering to prevent deadlocks
-- Prefer `concurrent.futures.ThreadPoolExecutor` for thread management
-- Add timeout to lock acquisition to detect potential deadlocks
+### Coding Challenges
+- Implement RLock from scratch using threading.Lock
+- Demonstrate deadlock with Lock fixed by switching to RLock
 
-## Interview Questions
+### Related Topics
+- Lock, deadlock, threading, Condition
 
-1. **Q**: What is a race condition and how do you prevent it?
-   **A**: A race condition occurs when two or more threads access shared data concurrently and the final result depends on the timing of their execution. Prevention uses locks, atomic operations, or thread-local storage.
+## Deadlock prevention
+### What It Is
+A deadlock occurs when two or more threads are each waiting for the other to release a resource, causing all to be stuck forever. Deadlock prevention uses techniques to avoid this condition.
 
-2. **Q**: What is the difference between lock contention and deadlock?
-   **A**: Lock contention is when threads compete for the same lock, causing delays but eventual progress. Deadlock is when threads hold locks while waiting for each other's locks, making no progress at all.
+### Why It Is Important
+Deadlocks are catastrophic -- they freeze the program with no recovery and are hard to debug. Prevention is essential in multithreaded design.
 
-3. **Q**: How does `threading.local()` work internally?
-   **A**: Each thread has a dictionary-like storage. When you access `threading.local()` attributes, it stores/retrieves values from the current thread's private storage, providing automatic isolation.
+### How It Works Internally
+Four conditions must hold for deadlock (Coffman conditions):
+1. Mutual exclusion -- resources cannot be shared
+2. Hold and wait -- threads hold resources while waiting for others
+3. No preemption -- resources cannot be forcibly taken
+4. Circular wait -- a cycle of threads each waiting for the next
 
-4. **Q**: What is the difference between a Lock and a Semaphore?
-   **A**: A Lock allows only one thread to access a resource at a time (binary semaphore). A Semaphore allows a configurable number of concurrent accesses, useful for limiting connection pool usage.
+Breaking any one condition prevents deadlock. The most common approach is breaking circular wait via lock ordering.
 
-5. **Q**: What is the difference between `concurrent.futures` and raw threading?
-   **A**: `concurrent.futures` provides a higher-level API with thread pools, future objects for async results, callbacks, and unified interface for both threads and processes.
+### Syntax
+```python
+# Lock ordering -- always acquire in the same order
+# Good:
+with lock_a:
+    with lock_b:
+        pass
 
-## Coding Challenges
+# Bad (potential deadlock):
+def thread1():
+    with lock_a:
+        with lock_b: pass
 
-1. **Thread-safe Cache**: Implement a thread-safe LRU cache with configurable capacity, supporting `get`/`put` operations with proper lock granularity.
+def thread2():
+    with lock_b:
+        with lock_a: pass
+```
 
-2. **Concurrent Hash Map**: Build a hash map that supports concurrent reads and synchronized writes using read-write locks.
+### Beginner Examples
+```python
+import threading
+import time
 
-3. **Deadlock Detector**: Write a tool that monitors lock acquisitions and detects potential deadlocks using lock ordering graphs.
+# Deadlock example
+lock_a = threading.Lock()
+lock_b = threading.Lock()
 
-4. **Thread Pool with Priority**: Implement a thread pool that executes tasks based on priority, with proper synchronization.
+def thread_1():
+    with lock_a:
+        time.sleep(0.1)
+        with lock_b:
+            print("Thread 1 got both locks")
 
-5. **Lock-Free Ring Buffer**: Implement a lock-free single-producer single-consumer ring buffer using atomic operations.
+def thread_2():
+    with lock_b:
+        time.sleep(0.1)
+        with lock_a:
+            print("Thread 2 got both locks")
 
-## Summary
+t1 = threading.Thread(target=thread_1)
+t2 = threading.Thread(target=thread_2)
+t1.start()
+t2.start()
+# These may deadlock!
+```
 
-Thread safety is essential for correct concurrent programming. Python provides Lock, RLock, Semaphore, threading.local(), and Condition variables for synchronization. The `concurrent.futures` module simplifies thread pool management. Key practices include using context managers for locks, consistent lock ordering to prevent deadlocks, and preferring thread-safe queues over shared state.
+### Intermediate Examples
+```python
+import threading
+import time
 
-## Related Topics
+# Solution: consistent lock ordering
+lock_a = threading.Lock()
+lock_b = threading.Lock()
 
-Multithreading (59.x), Multiprocessing (60.x), GIL (64.x), Async IO (61.x)
+def thread_1():
+    with lock_a:
+        time.sleep(0.1)
+        with lock_b:
+            print("Thread 1 done")
+
+def thread_2():
+    with lock_a:  # Same order as thread_1
+        time.sleep(0.1)
+        with lock_b:
+            print("Thread 2 done")
+
+# Or use resource ordering by id
+def safe_acquire(locks):
+    for lock in sorted(locks, key=id):
+        lock.acquire()
+
+def safe_release(locks):
+    for lock in sorted(locks, key=id, reverse=True):
+        lock.release()
+
+# Timeout-based approach
+def try_acquire_with_timeout(lock, timeout=5):
+    return lock.acquire(timeout=timeout)
+
+# Resource hierarchy
+def transfer(from_acct, to_acct, amount):
+    first = min(id(from_acct), id(to_acct))
+    second = max(id(from_acct), id(to_acct))
+
+    first_lock = from_acct.lock if id(from_acct) == first else to_acct.lock
+    second_lock = to_acct.lock if id(from_acct) == first else from_acct.lock
+
+    with first_lock:
+        with second_lock:
+            from_acct.balance -= amount
+            to_acct.balance += amount
+```
+
+### Advanced Examples
+```python
+import threading
+import time
+from contextlib import contextmanager
+
+# Deadlock detector and recovery
+class DeadlockAwareLock:
+    def __init__(self, name):
+        self.lock = threading.Lock()
+        self.name = name
+        self.owner = None
+
+    def acquire(self, timeout=10):
+        acquired = self.lock.acquire(timeout=timeout)
+        if acquired:
+            self.owner = threading.current_thread().name
+        else:
+            raise TimeoutError(f"Deadlock suspected on {self.name}")
+        return acquired
+
+    def release(self):
+        self.owner = None
+        self.lock.release()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *args):
+        self.release()
+
+# Usage
+a = DeadlockAwareLock("A")
+b = DeadlockAwareLock("B")
+
+def worker1():
+    with a:
+        time.sleep(0.1)
+        with b:
+            print("Worker 1 done")
+
+# Bank transfer with deadlock prevention
+class Account:
+    _id_counter = 0
+    _id_lock = threading.Lock()
+
+    def __init__(self, name, balance):
+        with Account._id_lock:
+            self._id = Account._id_counter
+            Account._id_counter += 1
+        self.name = name
+        self.balance = balance
+        self.lock = threading.RLock()
+
+    def transfer(self, target, amount):
+        # Lock ordering by account ID
+        first, second = (self, target) if self._id < target._id else (target, self)
+        with first.lock:
+            with second.lock:
+                if self.balance >= amount:
+                    self.balance -= amount
+                    target.balance += amount
+                    return True
+                return False
+
+# Test
+a1 = Account("A", 1000)
+a2 = Account("B", 1000)
+
+def transfer_many():
+    for _ in range(100):
+        a1.transfer(a2, 10)
+        a2.transfer(a1, 10)
+
+threads = [threading.Thread(target=transfer_many) for _ in range(5)]
+for t in threads: t.start()
+for t in threads: t.join()
+print(f"A: {a1.balance}, B: {a2.balance}")
+```
+
+### Real-World Use Cases
+- Banking systems -- transfer between accounts must prevent deadlock
+- Database transaction ordering -- acquire table locks in consistent order
+- Resource allocation -- multiple resource acquisition in operating systems
+- Fork-join patterns -- preventing deadlock in parallel algorithms
+
+### Common Mistakes
+- Inconsistent lock ordering across threads
+- Nested locks without thinking about ordering
+- Holding locks while waiting for user input or network responses
+- Using Lock when RLock is needed (self-deadlock)
+
+### Best Practices
+- Enforce consistent lock ordering (by id, by hash, by natural order)
+- Use timeout on lock acquisition to detect potential deadlocks
+- Minimize the number of locks held simultaneously
+- Use a single lock to protect multiple related resources (coarse locking)
+- Document lock hierarchy clearly
+- Use higher-level abstractions (Queue, concurrent.futures) to reduce raw lock usage
+
+### Performance Considerations
+- Lock ordering adds minimal overhead
+- Timeout-based detection adds timeout overhead
+- Deadlock detection (wait-for graph) is expensive and rarely used
+- Coarse locking is simpler but reduces concurrency
+
+### Interview Questions
+1. What four conditions must hold for a deadlock to occur?
+2. How does lock ordering prevent deadlocks?
+3. What is the difference between deadlock prevention, avoidance, and detection?
+4. How would you debug a deadlocked Python program?
+5. Can a single thread deadlock with itself?
+
+### Coding Challenges
+- Write a program that reliably deadlocks
+- Fix the deadlock using lock ordering
+- Implement a transfer() function between accounts that prevents deadlock
+- Build a simple deadlock detector that monitors lock acquisition order
+
+### Related Topics
+- Lock, RLock, race conditions, threading, dining philosophers problem

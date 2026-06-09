@@ -2,464 +2,302 @@
 
 ## Introduction
 
-Pickle is Python's built-in module for serializing and deserializing Python object structures. Serialization (or "pickling") converts a Python object hierarchy into a byte stream, and deserialization ("unpickling") reconstructs the original object hierarchy from the byte stream.
+Pickle is Python's built-in module for serializing and deserializing Python object structures. Serialization ("pickling") converts Python objects into a byte stream, and deserialization ("unpickling") reconstructs the original objects. Unlike JSON (language-agnostic, basic types only), pickle is Python-specific and can handle virtually any Python object, including custom class instances, nested structures, and circular references. However, this Python-specific nature introduces significant security considerations.
 
-The pickle module implements a powerful, recursive algorithm for converting Python objects to a portable binary format. It can handle a wide range of Python types, including custom class instances, nested structures, and circular references.
+## pickle.dump()
 
-Unlike JSON, which is language-agnostic and only supports basic types, pickle is Python-specific and can serialize virtually any Python object, including functions, classes, and complex custom objects. However, this Python-specific nature also introduces important security considerations.
+### What It Is
 
-## Why It Is Important
+`pickle.dump()` serializes a Python object hierarchy and writes it to a file-like object. It converts the object into a byte stream using the specified protocol version. The resulting file can be read back with `pickle.load()` to reconstruct the original object.
 
-Pickle plays a critical role in Python applications that need to preserve complex program state:
+### Why It Is Important
 
-- **Object Persistence**: Save complex Python objects (models, configurations, ML models) to disk for later use
-- **Caching**: Cache expensive computations or processed data in a serialized form
-- **Inter-Process Communication**: Transfer Python objects between processes or across a network
-- **Machine Learning**: Serialize trained ML models (scikit-learn, etc.) for deployment
-- **Session State**: Save and restore application state across sessions
-- **Data Pipelines**: Pass complex data structures between pipeline stages
-- **Checkpointing**: Save computation progress for long-running processes to enable recovery
+`pickle.dump()` enables persistent storage of complex Python objects. Machine learning models, application state, cached computations, and complex data structures can all be saved to disk and restored later. For Python-to-Python serialization, pickle is often the simplest and most comprehensive option.
 
-Understanding pickle is essential for any Python developer working with data science, machine learning, caching systems, or distributed computing.
+### How It Works Internally
 
-## Syntax
+`pickle.dump()` recursively traverses the object graph, emitting opcodes that describe the object structure. The pickler maintains a "memo" dictionary to handle shared and circular references efficiently. Each object type is handled by a specific "reducer" function that knows how to decompose that type into picklable components. The protocol version determines which opcodes are available—higher protocols use more efficient representations.
+
+### Syntax
 
 ```python
 import pickle
 
-# Serialization: Python object -> bytes
+# Serialize to file
+with open("data.pkl", "wb") as f:
+    pickle.dump(obj, f, protocol=None, fix_imports=True, buffer_callback=None)
+
+# Serialize to bytes
 bytes_data = pickle.dumps(obj, protocol=None, fix_imports=True, buffer_callback=None)
 
-# Serialization to file
-with open('file.pkl', 'wb') as f:
-    pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-# Deserialization: bytes -> Python object
-obj = pickle.loads(bytes_data, fix_imports=True, encoding='ASCII', errors='strict')
-
-# Deserialization from file
-with open('file.pkl', 'rb') as f:
-    obj = pickle.load(f)
-
-# Protocol versions (integer 0-5)
-# 0: Text protocol (human-readable)
-# 1: Binary protocol (old)
-# 2: Binary protocol (Python 2.3+)
-# 3: Default for Python 3.0-3.7
-# 4: Default for Python 3.8+ (added support for large objects)
-# 5: Python 3.8+ (with out-of-band data support)
+# Protocol versions:
+# 0 - Text protocol (human-readable)
+# 1 - Old binary format
+# 2 - Python 2.3+ format
+# 3 - Default for Python 3.0-3.7
+# 4 - Default for Python 3.8+ (large objects, non-GC frames)
+# 5 - Python 3.8+ (out-of-band data, zero-copy)
+# pickle.HIGHEST_PROTOCOL - Auto-select highest available
 ```
-
-## Examples
-
-### Basic Pickling and Unpickling
 
 ```python
 import pickle
 
-# Simple data structures
-data = {
-    'name': 'Alice',
-    'scores': [95, 87, 91],
-    'metadata': {
-        'class': 'Math 101',
-        'year': 2024,
-        'active': True
-    }
-}
+data = {"name": "Alice", "scores": [95, 87, 91]}
 
-# Pickle to bytes
-pickled_bytes = pickle.dumps(data)
-print(f"Pickled bytes: {pickled_bytes[:50]}...")
-print(f"Size: {len(pickled_bytes)} bytes")
+# Write to file
+with open("data.pkl", "wb") as f:
+    pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-# Unpickle from bytes
-unpickled = pickle.loads(pickled_bytes)
-print(f"Unpickled: {unpickled}")
-print(f"Same object? {data == unpickled}")
-
-# Pickle to file
-with open('data.pkl', 'wb') as f:
-    pickle.dump(data, f)
-
-# Unpickle from file
-with open('data.pkl', 'rb') as f:
-    loaded = pickle.load(f)
-
-print(f"Loaded from file: {loaded}")
+# Write to bytes
+pickled = pickle.dumps(data)
+print(f"Size: {len(pickled)} bytes")
 ```
 
-### Protocol Version Comparison
+### Beginner Examples
 
 ```python
 import pickle
-import sys
 
-data = {
-    'integers': list(range(1000)),
-    'strings': ['hello'] * 1000,
-    'nested': {'key' * 10: 'value' * 100}
+# Saving simple data
+user_prefs = {
+    "theme": "dark",
+    "language": "en",
+    "font_size": 12,
+    "recent_files": ["file1.txt", "file2.txt"],
 }
 
-print("Protocol comparison:")
+with open("prefs.pkl", "wb") as f:
+    pickle.dump(user_prefs, f)
+
+# Saving multiple objects
+data1 = [1, 2, 3]
+data2 = {"key": "value"}
+data3 = "hello"
+
+with open("multi.pkl", "wb") as f:
+    pickle.dump(data1, f)
+    pickle.dump(data2, f)
+    pickle.dump(data3, f)
+
+# Using protocol for compatibility
+with open("data_v2.pkl", "wb") as f:
+    pickle.dump(data, f, protocol=2)  # Python 2 compatible
+
+# Always use HIGHEST_PROTOCOL for new code
+with open("data.pkl", "wb") as f:
+    pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+# Saving a class instance
+class User:
+    def __init__(self, name, score):
+        self.name = name
+        self.score = score
+
+user = User("Alice", 95)
+with open("user.pkl", "wb") as f:
+    pickle.dump(user, f)
+```
+
+## pickle.load()
+
+### What It Is
+
+`pickle.load()` deserializes a byte stream from a file-like object and reconstructs the original Python object hierarchy. It reverses the pickling process, restoring objects to their original state.
+
+### Why It Is Important
+
+`pickle.load()` enables restoring saved state, loading cached computations, and deserializing objects sent over network connections. It's essential for machine learning model deployment, session restoration, and checkpoint resumption.
+
+### How It Works Internally
+
+`pickle.load()` reads opcodes from the byte stream and executes them to reconstruct objects. It maintains a stack and a memo during unpickling. When it encounters a `GLOBAL` opcode referencing a class, it imports that class using `find_class()`. This is where the security risk comes from—a malicious pickle can reference arbitrary classes and execute arbitrary code during unpickling.
+
+### Syntax
+
+```python
+import pickle
+
+# Deserialize from file
+with open("data.pkl", "rb") as f:
+    obj = pickle.load(f, fix_imports=True, encoding="ASCII", errors="strict")
+
+# Deserialize from bytes
+obj = pickle.loads(bytes_data, fix_imports=True, encoding="ASCII", errors="strict")
+
+# Loading multiple objects
+with open("multi.pkl", "rb") as f:
+    obj1 = pickle.load(f)
+    obj2 = pickle.load(f)
+    obj3 = pickle.load(f)
+```
+
+### Beginner Examples
+
+```python
+import pickle
+
+# Loading simple data
+with open("prefs.pkl", "rb") as f:
+    user_prefs = pickle.load(f)
+print(user_prefs["theme"])  # "dark"
+
+# Loading class instances
+with open("user.pkl", "rb") as f:
+    user = pickle.load(f)
+print(user.name, user.score)  # Alice 95
+
+# Loading multiple objects
+with open("multi.pkl", "rb") as f:
+    while True:
+        try:
+            obj = pickle.load(f)
+            print(f"Loaded: {obj}")
+        except EOFError:
+            break
+
+# Error handling
+try:
+    with open("data.pkl", "rb") as f:
+        data = pickle.load(f)
+except (pickle.UnpicklingError, FileNotFoundError) as e:
+    print(f"Failed to load: {e}")
+
+# Checking file existence
+import os
+if os.path.exists("data.pkl"):
+    with open("data.pkl", "rb") as f:
+        data = pickle.load(f)
+```
+
+## Serialization protocol
+
+### What It Is
+
+The pickle protocol defines the format and opcodes used to represent serialized objects. There are six protocol versions (0-5), each adding features and efficiency improvements. Higher protocols produce smaller, faster-to-process byte streams but may not be readable by older Python versions.
+
+### Why It Is Important
+
+Choosing the right protocol balances compatibility and efficiency. Protocol 0 is human-readable but slow and large. Protocol 4 (default in Python 3.8+) supports large objects and is efficient. Protocol 5 adds out-of-band data support for zero-copy serialization.
+
+### How It Works Internally
+
+Each protocol version is a set of opcode numbers and their semantics. The pickler emits opcodes that describe types and their structure: `NONE` for None, `INT` for integers, `STRING` for strings, `MARK` for framing, `PUT`/`GET` for memo operations, `REDUCE` for calling constructors, `STACK_GLOBAL` for importing classes. Higher protocols batch operations, use more compact representations for common types, and add support for features like bytearray and out-of-band data.
+
+### Syntax
+
+```python
+import pickle
+
+# Protocol comparison
+data = {"list": list(range(1000))}
+
 for protocol in range(6):
     try:
         pickled = pickle.dumps(data, protocol=protocol)
-        size = len(pickled)
-        print(f"  Protocol {protocol}: {size} bytes")
-    except Exception as e:
-        print(f"  Protocol {protocol}: Error - {e}")
+        print(f"Protocol {protocol}: {len(pickled)} bytes")
+    except Exception:
+        print(f"Protocol {protocol}: not supported")
+
+# Using highest protocol
+with open("data.pkl", "wb") as f:
+    pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
 ```
 
-## Beginner Examples
-
-### Example 1: Simple Object Persistence
-
-```python
-import pickle
-import os
-
-DATA_FILE = 'user_prefs.pkl'
-
-def save_preferences(prefs):
-    with open(DATA_FILE, 'wb') as f:
-        pickle.dump(prefs, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"Preferences saved to {DATA_FILE}")
-
-def load_preferences():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'rb') as f:
-            prefs = pickle.load(f)
-        return prefs
-    return None
-
-def get_default_preferences():
-    return {
-        'theme': 'light',
-        'language': 'en',
-        'font_size': 12,
-        'auto_save': True,
-        'window_position': (100, 100),
-        'recent_files': []
-    }
-
-preferences = get_default_preferences()
-preferences['theme'] = 'dark'
-preferences['recent_files'].append('/path/to/file.txt')
-save_preferences(preferences)
-
-loaded = load_preferences()
-if loaded:
-    print(f"Loaded preferences: {loaded}")
-```
-
-### Example 2: Saving Game State
-
-```python
-import pickle
-import os
-
-class GameState:
-    def __init__(self):
-        self.player = {
-            'name': '',
-            'level': 1,
-            'health': 100,
-            'max_health': 100,
-            'experience': 0,
-            'inventory': [],
-            'position': {'x': 0, 'y': 0}
-        }
-        self.enemies = []
-        self.quests = []
-        self.game_time = 0
-    
-    def add_item(self, item):
-        self.player['inventory'].append(item)
-    
-    def gain_experience(self, points):
-        self.player['experience'] += points
-        if self.player['experience'] >= self.player['level'] * 100:
-            self.level_up()
-    
-    def level_up(self):
-        self.player['level'] += 1
-        self.player['max_health'] += 20
-        self.player['health'] = self.player['max_health']
-        print(f"Level up! You are now level {self.player['level']}")
-    
-    def save(self, filename='savegame.pkl'):
-        with open(filename, 'wb') as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
-        print(f"Game saved to {filename}")
-    
-    @staticmethod
-    def load(filename='savegame.pkl'):
-        if os.path.exists(filename):
-            with open(filename, 'rb') as f:
-                return pickle.load(f)
-        return GameState()
-
-game = GameState.load()
-game.player['name'] = input("Enter your name: ") or 'Hero'
-game.add_item('Sword')
-game.add_item('Shield')
-game.gain_experience(50)
-game.save()
-
-loaded_game = GameState.load()
-print(f"Loaded game: {loaded_game.player['name']} (Level {loaded_game.player['level']})")
-print(f"Inventory: {loaded_game.player['inventory']}")
-```
-
-### Example 3: Caching with Pickle
-
-```python
-import pickle
-import os
-import time
-import hashlib
-
-CACHE_DIR = 'cache'
-
-def ensure_cache_dir():
-    if not os.path.exists(CACHE_DIR):
-        os.makedirs(CACHE_DIR)
-
-def get_cache_key(func_name, *args, **kwargs):
-    key_data = f"{func_name}:{args}:{sorted(kwargs.items())}"
-    return hashlib.md5(key_data.encode()).hexdigest()
-
-def cached(func):
-    def wrapper(*args, **kwargs):
-        ensure_cache_dir()
-        cache_key = get_cache_key(func.__name__, *args, **kwargs)
-        cache_file = os.path.join(CACHE_DIR, f"{cache_key}.pkl")
-        
-        if os.path.exists(cache_file):
-            with open(cache_file, 'rb') as f:
-                result, timestamp = pickle.load(f)
-            age = time.time() - timestamp
-            print(f"Cache hit! ({age:.1f}s old)")
-            return result
-        
-        print("Cache miss, computing...")
-        result = func(*args, **kwargs)
-        
-        with open(cache_file, 'wb') as f:
-            pickle.dump((result, time.time()), f, protocol=pickle.HIGHEST_PROTOCOL)
-        
-        return result
-    return wrapper
-
-@cached
-def expensive_computation(n):
-    time.sleep(2)
-    return sum(i * i for i in range(n))
-
-print("First call (will compute):")
-result1 = expensive_computation(1000000)
-print(f"Result: {result1}")
-
-print("\nSecond call (should use cache):")
-result2 = expensive_computation(1000000)
-print(f"Result: {result2}")
-```
-
-## Intermediate Examples
-
-### Example 4: Pickling Custom Classes
-
-```python
-import pickle
-from datetime import datetime
-
-class User:
-    def __init__(self, user_id, name, email):
-        self.user_id = user_id
-        self.name = name
-        self.email = email
-        self.created_at = datetime.now()
-        self.is_active = True
-        self.permissions = set()
-    
-    def add_permission(self, perm):
-        self.permissions.add(perm)
-    
-    def __repr__(self):
-        return f"User({self.user_id}, {self.name}, active={self.is_active})"
-
-class UserManager:
-    def __init__(self):
-        self.users = {}
-    
-    def add_user(self, user):
-        self.users[user.user_id] = user
-    
-    def get_user(self, user_id):
-        return self.users.get(user_id)
-    
-    def save(self, filename):
-        with open(filename, 'wb') as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
-        print(f"UserManager saved with {len(self.users)} users")
-    
-    @staticmethod
-    def load(filename):
-        with open(filename, 'rb') as f:
-            return pickle.load(f)
-
-manager = UserManager()
-user1 = User(1, 'Alice', 'alice@example.com')
-user1.add_permission('read')
-user1.add_permission('write')
-
-user2 = User(2, 'Bob', 'bob@example.com')
-user2.add_permission('read')
-
-manager.add_user(user1)
-manager.add_user(user2)
-manager.save('users.pkl')
-
-loaded_manager = UserManager.load('users.pkl')
-for uid, user in loaded_manager.users.items():
-    print(f"Loaded: {user}")
-    print(f"  Permissions: {user.permissions}")
-```
-
-### Example 5: Pickle with __getstate__ and __setstate__
+### Beginner Examples
 
 ```python
 import pickle
 
+# Text protocol (0) - human readable
+data = {"name": "Alice", "score": 95}
+text_pickle = pickle.dumps(data, protocol=0)
+print(text_pickle.decode())  # Human-readable format
+
+# Binary protocol comparison
+small_data = {"a": 1, "b": 2}
+for protocol in range(6):
+    try:
+        size = len(pickle.dumps(small_data, protocol=protocol))
+        print(f"P{protocol}: {size}B")
+    except:
+        pass
+
+# Default protocol in different Python versions
+print(f"Default: {pickle.DEFAULT_PROTOCOL}")
+print(f"Highest: {pickle.HIGHEST_PROTOCOL}")
+```
+
+### Intermediate Examples
+
+```python
+# Controlling serialization with __getstate__ / __setstate__
 class SecureConnection:
     def __init__(self, host, port, password):
         self.host = host
         self.port = port
         self.password = password
         self._connection = None
-        self._connect()
-    
-    def _connect(self):
-        print(f"Connecting to {self.host}:{self.port} (simulated)")
-        self._connection = f"Connection-{self.host}-{self.port}"
-    
+
     def __getstate__(self):
         state = self.__dict__.copy()
-        state['_connection'] = None
-        state.pop('password', None)
+        state["password"] = None  # Don't serialize password
+        state["_connection"] = None  # Don't serialize connection
         return state
-    
+
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self._connect()
-    
-    def query(self, sql):
-        if not self._connection:
-            self._connect()
-        print(f"Executing: {sql} on {self._connection}")
-        return "results"
+        self._connection = self._reconnect()
 
-conn = SecureConnection('db.example.com', 5432, 'supersecret')
-result = conn.query('SELECT * FROM users')
-print(f"Query result: {result}")
+    def _reconnect(self):
+        return f"Connected to {self.host}:{self.port}"
 
-pickled = pickle.dumps(conn)
-print(f"\nPickled size: {len(pickled)} bytes")
-print("Note: Password is NOT in the pickled data!")
-
-restored = pickle.loads(pickled)
-result2 = restored.query('SELECT * FROM orders')
-print(f"Query after restore: {result2}")
-```
-
-### Example 6: Compressed Pickle for Large Objects
-
-```python
-import pickle
+# Compressed pickle for large objects
 import gzip
 import lzma
-import os
 
-def save_compressed(obj, filename, compression='gzip', protocol=pickle.HIGHEST_PROTOCOL):
-    pickled = pickle.dumps(obj, protocol=protocol)
-    
-    if compression == 'gzip':
+def save_compressed(obj, filename, compression="gzip"):
+    pickled = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+    if compression == "gzip":
         compressed = gzip.compress(pickled)
-    elif compression == 'lzma':
+    elif compression == "lzma":
         compressed = lzma.compress(pickled)
     else:
         compressed = pickled
-    
-    with open(filename, 'wb') as f:
+    with open(filename, "wb") as f:
         f.write(compressed)
-    
-    return len(pickled), len(compressed)
 
-def load_compressed(filename, compression='gzip'):
-    with open(filename, 'rb') as f:
+def load_compressed(filename, compression="gzip"):
+    with open(filename, "rb") as f:
         compressed = f.read()
-    
-    if compression == 'gzip':
-        decompressed = gzip.decompress(compressed)
-    elif compression == 'lzma':
-        decompressed = lzma.decompress(compressed)
+    if compression == "gzip":
+        return pickle.loads(gzip.decompress(compressed))
+    elif compression == "lzma":
+        return pickle.loads(lzma.decompress(compressed))
     else:
-        decompressed = compressed
-    
-    return pickle.loads(decompressed)
-
-import numpy as np
-
-large_data = {
-    'matrix': np.random.rand(1000, 100).tolist(),
-    'metadata': {'created': '2024-01-15', 'version': '2.0'},
-    'values': list(range(100000))
-}
-
-for comp in ['none', 'gzip', 'lzma']:
-    filename = f'data_{comp}.pkl'
-    if comp == 'none':
-        raw, comp_size = save_compressed(large_data, filename, compression='none')
-    else:
-        raw, comp_size = save_compressed(large_data, filename, compression=comp)
-    
-    file_size = os.path.getsize(filename)
-    ratio = comp_size / raw * 100
-    print(f"{comp}: raw={raw/1024:.1f}KB -> compressed={comp_size/1024:.1f}KB ({ratio:.1f}%)")
-
-loaded = load_compressed('data_gzip.pkl', compression='gzip')
-print(f"\nLoaded data type: {type(loaded)}")
-print(f"Matrix shape: {len(loaded['matrix'])}x{len(loaded['matrix'][0])}")
-print(f"Values length: {len(loaded['values'])}")
+        return pickle.loads(compressed)
 ```
 
-## Advanced Examples
-
-### Example 7: Secure Unpickling with Restricted Execution
+### Advanced Examples
 
 ```python
-import pickle
+# Restricted unpickler for security
+import io
 import builtins
 
 class RestrictedUnpickler(pickle.Unpickler):
     SAFE_CLASSES = {
-        'builtins': {'list', 'dict', 'tuple', 'set', 'str', 'int', 'float', 'bool', 'bytes', 'bytearray', 'type', 'range', 'slice', 'object', 'property'},
-        'collections': {'OrderedDict', 'defaultdict', 'Counter', 'namedtuple'},
-        'datetime': {'datetime', 'date', 'time', 'timedelta'},
-        'decimal': {'Decimal'},
-        'fractions': {'Fraction'},
+        "builtins": {"list", "dict", "tuple", "set", "str", "int",
+                     "float", "bool", "bytes", "bytearray", "range",
+                     "slice", "object", "property", "type"},
+        "collections": {"OrderedDict", "defaultdict", "Counter"},
+        "datetime": {"datetime", "date", "time", "timedelta"},
     }
-    
+
     def find_class(self, module, name):
         if module in self.SAFE_CLASSES and name in self.SAFE_CLASSES[module]:
             return super().find_class(module, name)
-        
-        for safe_module, safe_names in self.SAFE_CLASSES.items():
-            if name in safe_names:
-                return super().find_class(safe_module, name)
-        
-        raise pickle.UnpicklingError(f"Forbidden class: {module}.{name}")
+        raise pickle.UnpicklingError(f"Forbidden: {module}.{name}")
 
 def safe_loads(data):
     return RestrictedUnpickler(io.BytesIO(data)).load()
@@ -467,161 +305,209 @@ def safe_loads(data):
 def safe_load(file_obj):
     return RestrictedUnpickler(file_obj).load()
 
-# Test with safe data
-import io
-
-safe_data = {'name': 'Alice', 'scores': [1, 2, 3]}
-pickled = pickle.dumps(safe_data)
-restored = safe_loads(pickled)
-print(f"Safe load successful: {restored}")
-
-# Test with restricted classes
-try:
-    malicious_data = b"cos\nsystem\n(S'echo hacked'\ntR."
-    safe_loads(malicious_data)
-    print("Malicious data loaded! (bad)")
-except pickle.UnpicklingError as e:
-    print(f"Restricted class blocked: {e}")
-```
-
-### Example 8: Custom Pickle Protocol with Versioning
-
-```python
-import pickle
-import hashlib
-
+# Versioned pickling
 class VersionedObject:
     def __init__(self, name, data):
         self.name = name
         self.data = data
         self._version = 1
-    
+
     def __getstate__(self):
         state = self.__dict__.copy()
-        state['_format_version'] = 2
-        state['_checksum'] = hashlib.md5(str(self.data).encode()).hexdigest()
+        state["_format_version"] = 2
         return state
-    
+
     def __setstate__(self, state):
-        format_version = state.pop('_format_version', 1)
-        checksum = state.pop('_checksum', None)
-        
+        version = state.pop("_format_version", 1)
         self.__dict__.update(state)
-        self._version = format_version
-        
-        if format_version == 1:
-            self._migrate_v1_to_v2()
-        
-        if checksum and hashlib.md5(str(self.data).encode()).hexdigest() != checksum:
-            print("Warning: Data integrity check failed!")
-    
-    def _migrate_v1_to_v2(self):
-        if isinstance(self.data, list):
-            self.data = {'items': self.data, 'count': len(self.data)}
-        self._version = 2
-        print(f"Migrated {self.name} from v1 to v2")
+        if version == 1 and isinstance(self.data, list):
+            self.data = {"items": self.data, "count": len(self.data)}
+        self._version = version
 
-obj_v1 = VersionedObject('test', [1, 2, 3])
-with open('versioned_v1.pkl', 'wb') as f:
-    pickle.dump(obj_v1, f, protocol=2)
+# Pickle with out-of-band data (protocol 5)
+import numpy as np
 
-original = obj_v1.__getstate__()
-original.pop('_format_version')
-original.pop('_checksum')
-with open('versioned_v1.pkl', 'wb') as f:
-    pickle.dump(original, f, protocol=2)
+class NumpyArrayHandler:
+    def __init__(self):
+        self.buffers = []
 
-with open('versioned_v1.pkl', 'rb') as f:
-    obj_loaded = pickle.load(f)
+    def __reduce_ex__(self, protocol):
+        if protocol >= 5:
+            return (self._reconstruct, (self.buffers,), None, self.buffers)
+        return (self._reconstruct, (list(self.buffers),))
 
-print(f"Object: {obj_loaded}")
-print(f"Name: {obj_loaded.name}")
-print(f"Data: {obj_loaded.data}")
-print(f"Version: {obj_loaded._version}")
+    @staticmethod
+    def _reconstruct(buffers):
+        return NumpyArrayHandler(buffers)
+
+    def __init__(self, buffers=None):
+        self.buffers = buffers or []
 ```
 
-## Real-World Use Cases
+### Real-World Use Cases
 
-1. **Machine Learning Model Persistence**: Serializing trained models from scikit-learn, PyTorch, or TensorFlow for deployment in production environments.
+```python
+# ML model persistence
+import pickle
+from sklearn.ensemble import RandomForestClassifier
 
-2. **Distributed Computing**: Transferring task definitions and results between worker processes in frameworks like multiprocessing, Celery, or Dask.
+model = RandomForestClassifier()
+model.fit(X_train, y_train)
 
-3. **Application State Management**: Saving and restoring complex application state including undo history, window layouts, and user sessions.
+with open("model.pkl", "wb") as f:
+    pickle.dump(model, f)
 
-4. **Caching and Memoization**: Caching computationally expensive results with pickle, especially when results include complex Python objects.
+with open("model.pkl", "rb") as f:
+    loaded_model = pickle.load(f)
 
-5. **Scientific Computing Checkpoints**: Saving intermediate computation results for long-running scientific simulations to enable recovery from failures.
+predictions = loaded_model.predict(X_test)
 
-6. **Queue Systems**: Serializing messages in job queues like Redis Queue (RQ) or Celery when JSON is insufficient.
+# Caching with pickle
+import hashlib
+import os
+import time
 
-7. **Data Pipeline Artifacts**: Passing complex data structures between stages of a data processing pipeline.
+def cached(func):
+    os.makedirs(".pickle_cache", exist_ok=True)
+    def wrapper(*args, **kwargs):
+        key = hashlib.md5(
+            f"{func.__name__}:{args}:{sorted(kwargs.items())}".encode()
+        ).hexdigest()
+        cache_file = f".pickle_cache/{key}.pkl"
+        if os.path.exists(cache_file):
+            result, _ = pickle.load(open(cache_file, "rb"))
+            return result
+        result = func(*args, **kwargs)
+        pickle.dump((result, time.time()), open(cache_file, "wb"))
+        return result
+    return wrapper
 
-## Common Mistakes
+# Application state management
+class ApplicationState:
+    def __init__(self, state_file="state.pkl"):
+        self.state_file = state_file
+        self.state = self._load()
 
-1. **Unpickling Untrusted Data**: This is the most dangerous mistake. Unpickling malicious data can execute arbitrary code. Never unpickle data from untrusted sources.
+    def _load(self):
+        if os.path.exists(self.state_file):
+            with open(self.state_file, "rb") as f:
+                return pickle.load(f)
+        return {"windows": [], "preferences": {}}
 
-2. **Using Pickle for Long-Term Storage**: Pickle format can change between Python versions, and classes being pickled may change over time, breaking deserialization.
+    def save(self):
+        with open(self.state_file, "wb") as f:
+            pickle.dump(self.state, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-3. **Pickling Objects with External Dependencies**: Objects that depend on external resources (file handles, network connections, database connections) should implement `__getstate__` and `__setstate__`.
+    def update(self, key, value):
+        self.state[key] = value
+        self.save()
+```
 
-4. **Forgetting to Open in Binary Mode**: Pickle files must be opened with 'wb' or 'rb' mode, not text mode.
+### Common Mistakes
 
-5. **Using Default Protocol**: Always specify `protocol=pickle.HIGHEST_PROTOCOL` for maximum efficiency.
+```python
+# Mistake 1: Unpickling untrusted data
+# NEVER unpickle data from untrusted sources - it can execute arbitrary code
+# A malicious pickle:
+# >>> import pickle
+# >>> pickle.loads(b"cos\\nsystem\\n(S'echo hacked'\\ntR.")
 
-## Best Practices
+# Mistake 2: Opening pickle files without 'b' mode
+# Text mode corrupts the binary pickle data
+with open("data.pkl", "r") as f:  # Wrong! Use "rb"
+    data = pickle.load(f)
 
-1. **Never Unpickle Untrusted Data**: Only unpickle data from sources you trust. Consider alternatives like JSON for data exchange between different systems.
+# Mistake 3: Using default protocol for storage
+# Default may be older than highest protocol
+pickle.dump(data, f)  # Might use protocol 3 or 4
+# Better:
+pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-2. **Use Highest Protocol**: Always use `protocol=pickle.HIGHEST_PROTOCOL` for smaller and faster serialization.
+# Mistake 4: Pickling objects with unpicklable attributes
+class BadObject:
+    def __init__(self):
+        self.file = open("data.txt")  # File objects aren't picklable
 
-3. **Implement __getstate__ and __setstate__**: Control what gets pickled and how objects are restored, especially for objects with non-serializable attributes.
+# Fix with __getstate__
+class GoodObject:
+    def __init__(self):
+        self.file = open("data.txt")
 
-4. **Version Your Pickled Data**: Include a version number in your pickled data to handle format migrations gracefully.
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["file"] = None  # Don't serialize the file
+        return state
 
-5. **Use Compression for Large Objects**: Combine pickle with gzip or lzma for large objects to reduce storage and transmission costs.
+# Mistake 5: Using pickle for long-term storage
+# Classes change over time, and old pickles may not load with new class definitions
 
-6. **Consider Alternatives**: For simple data structures, consider JSON, msgpack, or other cross-language formats instead of pickle.
+# Mistake 6: Not handling version migration
+# Pickled data can become incompatible when classes are modified
+```
 
-## Interview Questions
+### Best Practices
 
-**Q1: What types can pickle serialize?**
+- Never unpickle data from untrusted sources
+- Always use `protocol=pickle.HIGHEST_PROTOCOL`
+- Implement `__getstate__`/`__setstate__` for objects with non-picklable attributes
+- Version your pickled data for forward compatibility
+- Use compression for large objects (gzip or lzma)
+- Prefer JSON or other cross-language formats for data exchange
+- Store class definitions in a stable location when pickling instances
+- Consider `shelve` for persistent dictionary-like storage
+- Test unpickling after class modifications
+- Use restricted unpicklers for partially trusted data
 
-A: Pickle can serialize: None, booleans, integers, floats, complex numbers, strings, bytes, bytearrays, tuples, lists, sets, dictionaries, functions (at module level), classes (at module level), and instances of classes where `__getstate__` is defined or all attributes are picklable.
+### Performance Considerations
 
-**Q2: What are the pickle protocol versions?**
+- Higher protocols produce smaller, faster-to-process output
+- Protocol 0 (text) is 2-5x slower than binary protocols
+- Pickle is generally faster than JSON for complex Python objects
+- The serialization speed depends on object complexity
+- For numeric arrays, consider `numpy.save()` or `array.array`
+- Compression (gzip) reduces storage at cost of CPU
+- Protocol 5 supports zero-copy pickling for large buffers
 
-A: Protocol 0 (text-based, human-readable), Protocol 1 (old binary), Protocol 2 (Python 2.3+), Protocol 3 (default for Python 3.0-3.7), Protocol 4 (default for Python 3.8+, supports large objects), Protocol 5 (Python 3.8+, out-of-band data).
+### Interview Questions
 
-**Q3: Why is pickle insecure?**
+1. What types can pickle serialize?
 
-A: Unpickling can execute arbitrary Python code because pickle can reconstruct arbitrary objects, including those that execute code in their `__reduce__` method. A malicious pickle can execute system commands.
+   None, booleans, ints, floats, complex numbers, strings, bytes, bytearrays, tuples, lists, sets, dicts, functions (module-level), classes (module-level), and class instances with picklable attributes.
 
-**Q4: What's the difference between pickle and JSON?**
+2. What are the pickle protocol versions?
 
-A: Pickle is Python-specific, supports all Python types (including custom classes), and produces binary output. JSON is language-agnostic, supports only basic data types, produces text output, and is safe to use with untrusted data.
+   0 (text), 1 (binary), 2 (Python 2.3+), 3 (Python 3.0-3.7 default), 4 (Python 3.8+ default, large objects), 5 (Python 3.8+, out-of-band data).
 
-## Coding Challenges
+3. Why is pickle insecure?
 
-**Challenge 1: Versioned Configuration Manager** - Create a configuration system that handles pickle format versioning and migration.
+   Unpickling can execute arbitrary code because pickle reconstructs objects using `REDUCE` and other opcodes that can call any function. A malicious pickle can execute system commands via `os.system`.
 
-**Challenge 2: Secure Pickle Proxy** - Implement a wrapper that validates pickled data against an allowlist of allowed types before unpickling.
+4. Difference between pickle and JSON?
 
-**Challenge 3: Incremental Pickle** - Design a system that can append new objects to an existing pickle file without reading the entire file.
+   Pickle is Python-specific, supports all Python types, produces binary. JSON is language-agnostic, supports basic types only, produces text, safe with untrusted data.
 
-**Challenge 4: Pickle Analyzer** - Write a tool that analyzes a pickle file and reports the types and structure it contains without unpickling it.
+5. What are `__getstate__` and `__setstate__`?
 
-**Challenge 5: Hybrid Serializer** - Create a serializer that uses pickle for complex types but falls back to JSON for simple types.
+   `__getstate__` controls what gets serialized (return value replaces instance dict). `__setstate__` controls how objects are restored from their pickled state.
 
-## Summary
+### Coding Challenges
 
-Python's `pickle` module provides powerful serialization capabilities for Python objects, supporting everything from basic types to complex custom class instances with circular references. The module supports multiple protocol versions (0-5) with higher versions offering better efficiency. Security is a critical concern - never unpickle untrusted data. Control serialization with `__getstate__` and `__setstate__`, and use compression for large objects. While pickle is ideal for Python-to-Python serialization, cross-language scenarios should use JSON, msgpack, or other interchange formats.
+1. Create a versioned configuration system that handles pickle format migration.
 
-## Related Topics
+2. Implement a secure pickle wrapper that validates unpickled types against an allowlist.
 
-- `48_file_operations.md` - File I/O basics for reading/writing pickle files
-- `49_json.md` - JSON serialization as a cross-language alternative
-- `52_pathlib.md` - Path management for pickle file locations
-- `53_temp_files.md` - Temporary files for intermediate pickle storage
-- Data Serialization - Comparing pickle with JSON, YAML, msgpack, protobuf
-- shelve module - Persistent dictionary backed by pickle
-- copy module - Deep/shallow copy operations using pickle
+3. Build an incremental pickle system that appends new objects without reading the entire file.
+
+4. Write a pickle analyzer that inspects pickle file contents without unpickling.
+
+5. Create a hybrid serializer that uses pickle for complex types and JSON for simple types.
+
+### Related Topics
+
+- `48_file_operations.md` - File I/O basics
+- `49_json.md` - Cross-language serialization alternative
+- `52_pathlib.md` - Path management
+- `53_temp_files.md` - Temporary file storage
+- `shelve` module - Persistent dict backed by pickle
+- `copy` module - Deep/shallow copy using pickle
+- `__reduce__`/`__reduce_ex__` - Custom pickling protocols

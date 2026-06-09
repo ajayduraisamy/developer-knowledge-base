@@ -2,568 +2,523 @@
 
 ## Introduction
 
-A metaclass is the class of a class — a class that defines how other classes are created. In Python, everything is an object, including classes themselves. Just as ordinary objects are instances of a class, classes are instances of a metaclass. The default metaclass is `type`. When you define a class, Python calls the metaclass to create the class object. Metaclasses intercept class creation, allowing you to modify class attributes, methods, and behavior before the class is actually created.
+Metaclasses are the "classes of classes" in Python. Just as a class defines how instances behave, a metaclass defines how classes behave. Every class in Python is an instance of a metaclass, most commonly `type`. Metaclasses intercept class creation, allowing you to modify class attributes, add methods, enforce coding standards, implement singleton patterns, and much more. They are one of the most advanced and powerful features of Python's object-oriented system.
 
-## Why It Is Important
+## type() Metaclass
 
-Metaclasses are the ultimate tool for framework and library authors. They enable powerful patterns like singletons, registration of subclasses (plugin systems), automatic property generation, ORM model definitions (Django, SQLAlchemy), validation of class attributes, and enforcing coding standards at the class level. While rarely needed in day-to-day application code, metaclasses provide essential infrastructure for many Python frameworks.
+### What It Is
 
-## Syntax
+`type()` is the default metaclass in Python. When called with one argument, `type(obj)` returns the type of the object. When called with three arguments, `type(name, bases, dict)` dynamically creates a new class. Everything in Python, including classes, is an object, and every object, including classes, has a type. The type of most built-in and user-defined classes is `type`.
+
+### Why It Is Important
+
+Understanding `type()` as a metaclass is fundamental to understanding Python's object model. It reveals that classes are themselves objects that can be created, modified, and manipulated at runtime. This enables dynamic class generation, framework APIs, and the entire metaclass system.
+
+### How It Works Internally
+
+When Python executes a `class` statement, it collects the class name, base classes, and namespace (from the class body), then calls `metaclass(name, bases, namespace)` to create the class object. For a regular class, this is `type(name, bases, namespace)`. The metaclass's `__new__` and `__init__` methods are responsible for creating and initializing the class object.
+
+### Syntax
 
 ```python
-# Default metaclass: type
-class MyClass(metaclass=type):
+type(name, bases, dict)
+# name: string, the class name
+# bases: tuple, the base classes
+# dict: dict, the namespace (attributes and methods)
+```
+
+### Beginner Examples
+
+```python
+# Dynamically creating a class
+Person = type('Person', (object,), {
+    'species': 'Human',
+    '__init__': lambda self, name: setattr(self, 'name', name),
+    'greet': lambda self: f"Hello, I'm {self.name}"
+})
+
+p = Person("Alice")
+print(p.greet())       # Hello, I'm Alice
+print(p.species)       # Human
+print(type(p))         # <class '__main__.Person'>
+print(type(Person))    # <class 'type'>
+
+# Checking metaclasses
+print(type(int))       # <class 'type'>
+print(type(type))      # <class 'type'> - type is its own metaclass
+```
+
+### Intermediate Examples
+
+```python
+# Adding methods conditionally
+def create_model(name, fields, base=object):
+    namespace = {}
+    for field_name, field_type in fields.items():
+        if field_type == str:
+            namespace[field_name] = property(
+                lambda self, n=field_name: self.__dict__.get(n, ''),
+                lambda self, val, n=field_name: setattr(self, n, str(val))
+            )
+        elif field_type == int:
+            namespace[field_name] = property(
+                lambda self, n=field_name: self.__dict__.get(n, 0),
+                lambda self, val, n=field_name: setattr(self, n, int(val))
+            )
+    namespace['__init__'] = lambda self, **kwargs: [setattr(self, k, v) for k, v in kwargs.items()]
+    return type(name, (base,), namespace)
+
+Model = create_model('Model', {'name': str, 'age': int})
+m = Model(name='Alice', age=30)
+print(m.name, m.age)  # Alice 30
+```
+
+### Advanced Examples
+
+```python
+# Dynamic subclass creation
+class Animal:
+    def speak(self):
+        raise NotImplementedError
+
+def make_animal_sound(sound):
+    namespace = {'speak': lambda self: sound}
+    return type(f'Animal_{sound}', (Animal,), namespace)
+
+Dog = make_animal_sound('Woof')
+Cat = make_animal_sound('Meow')
+
+print(Dog().speak())  # Woof
+print(Cat().speak())  # Meow
+print(type(Dog))      # <class 'type'>
+```
+
+### Real-World Use Cases
+
+- **ORM frameworks** (SQLAlchemy, Django) use metaclasses to convert class definitions into database schemas.
+- **Serialization libraries** generate serializers/deserializers from class definitions.
+- **Proxy/wrapper generators** dynamically create proxy classes.
+- **API client generators** create classes from API schema definitions.
+- **Plugin systems** discover and register plugins by class type.
+
+### Common Mistakes
+
+- Using metaclasses when a simpler solution (decorator, inheritance, `__init_subclass__`) would work.
+- Forgetting that `type` creates a new class, not an instance.
+- Modifying the wrong namespace — `dict` in `type()` is the class namespace, not instance.
+- Overcomplicating class creation when `__init_subclass__` suffices.
+
+### Best Practices
+
+- Use metaclasses sparingly — they are powerful but complex.
+- Prefer class decorators or `__init_subclass__` for most class customization needs.
+- Follow "don't repeat yourself" (DRY) — metaclasses are good for cross-cutting concerns.
+- Document metaclass behavior thoroughly for future maintainers.
+- Test metaclass-based classes extensively due to their complexity.
+
+### Performance Considerations
+
+Metaclasses run at class definition time, not instance creation time. The overhead is paid once per class, not per instance. However, metaclass `__call__` can affect instance creation speed. Avoid heavy computation in metaclass `__init__` or `__new__` that runs at class definition time.
+
+### Interview Questions
+
+**Q: What is the difference between a metaclass and a base class?**
+
+A: A base class defines behavior inherited by subclasses. A metaclass defines how classes themselves are constructed. A class inherits from a base class; a class is an instance of a metaclass.
+
+**Q: What is the `__call__` method in a metaclass used for?**
+
+A: The `__call__` method on a metaclass is invoked when an instance of the class is created. It can customize instance creation, for example implementing singletons or object pooling.
+
+### Coding Challenges
+
+1. Create a `SingletonMeta` metaclass that implements the singleton pattern.
+2. Implement a `ValidateAttributesMeta` that ensures all methods have docstrings.
+3. Build a metaclass that automatically adds property accessors for class attributes starting with `_`.
+
+### Related Topics
+
+- `__init_subclass__` (simpler alternative to metaclasses)
+- Class decorators (often simpler than metaclasses)
+- `__new__` vs `__init__` in metaclasses
+- `type()` and class creation
+- ABCMeta (abstract base classes)
+
+## Class Creation Process
+
+### What It Is
+
+The class creation process in Python is the sequence of steps Python goes through when executing a `class` statement. This process involves determining the metaclass, preparing the namespace, executing the class body, and calling the metaclass to construct the class object.
+
+### Why It Is Important
+
+Understanding the class creation process demystifies how classes work in Python. It explains how metaclasses can intercept and modify class creation, how `__init_subclass__` hooks work, and how frameworks like Django and SQLAlchemy derive schema from class definitions.
+
+### How It Works Internally
+
+The class creation process follows these steps:
+1. Determine the metaclass: Python looks for a `metaclass` keyword argument, then the first base class's metaclass, then `type`.
+2. Prepare the namespace: Calls `metaclass.__prepare__(name, bases, **kwargs)` to get the namespace (a dict-like object).
+3. Execute the class body: The class body is executed in the prepared namespace.
+4. Call the metaclass: `metaclass(name, bases, namespace, **kwargs)` creates the class object.
+5. Install the class: The class object is bound to its name in the enclosing scope.
+
+### Syntax
+
+```python
+class MyClass(MyBase, metaclass=MyMeta, **kwargs):
+    # Class body
+    x = 10
+```
+
+### Beginner Examples
+
+```python
+class SimpleClass:
+    """A simple class for understanding creation."""
+    x = 10
+    def method(self):
+        return self.x
+
+# What Python actually does:
+# 1. Determine metaclass -> type
+# 2. Prepare namespace -> {}
+# 3. Execute body -> {'x': 10, 'method': <function>, ...}
+# 4. Create class -> type('SimpleClass', (), namespace)
+
+# We can inspect the steps
+print(SimpleClass.__name__)   # SimpleClass
+print(SimpleClass.__bases__)  # (<class 'object'>,)
+print(SimpleClass.__dict__)   # {'x': 10, 'method': <function>, ...}
+```
+
+### Intermediate Examples
+
+```python
+# Custom namespace preparation
+class OrderedNamespace(dict):
+    def __init__(self):
+        super().__init__()
+        self._order = []
+
+    def __setitem__(self, key, value):
+        if key not in self:
+            self._order.append(key)
+        super().__setitem__(key, value)
+
+class OrderedMeta(type):
+    @classmethod
+    def __prepare__(mcs, name, bases):
+        return OrderedNamespace()
+
+    def __new__(mcs, name, bases, namespace):
+        namespace['_field_order'] = namespace._order[:]
+        return super().__new__(mcs, name, bases, dict(namespace))
+
+class OrderedClass(metaclass=OrderedMeta):
+    z = 1
+    a = 2
+    m = 3
+    b = 4
+
+print(OrderedClass._field_order)  # ['z', 'a', 'm', 'b']
+```
+
+### Advanced Examples
+
+```python
+# Full class creation hook with __init_subclass__
+class PluginBase:
+    plugins = []
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls.plugins.append(cls)
+
+class PluginA(PluginBase):
     pass
 
-# Custom metaclass
-class MyMeta(type):
+class PluginB(PluginBase):
+    pass
+
+print(PluginBase.plugins)  # [<class 'PluginA'>, <class 'PluginB'>]
+
+# Metaclass controlling instance creation
+class SingletonMeta(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+class Singleton(metaclass=SingletonMeta):
+    def __init__(self, value):
+        self.value = value
+
+s1 = Singleton(1)
+s2 = Singleton(2)
+print(s1 is s2)    # True
+print(s1.value)    # 1 (not 2)
+```
+
+### Real-World Use Cases
+
+- **Django models**: `class User(models.Model):` triggers metaclass to create database schema.
+- **SQLAlchemy ORM**: `__tablename__`, `__table_args__` are processed by metaclass.
+- **Enum support**: The `Enum` metaclass processes enum members.
+- **Abstract base classes**: `ABCMeta` registers abstract methods.
+- **Protocol classes**: `typing.Protocol` uses metaclass for structural subtyping.
+
+### Common Mistakes
+
+- Forgetting that `__prepare__` must return a mapping, not necessarily a dict.
+- Assuming `metaclass` keyword is passed to `__init__` (it's consumed by class creation).
+- Modifying the namespace after class creation and expecting metaclass to see changes.
+- Expecting `__init_subclass__` to be called when the parent class is created (it's for subclasses).
+
+### Best Practices
+
+- Use `__init_subclass__` instead of metaclasses when you only need to customize subclass creation.
+- Override `__prepare__` only when you need ordered or filtered namespaces.
+- Use `super()` properly in metaclass methods to maintain MRO compatibility.
+- Keep metaclass logic simple and focused on a single transformation.
+
+### Performance Considerations
+
+The class creation process runs once per class at definition time. `__prepare__` adds slight overhead for each class definition. The namespace dictionary and class body execution are as fast as normal code. Metaclass hooks that run at class creation time don't affect instance creation or method call performance.
+
+### Interview Questions
+
+**Q: What is `__prepare__` in a metaclass?**
+
+A: `__prepare__` is a class method on the metaclass that returns the namespace dict used for class body execution. It's called before the class body executes and can return any mapping. It's useful for ordered namespaces or filtered namespaces.
+
+**Q: How does Python determine which metaclass to use?**
+
+A: Python checks (1) the `metaclass` keyword argument in the class definition, (2) the metaclass of the first base class, (3) `type` if neither is specified. Metaclasses must be subclasses of each other to avoid `TypeError`.
+
+### Coding Challenges
+
+1. Create a metaclass that records the order of method definitions in a class.
+2. Implement a metaclass that automatically adds `__repr__` based on `__init__` parameters.
+3. Build a metaclass that validates attribute types at class definition time.
+
+### Related Topics
+
+- `type()` function
+- Metaclass `__new__` vs `__init__`
+- `__init_subclass__` hook
+- Class decorators (alternative approach)
+- MRO (Method Resolution Order)
+
+## Custom Metaclasses
+
+### What It Is
+
+A custom metaclass is a class that inherits from `type` (or another metaclass) and overrides methods like `__new__`, `__init__`, or `__call__` to customize class or instance creation. Custom metaclasses are defined with `class Meta(type):` and applied to classes via the `metaclass` keyword argument.
+
+### Why It Is Important
+
+Custom metaclasses provide ultimate control over class behavior. They are used by frameworks to implement automatic registration, validation, transformation, and APIs that would be impossible with regular inheritance. While advanced, they solve problems that have no other clean solution.
+
+### How It Works Internally
+
+A custom metaclass inherits from `type`. It overrides `__new__` (called before class creation, receives `mcs`, `name`, `bases`, `namespace`), `__init__` (called after class creation for initialization), and/or `__call__` (called when the class is instantiated). The metaclass is applied by specifying `metaclass=MyMeta` in the class definition.
+
+### Syntax
+
+```python
+class CustomMeta(type):
     def __new__(mcs, name, bases, namespace):
         # Modify namespace before class creation
         return super().__new__(mcs, name, bases, namespace)
 
     def __init__(cls, name, bases, namespace):
-        # Post-processing after class creation
+        # Initialize the newly created class
         super().__init__(name, bases, namespace)
 
-# Using metaclass in Python 3
-class MyClass(metaclass=MyMeta):
+    def __call__(cls, *args, **kwargs):
+        # Called when an instance is created
+        return super().__call__(*args, **kwargs)
+
+class MyClass(metaclass=CustomMeta):
     pass
 ```
 
-## Examples
-
-```python
-from typing import Any, Type, ClassVar
-import inspect
-```
-
-### type() as a Metaclass
-
-```python
-# Creating a class dynamically with type()
-def __init__(self, name: str, age: int) -> None:
-    self.name = name
-    self.age = age
-
-def greet(self) -> str:
-    return f"Hello, I'm {self.name}"
-
-Person = type('Person', (), {
-    '__init__': __init__,
-    'greet': greet,
-    'species': 'Human'
-})
-
-p = Person("Alice", 30)
-print(p.greet())
-print(p.species)
-```
-
-### Basic Custom Metaclass
-
-```python
-class CapitalizeMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        new_namespace = {}
-        for attr_name, attr_value in namespace.items():
-            if attr_name.startswith('_'):
-                new_namespace[attr_name] = attr_value
-            else:
-                new_namespace[attr_name.capitalize()] = attr_value
-        return super().__new__(mcs, name, bases, new_namespace)
-
-class MyClass(metaclass=CapitalizeMeta):
-    foo = 1
-    bar = 2
-    _internal = 3
-
-obj = MyClass()
-print(obj.Foo)  # 1
-print(obj.Bar)  # 2
-print(obj._internal)  # 3
-```
-
-### __new__ vs __init__ in Metaclasses
-
-```python
-class DebugMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        print(f"  __new__: Creating class {name}")
-        result = super().__new__(mcs, name, bases, namespace)
-        print(f"  __new__: Created {result}")
-        return result
-
-    def __init__(cls, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> None:
-        print(f"  __init__: Initializing class {name}")
-        super().__init__(name, bases, namespace)
-
-class Base(metaclass=DebugMeta):
-    pass
-
-class Derived(Base):
-    pass
-```
-
-## Beginner Examples
-
-### Adding an Attribute to All Classes
-
-```python
-class AddAuthorMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        namespace['author'] = "Unknown"
-        return super().__new__(mcs, name, bases, namespace)
-
-class Book(metaclass=AddAuthorMeta):
-    pass
-
-class Article(metaclass=AddAuthorMeta):
-    pass
-
-print(Book.author)
-print(Article.author)
-```
-
-### Preventing Class Instantiation
-
-```python
-class NoInstanceMeta(type):
-    def __call__(cls, *args: Any, **kwargs: Any) -> None:
-        raise TypeError(f"Cannot instantiate {cls.__name__}")
-
-class Constants(metaclass=NoInstanceMeta):
-    PI = 3.14159
-    E = 2.71828
-
-print(Constants.PI)
-# Constants()  # Raises TypeError
-```
-
-### Auto-registering Subclasses
-
-```python
-class RegistryMeta(type):
-    registry: dict[str, type] = {}
-
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        cls = super().__new__(mcs, name, bases, namespace)
-        if not name.startswith('_'):
-            mcs.registry[name] = cls
-        return cls
-
-class BasePlugin(metaclass=RegistryMeta):
-    pass
-
-class PluginA(BasePlugin):
-    pass
-
-class PluginB(BasePlugin):
-    pass
-
-class PluginC(BasePlugin):
-    pass
-
-print(RegistryMeta.registry)
-```
-
-## Intermediate Examples
-
-### Singleton Metaclass
-
-```python
-class SingletonMeta(type):
-    _instances: dict[type, object] = {}
-
-    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
-        if cls not in cls._instances:
-            cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-class Database(metaclass=SingletonMeta):
-    def __init__(self) -> None:
-        print("Initializing Database connection...")
-        self.connected = True
-
-db1 = Database()
-db2 = Database()
-print(db1 is db2)  # True
-```
-
-### Validation Metaclass
-
-```python
-class ValidateAttributesMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        annotations = namespace.get('__annotations__', {})
-        for attr_name, attr_type in annotations.items():
-            if attr_name.startswith('_'):
-                continue
-            default = namespace.get(attr_name)
-            if default is not None and not isinstance(default, attr_type):
-                raise TypeError(
-                    f"Default value for '{attr_name}' must be {attr_type.__name__}, "
-                    f"got {type(default).__name__}"
-                )
-        return super().__new__(mcs, name, bases, namespace)
-
-    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
-        instance = super().__call__(*args, **kwargs)
-        annotations = getattr(cls, '__annotations__', {})
-        for attr_name, attr_type in annotations.items():
-            if hasattr(instance, attr_name):
-                value = getattr(instance, attr_name)
-                if not isinstance(value, attr_type):
-                    raise TypeError(
-                        f"Attribute '{attr_name}' must be {attr_type.__name__}, "
-                        f"got {type(value).__name__}"
-                    )
-        return instance
-
-class Person(metaclass=ValidateAttributesMeta):
-    name: str
-    age: int
-
-    def __init__(self, name: str, age: int) -> None:
-        self.name = name
-        self.age = age
-
-p = Person("Alice", 30)  # OK
-# p = Person("Alice", "30")  # Raises TypeError
-```
-
-### Metaclass for Adding Methods
-
-```python
-class AddMethodsMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        # Add a to_dict method
-        def to_dict(self) -> dict[str, Any]:
-            result: dict[str, Any] = {}
-            for key, value in self.__dict__.items():
-                if not key.startswith('_'):
-                    result[key] = value
-            return result
-        namespace['to_dict'] = to_dict
-
-        # Add a from_dict class method
-        @classmethod
-        def from_dict(cls, data: dict[str, Any]) -> Any:
-            return cls(**data)
-        namespace['from_dict'] = from_dict
-
-        return super().__new__(mcs, name, bases, namespace)
-
-class Point(metaclass=AddMethodsMeta):
-    def __init__(self, x: float, y: float) -> None:
-        self.x = x
-        self.y = y
-
-p = Point(3, 4)
-print(p.to_dict())
-p2 = Point.from_dict({"x": 5, "y": 6})
-print(p2.to_dict())
-```
-
-### Metaclass for Logging Method Calls
-
-```python
-class LoggingMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        for attr_name, attr_value in namespace.items():
-            if callable(attr_value) and not attr_name.startswith('_'):
-                original = attr_value
-                def make_logged(name: str, func: Any) -> Any:
-                    def logged(self, *args: Any, **kwargs: Any) -> Any:
-                        print(f"Calling {name} on {self.__class__.__name__}")
-                        result = func(self, *args, **kwargs)
-                        print(f"{name} returned {result}")
-                        return result
-                    return logged
-                namespace[attr_name] = make_logged(attr_name, original)
-        return super().__new__(mcs, name, bases, namespace)
-
-class Calculator(metaclass=LoggingMeta):
-    def add(self, a: int, b: int) -> int:
-        return a + b
-
-    def multiply(self, a: int, b: int) -> int:
-        return a * b
-
-calc = Calculator()
-calc.add(3, 4)
-calc.multiply(5, 6)
-```
-
-## Advanced Examples
-
-### ORM-style Field Definition (like Django/SQLAlchemy)
-
-```python
-class Field:
-    def __init__(self, field_type: type, default: Any = None) -> None:
-        self.field_type = field_type
-        self.default = default
-        self.name: str = ""
-
-class ModelMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        fields: dict[str, Field] = {}
-        for attr_name, attr_value in namespace.items():
-            if isinstance(attr_value, Field):
-                attr_value.name = attr_name
-                fields[attr_name] = attr_value
-        namespace['_fields'] = fields
-        return super().__new__(mcs, name, bases, namespace)
-
-class BaseModel(metaclass=ModelMeta):
-    def __init__(self, **kwargs: Any) -> None:
-        for field_name, field in self._fields.items():
-            value = kwargs.get(field_name, field.default)
-            if value is not None and not isinstance(value, field.field_type):
-                raise TypeError(
-                    f"Field '{field_name}' expects {field.field_type.__name__}, "
-                    f"got {type(value).__name__}"
-                )
-            setattr(self, field_name, value)
-
-    def __repr__(self) -> str:
-        fields = ", ".join(
-            f"{n}={getattr(self, n, None)}"
-            for n in self._fields
-        )
-        return f"{self.__class__.__name__}({fields})"
-
-class User(BaseModel):
-    name = Field(str)
-    age = Field(int, default=0)
-    email = Field(str, default="")
-
-u = User(name="Alice", age=30, email="alice@example.com")
-print(u)
-print(u._fields)
-```
-
-### Metaclass for Property Generation
+### Beginner Examples
 
 ```python
 class AutoPropertyMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        annotations = namespace.get('__annotations__', {})
-        for attr_name in list(annotations.keys()):
-            if attr_name.startswith('_'):
-                continue
-            private_name = f"_{attr_name}"
-            namespace[private_name] = namespace.pop(attr_name, None)
-
-            def make_property(name: str, private: str) -> property:
-                def getter(self) -> Any:
-                    return getattr(self, private)
-                def setter(self, value: Any) -> None:
-                    setattr(self, private, value)
-                return property(getter, setter)
-
-            namespace[attr_name] = make_property(attr_name, private_name)
-
+    def __new__(mcs, name, bases, namespace):
+        for key, value in list(namespace.items()):
+            if key.startswith('_') and isinstance(value, (str, int, float)):
+                prop_name = key.lstrip('_')
+                namespace[prop_name] = property(
+                    lambda self, k=key: getattr(self, k),
+                    lambda self, v, k=key: setattr(self, k, v)
+                )
         return super().__new__(mcs, name, bases, namespace)
 
 class Person(metaclass=AutoPropertyMeta):
+    _name = "Unknown"
+    _age = 0
+
+p = Person()
+print(p.name)  # Unknown
+p.name = "Alice"
+print(p.name)  # Alice
+```
+
+### Intermediate Examples
+
+```python
+class RegistryMeta(type):
+    registry = {}
+
+    def __new__(mcs, name, bases, namespace):
+        cls = super().__new__(mcs, name, bases, namespace)
+        if not name.startswith('Base'):
+            mcs.registry[name] = cls
+        return cls
+
+class BaseHandler(metaclass=RegistryMeta):
+    pass
+
+class UserHandler(BaseHandler):
+    def handle(self):
+        return "User"
+
+class OrderHandler(BaseHandler):
+    def handle(self):
+        return "Order"
+
+print(RegistryMeta.registry)
+# {'UserHandler': <class 'UserHandler'>, 'OrderHandler': <class 'OrderHandler'>}
+
+
+class LoggerMeta(type):
+    def __new__(mcs, name, bases, namespace):
+        cls = super().__new__(mcs, name, bases, namespace)
+        original_init = cls.__init__
+
+        def logged_init(self, *args, **kwargs):
+            print(f"Creating {name} instance with args={args}, kwargs={kwargs}")
+            original_init(self, *args, **kwargs)
+
+        cls.__init__ = logged_init
+        return cls
+
+class Product(metaclass=LoggerMeta):
+    def __init__(self, name, price):
+        self.name = name
+        self.price = price
+
+p = Product("Widget", 9.99)
+# Creating Product instance with args=('Widget', 9.99), kwargs={}
+```
+
+### Advanced Examples
+
+```python
+class ValidatedMeta(type):
+    def __new__(mcs, name, bases, namespace):
+        annotations = namespace.get('__annotations__', {})
+        validators = {}
+
+        for attr_name, attr_type in annotations.items():
+            def make_validator(aname, atype):
+                def validate(self, value):
+                    if not isinstance(value, atype):
+                        raise TypeError(f"{aname} must be {atype.__name__}, got {type(value).__name__}")
+                    return value
+                return validate
+
+            private_name = f'_{attr_name}'
+
+            def make_getter(pname):
+                return lambda self: getattr(self, pname, None)
+
+            def make_setter(pname, aname, atype):
+                validator = make_validator(aname, atype)
+                def setter(self, value):
+                    setattr(self, pname, validator(value))
+                return setter
+
+            namespace[attr_name] = property(
+                make_getter(private_name),
+                make_setter(private_name, attr_name, attr_type)
+            )
+
+            if '__init__' not in namespace:
+                def make_init(attrs):
+                    def __init__(self, **kwargs):
+                        for k, v in kwargs.items():
+                            setattr(self, k, v)
+                    return __init__
+                namespace['__init__'] = make_init(list(annotations.keys()))
+
+        return super().__new__(mcs, name, bases, namespace)
+
+class User(metaclass=ValidatedMeta):
     name: str
     age: int
 
-    def __init__(self, name: str, age: int) -> None:
-        self.name = name
-        self.age = age
-
-p = Person("Alice", 30)
-print(p.name)
-p.name = "Bob"
-print(p.name)
+u = User(name="Alice", age=30)
+print(u.name)  # Alice
+# u.name = 42  # TypeError: name must be str, got int
 ```
 
-### Metaclass for Input Validation at Construction
+### Real-World Use Cases
 
-```python
-class ConstrainedMeta(type):
-    constraints: dict[str, Any] = {}
+- **Django's ModelBase metaclass**: Converts `class Meta` inner class and field definitions into database schema.
+- **SQLAlchemy's DeclarativeMeta**: Maps class attributes to database columns.
+- **ABC (Abstract Base Classes)**: `ABCMeta` registers abstract methods and prevents instantiation.
+- **Enum metaclass**: Processes enum members and ensures uniqueness.
+- **Singleton metaclasses**: Ensure only one instance exists per class.
 
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        constraints = namespace.get('__constraints__', {})
-        original_init = namespace.get('__init__')
+### Common Mistakes
 
-        if original_init:
-            @staticmethod
-            def make_constrained_init(orig: Any, cons: dict[str, Any]) -> Any:
-                def constrained_init(self, *args: Any, **kwargs: Any) -> None:
-                    orig(self, *args, **kwargs)
-                    for attr_name, validator in cons.items():
-                        if hasattr(self, attr_name):
-                            value = getattr(self, attr_name)
-                            if not validator(value):
-                                raise ValueError(
-                                    f"Validation failed for {attr_name}: {value}"
-                                )
-                return constrained_init
-            namespace['__init__'] = make_constrained_init(original_init, constraints)
+- Inheriting from `type` but forgetting `super().__new__()` with correct arguments.
+- Using metaclasses for simple tasks achievable with class decorators or `__init_subclass__`.
+- Creating metaclasses that don't compose well with other metaclasses (metaclass conflicts).
+- Modifying the namespace dict in `__new__` after calling `super().__new__()`.
+- Expecting `__init__` to receive the same `kwargs` as the class definition (it doesn't get `metaclass`).
 
-        return super().__new__(mcs, name, bases, namespace)
+### Best Practices
 
-class PositiveInteger:
-    @staticmethod
-    def validate(value: int) -> bool:
-        return isinstance(value, int) and value > 0
+- Prefer class decorators or `__init_subclass__` over metaclasses when possible.
+- If using metaclasses, follow the template method pattern: override `__new__` for creation-time modifications and `__init__` for post-creation setup.
+- Document metaclass behavior with clear examples — metaclasses are hard to debug.
+- Handle metaclass conflicts by creating a combined metaclass when multiple metaclasses are needed.
+- Keep metaclass logic independent and testable in isolation.
 
-class Person(metaclass=ConstrainedMeta):
-    __constraints__ = {
-        'age': PositiveInteger.validate,
-    }
+### Performance Considerations
 
-    def __init__(self, name: str, age: int) -> None:
-        self.name = name
-        self.age = age
+Custom metaclass overhead occurs at class definition time. Each `__new__` and `__init__` call happens once per class. The `__call__` method, when overridden, adds overhead to every instance creation. Measure instance creation performance if the metaclass's `__call__` does expensive operations.
 
-p = Person("Alice", 25)  # OK
-# p = Person("Bob", -5)    # Raises ValueError
-```
+### Interview Questions
 
-### Metaclass for Abstract Method Enforcement at Construction
+**Q: When would you use a metaclass instead of a class decorator?**
 
-```python
-class InterfaceMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        abstract_methods = set()
-        for base in bases:
-            abstract_methods.update(getattr(base, '_abstract_methods', set()))
+A: When you need to control class creation at the point where the class is defined (before the class object exists), when you need to modify the class namespace before the class object is built, or when you want the customization to be inherited without an explicit decorator on every subclass.
 
-        for attr_name, attr_value in namespace.items():
-            if getattr(attr_value, '_is_abstract', False):
-                abstract_methods.add(attr_name)
+**Q: What is metaclass conflict and how do you resolve it?**
 
-        # Check if this is a concrete implementation
-        if not getattr(namespace.get('__is_abstract__'), '_is_abstract', False):
-            concrete_class = super().__new__(mcs, name, bases, namespace)
-            missing = abstract_methods - set(concrete_class.__dict__.keys())
-            if missing:
-                raise TypeError(
-                    f"Can't instantiate {name}: missing abstract methods: {missing}"
-                )
-            return concrete_class
+A: A metaclass conflict occurs when a class inherits from multiple base classes with different (unrelated) metaclasses. Python raises `TypeError`. It's resolved by creating a new metaclass that inherits from all conflicting metaclasses, or by restructuring the inheritance hierarchy.
 
-        namespace['_abstract_methods'] = abstract_methods
-        return super().__new__(mcs, name, bases, namespace)
+### Coding Challenges
 
-def abstract(func: Any) -> Any:
-    func._is_abstract = True
-    return func
+1. Implement a `FinalMeta` metaclass that prevents a class from being subclassed.
+2. Create a `TimerMeta` that automatically logs execution time of all methods in a class.
+3. Build a `SerializableMeta` that adds `to_dict()` and `from_dict()` methods based on `__init__` parameters.
+4. Implement an `InterfaceMeta` that ensures all methods defined in a base "interface" class are implemented in subclasses.
 
-# Usage:
-# class Shape(metaclass=InterfaceMeta):
-#     __is_abstract__ = True
-#
-#     @abstract
-#     def area(self):
-#         pass
-#
-# class Circle(Shape):
-#     def __init__(self, r):
-#         self.r = r
-#     def area(self):
-#         return 3.14 * self.r ** 2
-#
-# c = Circle(5)  # OK
-```
+### Related Topics
 
-### Metaclass for Automatic __repr__ and __str__
-
-```python
-class AutoReprMeta(type):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        if '__repr__' not in namespace:
-            def __repr__(self) -> str:
-                cls = self.__class__
-                attrs = ", ".join(
-                    f"{k}={v!r}"
-                    for k, v in self.__dict__.items()
-                    if not k.startswith('_')
-                )
-                return f"{cls.__name__}({attrs})"
-            namespace['__repr__'] = __repr__
-        return super().__new__(mcs, name, bases, namespace)
-
-class Point(metaclass=AutoReprMeta):
-    def __init__(self, x: int, y: int) -> None:
-        self.x = x
-        self.y = y
-
-p = Point(10, 20)
-print(p)
-```
-
-## Real-World Use Cases
-
-- **Django ORM**: Model classes are defined using metaclasses to create database table mappings.
-- **SQLAlchemy ORM**: Declarative base uses metaclasses for table definitions.
-- **Python's ABC (abc.ABCMeta)**: Enables abstract base classes with `@abstractmethod`.
-- **Singleton pattern**: Ensuring a class has only one instance.
-- **Plugin/registry systems**: Auto-registering subclasses of a base class.
-- **Serialization frameworks**: Automatically generating serialization/deserialization code.
-- **Validation frameworks**: Enforcing type and value constraints on class attributes.
-- **Aspect-oriented programming**: Adding logging, tracing, or security checks automatically.
-
-## Common Mistakes
-
-- Using metaclasses when a simpler solution (decorator, inheritance, `__init_subclass__`) would work.
-- Forgetting to call `super().__new__()` or `super().__init__()` in metaclass methods.
-- Confusing `__new__` (called before class creation) with `__init__` (called after).
-- Overusing metaclasses — they add complexity and can make code hard to debug.
-- Modifying class attributes in ways that break `isinstance()` and `issubclass()` checks.
-- Trying to use metaclass syntax from Python 2 (`__metaclass__`) in Python 3.
-- Not understanding that metaclass methods operate on classes, not instances.
-
-## Best Practices
-
-- Prefer `__init_subclass__`, decorators, or inheritance over metaclasses when possible.
-- Keep metaclass logic focused on class creation only.
-- Use descriptive names for metaclasses (suffix with `Meta` or `MetaClass`).
-- Document clearly what your metaclass does and why it's needed.
-- Always call `super()` to maintain the MRO chain.
-- Avoid metaclasses in libraries meant for public consumption unless absolutely necessary.
-- Use `__new__` for modifying the class before creation; use `__init__` for post-processing.
-
-## Interview Questions
-
-1. What is a metaclass in Python?
-2. How do you create a custom metaclass?
-3. What is the difference between `type.__new__` and `type.__init__` in a metaclass?
-4. How do metaclasses relate to class creation?
-5. What is the Singleton pattern and how do you implement it with a metaclass?
-6. How do Django and SQLAlchemy use metaclasses?
-7. What is the MRO and how do metaclasses affect it?
-8. How does `__init_subclass__` differ from metaclasses?
-9. What is the difference between a class decorator and a metaclass?
-10. How do you dynamically create a class using `type()`?
-
-## Coding Challenges
-
-1. **Singleton Metaclass**: Create a metaclass that ensures only one instance of a class exists.
-2. **Attribute Validation**: Build a metaclass that validates types of all annotated attributes.
-3. **Plugin Registry**: Implement a metaclass that auto-registers all subclasses.
-4. **Auto-Properties**: Create a metaclass that converts annotated attributes into properties with getters/setters.
-5. **Logging Metaclass**: Build a metaclass that logs every method call on instances.
-6. **AbstractInterface**: Create a metaclass that enforces abstract method implementation.
-7. **ORM Fields**: Implement a simple ORM-style field system with a metaclass.
-8. **Auto-Repr**: Write a metaclass that automatically generates `__repr__` and `__str__` methods.
-
-## Summary
-
-Metaclasses are classes that create classes, intercepting the class creation process to modify or enhance the resulting class. They are the deepest level of Python's metaprogramming system and power many frameworks (Django, SQLAlchemy, ABC). While powerful, they should be used sparingly; simpler alternatives like decorators and `__init_subclass__` often suffice.
-
-## Related Topics
-
-- type() and dynamic class creation
-- __new__ vs __init__
+- `type()` built-in function
+- `__new__` method
+- `__init_subclass__` hook
 - Class decorators
-- __init_subclass__
-- Abstract base classes (abc module)
-- Descriptors
-- Decorators
-- Class creation protocol
+- ABC (Abstract Base Classes)
+- MRO (Method Resolution Order)

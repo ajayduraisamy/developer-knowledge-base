@@ -1,900 +1,729 @@
-# Asyncio Advanced - async generators, context managers, queues
-
+﻿# Asyncio Advanced - async generators, context managers, queues
 ## Introduction
+Python's asyncio goes beyond basic coroutines with advanced constructs for managing asynchronous resources and data flow. Async generators enable streaming data with `async for`, async context managers handle setup/teardown with `async with`, and `asyncio.Queue` coordinates producer-consumer workflows in concurrent async code.
 
-Advanced asyncio patterns extend beyond basic coroutines to include async context managers, async iterators, async generators, synchronization primitives, subprocess management, and debugging techniques. These patterns enable building robust, production-grade asynchronous applications.
+## Async generators
+### What It Is
+An async generator is a coroutine that yields values using `yield` inside an `async def` function. It combines the iteration protocol with asynchronous operations, enabling lazy production and consumption of data with I/O between yields.
 
-## Why It Is Important
+### Why It Is Important
+Async generators bridge the gap between infinite/streaming data sources and async consumers. They allow you to paginate through API results, stream data from databases, read files line-by-line, or generate real-time data — all without loading everything into memory.
 
-Mastering advanced asyncio patterns allows developers to write clean, efficient, and maintainable asynchronous code. Async context managers ensure proper resource cleanup, async iterators enable streaming data processing, and advanced patterns like semaphores and queues control concurrency. Debugging techniques are essential for diagnosing issues in complex async systems.
+### How It Works Internally
+When `async for value in async_gen():` is executed, the event loop iterates the async generator protocol:
+1. `__aiter__()` returns the async iterator
+2. `__anext__()` returns an awaitable that, when awaited, runs the generator until the next `yield`
+3. On `StopAsyncIteration`, the loop exits
 
-## Syntax
+The implementation uses the same suspension/resumption mechanism as coroutines, but with yield points that send values to the consumer.
 
+### Syntax
 ```python
-# Async context manager
-class AsyncContextManager:
-    async def __aenter__(self): ...
-    async def __aexit__(self, exc_type, exc_val, exc_tb): ...
-
-# Async iterator
-class AsyncIterator:
-    def __aiter__(self): return self
-    async def __anext__(self): ...
-
-# Async generator
-async def async_generator():
+# Async generator definition
+async def async_gen():
     for i in range(10):
         await asyncio.sleep(0.1)
         yield i
 
-# Async comprehension
-result = [x async for x in async_generator()]
-result = {x: x**2 async for x in async_generator()}
+# Consumption
+async for value in async_gen():
+    print(value)
 
-# Async subprocess
-proc = await asyncio.create_subprocess_exec('cmd', *args)
-stdout, stderr = await proc.communicate()
+# Generator expression (Python 3.6+)
+gen = (x async for x in async_stream())
 ```
 
-## Examples
-
-### Async Context Managers
-
-```python
-import asyncio
-import time
-
-class AsyncFile:
-    def __init__(self, filename, mode='r'):
-        self.filename = filename
-        self.mode = mode
-        self.file = None
-
-    async def __aenter__(self):
-        print(f"Opening {self.filename}")
-        await asyncio.sleep(0.1)
-        self.file = open(self.filename, self.mode)
-        return self.file
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        print(f"Closing {self.filename}")
-        await asyncio.sleep(0.1)
-        if self.file:
-            self.file.close()
-        if exc_type:
-            print(f"Exception was handled: {exc_val}")
-        return True
-
-async def main():
-    import tempfile
-    import os
-    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-        f.write("Hello, async world!")
-        tmpname = f.name
-
-    async with AsyncFile(tmpname, 'r') as f:
-        content = f.read()
-        print(f"Content: {content}")
-
-    os.unlink(tmpname)
-
-    async with AsyncFile("nonexistent.txt", 'r') as f:
-        content = f.read()
-    print("This still runs because __aexit__ returned True")
-
-asyncio.run(main())
-```
-
-### Async Iterators
-
+### Beginner Examples
 ```python
 import asyncio
 
-class AsyncCounter:
-    def __init__(self, start, end, delay=0.1):
-        self.current = start
-        self.end = end
-        self.delay = delay
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if self.current >= self.end:
-            raise StopAsyncIteration
-        await asyncio.sleep(self.delay)
-        value = self.current
-        self.current += 1
-        return value
-
-async def main():
-    print("AsyncCounter (0 to 5):")
-    async for value in AsyncCounter(0, 5, 0.2):
-        print(f"  {value}", end=" ")
-    print()
-
-    print("\nAsyncCounter with filtering:")
-    async for value in AsyncCounter(0, 8, 0.1):
-        if value % 2 == 0:
-            print(f"  {value}", end=" ")
-    print()
-
-asyncio.run(main())
-```
-
-### Async Generators
-
-```python
-import asyncio
-
-async def async_range(start, end, delay=0.1):
-    for i in range(start, end):
+async def countdown(start, delay=1):
+    for i in range(start, 0, -1):
         await asyncio.sleep(delay)
         yield i
 
-async def fibonacci_async(n):
-    a, b = 0, 1
-    for _ in range(n):
-        await asyncio.sleep(0.1)
-        yield a
-        a, b = b, a + b
-
 async def main():
-    print("Async range:")
-    async for value in async_range(0, 5, 0.1):
-        print(f"  {value}", end=" ")
-    print()
-
-    print("\nFibonacci sequence:")
-    async for num in fibonacci_async(8):
-        print(f"  {num}", end=" ")
-    print()
-
-    squares = [x async for x in async_range(0, 5, 0.05)]
-    print(f"\nAsync comprehension (squares): {squares}")
-
-    even_squares = {
-        x: x**2
-        async for x in async_range(0, 8, 0.05)
-        if x % 2 == 0
-    }
-    print(f"Async dict comprehension: {even_squares}")
-
-    gen = async_range(0, 3, 0.1)
-    first = await gen.__anext__()
-    print(f"\nManual next on generator: {first}")
+    async for count in countdown(5, 0.5):
+        print(f"Count: {count}")
+    print("Blast off!")
 
 asyncio.run(main())
 ```
 
-### asyncio.Queue Advanced Usage
+### Intermediate Examples
+```python
+import asyncio
 
+# Simulated async pagination
+async def paginate(url_template, max_pages=3):
+    for page in range(1, max_pages + 1):
+        await asyncio.sleep(0.5)  # Simulate network request
+        items = [f"{url_template}/item/{i}" for i in range((page-1)*10, page*10)]
+        print(f"Fetched page {page}, {len(items)} items")
+        yield items
+
+async def main():
+    all_items = []
+    async for page_items in paginate("https://api.example.com/data"):
+        all_items.extend(page_items)
+    print(f"Total items: {len(all_items)}")
+
+asyncio.run(main())
+
+# Async generator with aiter and anext
+async def numbers():
+    for i in range(5):
+        await asyncio.sleep(0.1)
+        yield i
+
+async def manual_iteration():
+    gen = numbers().__aiter__()
+    try:
+        while True:
+            value = await gen.__anext__()
+            print(f"Manual next: {value}")
+    except StopAsyncIteration:
+        print("Generator exhausted")
+
+asyncio.run(manual_iteration())
+```
+
+### Advanced Examples
+```python
+import asyncio
+from typing import AsyncGenerator
+
+# Async generator with error handling
+async def resilient_stream() -> AsyncGenerator[int, None]:
+    for i in range(10):
+        try:
+            await asyncio.sleep(0.1)
+            if i == 5:
+                raise ValueError("Error at 5")
+            yield i
+        except ValueError as e:
+            print(f"Caught: {e}")
+            yield -1  # Fallback value
+            continue
+
+async def consume_resilient():
+    async for val in resilient_stream():
+        print(f"Got: {val}")
+
+asyncio.run(consume_resilient())
+
+# Async generator for real-time data simulation
+async def sensor_data(sensor_id: str, interval: float = 0.5):
+    import random
+    while True:
+        await asyncio.sleep(interval)
+        yield {
+            "sensor": sensor_id,
+            "value": random.uniform(20, 30),
+            "timestamp": asyncio.get_running_loop().time(),
+        }
+
+async def monitor_sensors():
+    # Create multiple sensor streams
+    sensors = [sensor_data(f"S{i}", 0.3 + i * 0.1) for i in range(3)]
+    
+    # Merge them with asyncio.gather-like approach
+    async def read_sensor(agen):
+        async for data in agen:
+            print(f"Sensor {data['sensor']}: {data['value']:.2f}")
+            await asyncio.sleep(0)  # Yield to event loop
+    
+    # Run all sensor readers concurrently (but stop after 3 seconds)
+    tasks = [asyncio.create_task(read_sensor(s)) for s in sensors]
+    await asyncio.sleep(3)
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    print("Monitoring stopped")
+
+asyncio.run(monitor_sensors())
+
+# Async generator with cleanup
+async def managed_stream():
+    try:
+        for i in range(5):
+            await asyncio.sleep(0.2)
+            yield i
+    finally:
+        print("Cleanup: releasing resources")
+        await asyncio.sleep(0.1)
+        print("Cleanup done")
+
+async def use_managed():
+    gen = managed_stream()
+    async for val in gen:
+        print(f"Value: {val}")
+        if val == 2:
+            break  # Trigger cleanup via finally
+    # Generator will be garbage collected, triggering cleanup
+
+asyncio.run(use_managed())
+```
+
+### Real-World Use Cases
+- **API pagination** — lazily fetching and yielding pages from REST APIs
+- **File streaming** — reading large files line-by-line with async I/O
+- **Database cursors** — yielding rows from async database queries
+- **Real-time data feeds** — streaming sensor data, stock prices, or logs
+- **WebSocket streams** — yielding messages as they arrive over WebSocket
+
+### Common Mistakes
+- Using `return` with a value in an async generator (use `return` alone to stop)
+- Forgetting that `async for` requires `__aiter__` and `__anext__`
+- Not handling cleanup in `finally` blocks (generator can be garbage collected)
+- Mixing sync and async generators incorrectly
+
+### Best Practices
+- Use `typing.AsyncGenerator` for type annotations
+- Clean up resources in `finally` blocks
+- Use `async for` for consuming async generators
+- Use `async` list comprehensions: `[x async for x in async_gen()]`
+- Limit generator state to avoid memory leaks in infinite generators
+- Handle `StopAsyncIteration` properly in manual iteration
+
+### Performance Considerations
+- Each `yield` in an async generator involves a coroutine suspension/resumption
+- Overhead is slightly higher than a sync generator but much lower than threading
+- Use `asyncio.sleep(0)` at yield points to allow other tasks to run
+- Batching yields can reduce overhead (yield chunks instead of individual items)
+
+### Interview Questions
+1. What is the difference between a generator and an async generator?
+2. How does `StopAsyncIteration` work in async generators?
+3. Can you use `return` with a value in an async generator?
+4. How do you type hint an async generator?
+
+### Coding Challenges
+- Write an async generator that fetches paginated API results
+- Build a real-time log tailer using async generators
+- Create a merge function that combines multiple async generators into one
+
+### Related Topics
+- asyncio, async iterators, coroutines, yield, Python generators
+
+## Async context managers
+### What It Is
+An async context manager uses `__aenter__` and `__aexit__` methods (instead of `__enter__`/`__exit__`) for setup and teardown that involve asynchronous operations. The `async with` statement manages the lifecycle of such objects.
+
+### Why It Is Important
+Many async resources — network connections, file handles, database sessions, locks — require async setup and teardown. Async context managers provide the same RAII (Resource Acquisition Is Initialization) pattern as sync context managers, but for async operations.
+
+### How It Works Internally
+When `async with obj as x:` is executed:
+1. `await obj.__aenter__()` is called (returns the resource)
+2. The `as x` target is bound to the result
+3. The body executes
+4. `await obj.__aexit__(exc_type, exc_val, exc_tb)` is called on exit (even on exception)
+
+The `contextlib` module provides `@asynccontextmanager` for creating async context managers from async generators.
+
+### Syntax
+```python
+# Class-based
+class AsyncResource:
+    async def __aenter__(self):
+        await self.connect()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+async with AsyncResource() as res:
+    await res.work()
+
+# Generator-based (contextlib)
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def my_context():
+    resource = await acquire()
+    try:
+        yield resource
+    finally:
+        await release(resource)
+```
+
+### Beginner Examples
+```python
+import asyncio
+from contextlib import asynccontextmanager
+
+# Generator-based async context manager
+@asynccontextmanager
+async def timed_operation(name):
+    print(f"Starting {name}")
+    start = asyncio.get_running_loop().time()
+    try:
+        yield
+    finally:
+        elapsed = asyncio.get_running_loop().time() - start
+        print(f"{name} took {elapsed:.2f}s")
+
+async def main():
+    async with timed_operation("sleep operation"):
+        await asyncio.sleep(1)
+    
+    # Nested contexts
+    async with timed_operation("outer"):
+        await asyncio.sleep(0.5)
+        async with timed_operation("inner"):
+            await asyncio.sleep(0.5)
+
+asyncio.run(main())
+```
+
+### Intermediate Examples
+```python
+import asyncio
+from contextlib import asynccontextmanager
+
+# Async database connection pool simulation
+class AsyncConnection:
+    def __init__(self, name):
+        self.name = name
+        self.connected = False
+    
+    async def connect(self):
+        await asyncio.sleep(0.5)
+        self.connected = True
+        print(f"Connected to {self.name}")
+    
+    async def close(self):
+        await asyncio.sleep(0.2)
+        self.connected = False
+        print(f"Closed {self.name}")
+    
+    async def query(self, sql):
+        if not self.connected:
+            raise RuntimeError("Not connected")
+        await asyncio.sleep(0.3)
+        return f"Results for: {sql}"
+
+class AsyncConnectionPool:
+    def __init__(self, name):
+        self.conn = AsyncConnection(name)
+    
+    async def __aenter__(self):
+        await self.conn.connect()
+        return self.conn
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.conn.close()
+
+async def main():
+    async with AsyncConnectionPool("mydb") as conn:
+        result = await conn.query("SELECT * FROM users")
+        print(result)
+
+asyncio.run(main())
+
+# Multiple resources with async context managers
+@asynccontextmanager
+async def connection(name):
+    print(f"Acquiring {name}")
+    await asyncio.sleep(0.3)
+    try:
+        yield f"conn-{name}"
+    finally:
+        await asyncio.sleep(0.2)
+        print(f"Releasing {name}")
+
+async def multi_resource():
+    # Using asynccontextmanager with multiple contexts
+    async with connection("db1") as c1, connection("db2") as c2:
+        print(f"Working with {c1} and {c2}")
+
+asyncio.run(multi_resource())
+```
+
+### Advanced Examples
+```python
+import asyncio
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
+# Async context manager with error handling
+@asynccontextmanager
+async def managed_transaction(dsn: str) -> AsyncIterator[str]:
+    txn_id = f"txn-{id(dsn)}"
+    print(f"BEGIN transaction {txn_id}")
+    await asyncio.sleep(0.2)
+    
+    try:
+        yield txn_id
+    except Exception as e:
+        print(f"ROLLBACK transaction {txn_id}: {e}")
+        await asyncio.sleep(0.1)
+        raise  # Re-raise after rollback
+    else:
+        print(f"COMMIT transaction {txn_id}")
+        await asyncio.sleep(0.1)
+
+async def main():
+    # Successful transaction
+    async with managed_transaction("db://local") as txn:
+        print(f"Working in {txn}")
+        await asyncio.sleep(0.3)
+    
+    # Failing transaction (rolls back)
+    try:
+        async with managed_transaction("db://local") as txn:
+            print(f"Working in {txn}")
+            raise ValueError("Constraint violation")
+    except ValueError:
+        print("Caught transaction error")
+
+asyncio.run(main())
+
+# Reusable async context manager (class-based with state)
+class AsyncFileReader:
+    def __init__(self, path):
+        self.path = path
+        self.content = None
+    
+    async def __aenter__(self):
+        await asyncio.sleep(0.1)  # Simulate open
+        with open(self.path) as f:
+            self.content = f.read()
+        return self.content
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self.content = None
+        await asyncio.sleep(0.1)  # Simulate close
+
+# asyncio.run(AsyncFileReader("test.txt").__aenter__())
+
+# AsyncExitStack — dynamic context management
+from contextlib import AsyncExitStack
+
+async def dynamic_resources():
+    async with AsyncExitStack() as stack:
+        # Push contexts dynamically
+        c1 = await stack.enter_async_context(connection("db1"))
+        c2 = await stack.enter_async_context(connection("db2"))
+        
+        # Push callbacks for cleanup
+        stack.push_async_callback(lambda: asyncio.sleep(0.1))
+        
+        print(f"Using {c1} and {c2}")
+    # All contexts cleaned up on exit from stack
+
+asyncio.run(dynamic_resources())
+```
+
+### Real-World Use Cases
+- **Database sessions** — async session begin/commit/rollback (SQLAlchemy async)
+- **HTTP clients** — client session setup/takedown (aiohttp.ClientSession)
+- **File I/O** — async file open/close (aiofiles)
+- **Lock management** — async lock acquire/release
+- **Network connections** — WebSocket connect/disconnect
+
+### Common Mistakes
+- Using `@contextmanager` instead of `@asynccontextmanager` for async contexts
+- Forgetting to `await` the `__aenter__` or `__aexit__` (implicit in `async with`)
+- Not handling exceptions in `__aexit__` (re-raising is handled automatically)
+- Mixing sync and async cleanup code in the same context manager
+- Yielding multiple times in an asynccontextmanager (yield at most once)
+
+### Best Practices
+- Use `@asynccontextmanager` for simple cases, class-based for complex state
+- Always clean up resources in `finally` blocks (both generator and class-based)
+- Use `AsyncExitStack` for dynamically adding contexts
+- Handle exceptions in `__aexit__` and return True to suppress them
+- Use `contextlib.suppress` for known and expected errors
+- Document the async nature of the context manager in docstrings
+
+### Performance Considerations
+- Async context managers add two coroutine suspension points (enter/exit)
+- The overhead is minimal compared to the actual async operations
+- `@asynccontextmanager` has slightly more overhead than class-based
+- Nested `async with` blocks don't add significant overhead
+
+### Interview Questions
+1. What is the difference between `__aenter__`/`__aexit__` and `__enter__`/`__exit__`?
+2. How does `@asynccontextmanager` work internally?
+3. What is `AsyncExitStack` and when would you use it?
+4. How do you suppress exceptions in an async context manager?
+
+### Coding Challenges
+- Write an async context manager that measures execution time of the enclosed block
+- Build an async connection pool with context manager interface
+- Create an async file reader that reports progress as it reads
+
+### Related Topics
+- contextlib, asynccontextmanager, AsyncExitStack, async with, RAII
+
+## asyncio.Queue
+### What It Is
+`asyncio.Queue` is a coroutine-based FIFO queue for coordinating async producers and consumers. It provides `await put()` and `await get()` methods that suspend when the queue is full or empty, respectively.
+
+### Why It Is Important
+`asyncio.Queue` is the standard way to implement producer-consumer patterns in async code. Unlike `queue.Queue`, it doesn't use threading primitives — it integrates with the event loop for efficient, non-blocking coordination.
+
+### How It Works Internally
+`asyncio.Queue` uses `collections.deque` for storage and manages waiting producers/consumers via internal lists. When `put()` encounters a full queue, it creates a Future and suspends until a consumer calls `get()`. When `get()` finds an empty queue, it suspends until an item is available. No OS threads or locks are involved — the event loop handles the suspension.
+
+### Syntax
+```python
+from asyncio import Queue, PriorityQueue, LifoQueue
+
+q = Queue(maxsize=100)
+
+await q.put(item)          # suspend if full
+item = await q.get()       # suspend if empty
+q.put_nowait(item)         # raises QueueFull
+q.get_nowait()             # raises QueueEmpty
+q.task_done()              # mark task processed
+await q.join()             # wait until all items processed
+q.qsize()                  # approximate size
+q.empty() / q.full()
+```
+
+### Beginner Examples
 ```python
 import asyncio
 import random
-from dataclasses import dataclass
-from enum import Enum
 
-class Priority(Enum):
-    LOW = 0
-    MEDIUM = 1
-    HIGH = 2
-
-@dataclass(order=True)
-class PrioritizedItem:
-    priority: int
-    timestamp: float
-    data: str = ""
-
-class AsyncPriorityQueue:
-    def __init__(self, maxsize=0):
-        self._queue = asyncio.PriorityQueue(maxsize=maxsize)
-
-    async def put(self, item, priority=Priority.MEDIUM):
-        wrapped = PrioritizedItem(
-            priority=priority.value,
-            timestamp=asyncio.get_event_loop().time(),
-            data=item
-        )
-        await self._queue.put(wrapped)
-
-    async def get(self):
-        wrapped = await self._queue.get()
-        return wrapped.data
-
-    def qsize(self):
-        return self._queue.qsize()
-
-async def producer(queue, name, count):
-    for i in range(count):
-        priority = random.choice(list(Priority))
-        item = f"{name}-item-{i}"
-        await queue.put(item, priority)
-        print(f"Produced: {item} (priority: {priority.name})")
+async def producer(q: asyncio.Queue, name: str):
+    for i in range(10):
+        item = f"{name}-{i}"
+        await q.put(item)
+        print(f"Produced: {item}")
         await asyncio.sleep(random.uniform(0.1, 0.3))
-    await queue.put(None, Priority.HIGH)
-    await queue.put(None, Priority.HIGH)
 
-async def consumer(queue, name):
+async def consumer(q: asyncio.Queue, name: str):
     while True:
-        item = await queue.get()
-        if item is None:
-            break
-        await asyncio.sleep(random.uniform(0.2, 0.4))
-        print(f"Consumer {name}: processed {item}")
+        item = await q.get()
+        print(f"Consumer {name} got: {item}")
+        await asyncio.sleep(random.uniform(0.2, 0.5))
+        q.task_done()
 
 async def main():
-    queue = AsyncPriorityQueue(maxsize=10)
-
-    producers = [
-        asyncio.create_task(producer(queue, f"P{i}", 3))
-        for i in range(2)
-    ]
-
-    consumers = [
-        asyncio.create_task(consumer(queue, i))
-        for i in range(2)
-    ]
-
+    q = asyncio.Queue(maxsize=5)
+    
+    producers = [asyncio.create_task(producer(q, f"P{i}")) for i in range(2)]
+    consumers = [asyncio.create_task(consumer(q, f"C{i}")) for i in range(3)]
+    
     await asyncio.gather(*producers)
+    await q.join()  # Wait for all items to be processed
+    
+    # Cancel consumers
     for c in consumers:
         c.cancel()
-
-    print("Priority queue example completed")
-
-asyncio.run(main())
-```
-
-### Semaphores and Rate Limiting
-
-```python
-import asyncio
-import time
-from collections import deque
-
-class AsyncRateLimiter:
-    def __init__(self, max_calls, period=1.0):
-        self.max_calls = max_calls
-        self.period = period
-        self.calls = deque()
-
-    async def acquire(self):
-        now = time.monotonic()
-        while self.calls and self.calls[0] <= now - self.period:
-            self.calls.popleft()
-
-        if len(self.calls) >= self.max_calls:
-            wait_time = self.calls[0] + self.period - now
-            if wait_time > 0:
-                await asyncio.sleep(wait_time)
-            self.calls.popleft()
-
-        self.calls.append(time.monotonic())
-
-    async def __aenter__(self):
-        await self.acquire()
-        return self
-
-    async def __aexit__(self, *args):
-        pass
-
-async def limited_task(limiter, task_id):
-    async with limiter:
-        print(f"Task {task_id} executing at {time.strftime('%X')}")
-        await asyncio.sleep(0.2)
-        return task_id
-
-async def main():
-    limiter = AsyncRateLimiter(max_calls=3, period=1.0)
-    tasks = [limited_task(limiter, i) for i in range(10)]
-    results = await asyncio.gather(*tasks)
-    print(f"Completed {len(results)} tasks with rate limiting")
-
-    sem = asyncio.Semaphore(3)
-
-    async def sem_task(id):
-        async with sem:
-            await asyncio.sleep(0.5)
-            return f"Sem task {id}"
-
-    results = await asyncio.gather(*[sem_task(i) for i in range(10)])
-    print(f"Completed {len(results)} tasks with semaphore")
+    
+    print("All done")
 
 asyncio.run(main())
 ```
 
-### Async Subprocess
-
+### Intermediate Examples
 ```python
 import asyncio
-import sys
 
-async def run_command(cmd, *args):
-    print(f"Running: {cmd} {' '.join(args)}")
-    proc = await asyncio.create_subprocess_exec(
-        cmd, *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-
-    stdout, stderr = await proc.communicate()
-    return proc.returncode, stdout.decode(), stderr.decode()
-
-async def stream_command(cmd, *args):
-    print(f"Streaming: {cmd} {' '.join(args)}")
-    proc = await asyncio.create_subprocess_exec(
-        cmd, *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-
-    async for line in proc.stdout:
-        print(f"  [stdout] {line.decode().strip()}")
-
-    await proc.wait()
-    return proc.returncode
-
-async def main():
-    code, stdout, stderr = await run_command(
-        sys.executable, "-c", "print('Hello from subprocess'); import sys; sys.exit(0)"
-    )
-    print(f"Exit code: {code}, Output: {stdout.strip()}")
-
-    try:
-        code = await asyncio.wait_for(
-            run_command(sys.executable, "-c", "import time; time.sleep(10)"),
-            timeout=2
-        )
-    except asyncio.TimeoutError:
-        print("Subprocess timed out")
-
-    print("\nShell command:")
-    proc = await asyncio.create_subprocess_shell(
-        f'echo "Hello from shell"',
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    stdout, _ = await proc.communicate()
-    print(f"Shell output: {stdout.decode().strip()}")
-
-    code = await stream_command(sys.executable, "-c", """
-for i in range(5):
-    print(f"Line {i}")
-""")
-    print(f"Stream exit code: {code}")
-
-asyncio.run(main())
-```
-
-### asyncio.Lock, Event, Condition
-
-```python
-import asyncio
-import random
-
-async def worker_lock(name, lock, shared_list):
-    async with lock:
-        print(f"{name}: acquired lock")
-        await asyncio.sleep(random.uniform(0.1, 0.3))
-        shared_list.append(name)
-        print(f"{name}: released lock")
-
-async def worker_event(name, event):
-    print(f"{name}: waiting for event")
-    await event.wait()
-    print(f"{name}: event received!")
-
-async def producer_condition(condition, queue):
-    for i in range(5):
-        async with condition:
-            await asyncio.sleep(0.2)
-            queue.append(f"item-{i}")
-            print(f"Produced: item-{i}")
-            condition.notify_all()
-
-async def consumer_condition(name, condition, queue):
+# Queue with poison pills
+async def worker(name, q):
     while True:
-        async with condition:
-            while not queue:
-                await condition.wait()
-            item = queue.pop(0)
-        if item is None:
+        item = await q.get()
+        if item is None:  # Poison pill
+            q.task_done()
             break
-        print(f"Consumer {name}: got {item}")
-        await asyncio.sleep(random.uniform(0.1, 0.3))
+        await asyncio.sleep(0.3)
+        print(f"Worker {name} processed: {item}")
+        q.task_done()
 
 async def main():
-    shared_list = []
-    lock = asyncio.Lock()
-    await asyncio.gather(*[
-        worker_lock(f"W-{i}", lock, shared_list)
-        for i in range(5)
-    ])
-    print(f"Shared list: {shared_list}")
-
-    event = asyncio.Event()
-    await asyncio.sleep(0.3)
-    event.set()
-    await asyncio.gather(*[
-        worker_event(f"E-{i}", event)
-        for i in range(3)
-    ])
-
-    condition = asyncio.Condition()
-    queue = []
-    await asyncio.gather(
-        producer_condition(condition, queue),
-        consumer_condition("C1", condition, queue),
-        consumer_condition("C2", condition, queue),
-    )
-
-asyncio.run(main())
-```
-
-## Beginner Examples
-
-```python
-import asyncio
-
-# Async file reader using async generator
-async def read_chunks(filename, chunk_size=1024):
-    loop = asyncio.get_event_loop()
-    import tempfile, os
-
-    with tempfile.NamedTemporaryFile(mode='wb', delete=False) as f:
-        f.write(b"x" * 5000)
-        tmpname = f.name
-
-    try:
-        def sync_read():
-            with open(tmpname, 'rb') as f:
-                while True:
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    yield chunk
-
-        for chunk in sync_read():
-            yield chunk
-            await asyncio.sleep(0.01)
-    finally:
-        os.unlink(tmpname)
-
-async def main():
-    count = 0
-    async for chunk in read_chunks("dummy.txt", 1024):
-        count += len(chunk)
-    print(f"Read {count} bytes via async generator")
-
-asyncio.run(main())
-
-# Async timeout decorator
-def async_timeout(seconds):
-    def decorator(coro_func):
-        async def wrapper(*args, **kwargs):
-            try:
-                return await asyncio.wait_for(coro_func(*args, **kwargs), timeout=seconds)
-            except asyncio.TimeoutError:
-                return None
-        return wrapper
-    return decorator
-
-@async_timeout(2)
-async def slow_function(delay):
-    await asyncio.sleep(delay)
-    return "Completed"
-
-async def main2():
-    result1 = await slow_function(1)
-    result2 = await slow_function(3)
-    print(f"Fast call (1s delay, 2s timeout): {result1}")
-    print(f"Slow call (3s delay, 2s timeout): {result2}")
-
-asyncio.run(main2())
-```
-
-## Intermediate Examples
-
-```python
-import asyncio
-import time
-
-# Async task supervisor with health checks
-class TaskSupervisor:
-    def __init__(self, check_interval=5):
-        self.tasks = {}
-        self.check_interval = check_interval
-        self.running = True
-
-    async def add_task(self, name, coro_factory, restart=True):
-        task = asyncio.create_task(self._run_with_supervision(name, coro_factory, restart))
-        self.tasks[name] = task
-        return task
-
-    async def _run_with_supervision(self, name, coro_factory, restart):
-        while self.running:
-            try:
-                print(f"Supervisor: starting {name}")
-                await coro_factory()
-            except asyncio.CancelledError:
-                print(f"Supervisor: {name} cancelled")
-                break
-            except Exception as e:
-                print(f"Supervisor: {name} failed with {e}")
-                if restart:
-                    print(f"Supervisor: restarting {name} in 1s...")
-                    await asyncio.sleep(1)
-                else:
-                    break
-
-    async def health_check(self):
-        while self.running:
-            await asyncio.sleep(self.check_interval)
-            alive = sum(1 for t in self.tasks.values() if not t.done())
-            print(f"Supervisor health: {alive}/{len(self.tasks)} tasks alive")
-
-    async def shutdown(self):
-        self.running = False
-        for name, task in self.tasks.items():
-            task.cancel()
-        await asyncio.gather(*self.tasks.values(), return_exceptions=True)
-        print("Supervisor: all tasks stopped")
-
-async def worker_task(name):
-    for i in range(3):
-        print(f"Worker {name}: iteration {i}")
-        await asyncio.sleep(0.5)
-    if name == "faulty":
-        raise RuntimeError("Worker failed!")
-
-async def main():
-    supervisor = TaskSupervisor(check_interval=2)
-    supervisor_task = asyncio.create_task(supervisor.health_check())
-
-    await supervisor.add_task("worker-1", lambda: worker_task("worker-1"))
-    await supervisor.add_task("faulty", lambda: worker_task("faulty"))
-
-    await asyncio.sleep(5)
-    await supervisor.shutdown()
-    supervisor_task.cancel()
-
-    print("Supervisor example completed")
-
-asyncio.run(main())
-
-# Async event bus with pattern matching
-import re
-
-class AsyncEventBus:
-    def __init__(self):
-        self._subscribers = []
-        self._lock = asyncio.Lock()
-
-    def subscribe(self, pattern, callback):
-        self._subscribers.append((re.compile(pattern), callback))
-
-    async def publish(self, event_type, data=None):
-        async with self._lock:
-            for pattern, callback in self._subscribers:
-                if pattern.match(event_type):
-                    await callback(event_type, data)
-
-    async def publish_many(self, events):
-        for event_type, data in events:
-            await self.publish(event_type, data)
-
-async def on_user_event(event_type, data):
-    print(f"User event: {event_type} - {data}")
-    await asyncio.sleep(0.1)
-
-async def on_system_event(event_type, data):
-    print(f"System event: {event_type} - {data}")
-
-async def on_any_event(event_type, data):
-    if data:
-        pass
-
-async def main2():
-    bus = AsyncEventBus()
-    bus.subscribe(r"user\.\w+", on_user_event)
-    bus.subscribe(r"system\.\w+", on_system_event)
-    bus.subscribe(r".*", on_any_event)
-
-    events = [
-        ("user.login", {"user_id": 1}),
-        ("user.logout", {"user_id": 1}),
-        ("system.error", {"code": 500}),
-        ("system.health", {"status": "ok"}),
-        ("data.update", {"table": "users"}),
-    ]
-
-    await bus.publish_many(events)
-    print("Event bus example completed")
-
-asyncio.run(main2())
-```
-
-## Advanced Examples
-
-```python
-import asyncio
-import time
-import random
-from typing import Any, Callable, Dict, List, Optional
-from dataclasses import dataclass, field
-
-@dataclass
-class CircuitBreakerState:
-    failures: int = 0
-    last_failure_time: float = 0
-    state: str = "CLOSED"
-
-class AsyncCircuitBreaker:
-    def __init__(
-        self,
-        failure_threshold: int = 5,
-        recovery_timeout: float = 30.0,
-        half_open_max_requests: int = 3
-    ):
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self.half_open_max_requests = half_open_max_requests
-        self._state = CircuitBreakerState()
-        self._half_open_count = 0
-        self._lock = asyncio.Lock()
-
-    async def call(self, coro_factory: Callable, *args, **kwargs) -> Any:
-        async with self._lock:
-            if self._state.state == "OPEN":
-                if time.monotonic() - self._state.last_failure_time >= self.recovery_timeout:
-                    self._state.state = "HALF_OPEN"
-                    self._half_open_count = 0
-                    print("Circuit: OPEN -> HALF_OPEN")
-                else:
-                    raise CircuitBreakerOpenError("Circuit breaker is OPEN")
-
-            if self._state.state == "HALF_OPEN" and self._half_open_count >= self.half_open_max_requests:
-                raise CircuitBreakerOpenError("Half-open max requests reached")
-
-        try:
-            result = await coro_factory(*args, **kwargs)
-            async with self._lock:
-                if self._state.state == "HALF_OPEN":
-                    self._state.state = "CLOSED"
-                    self._state.failures = 0
-                    print("Circuit: HALF_OPEN -> CLOSED (success)")
-                elif self._state.state == "CLOSED":
-                    self._state.failures = 0
-            return result
-        except Exception as e:
-            async with self._lock:
-                self._state.failures += 1
-                self._state.last_failure_time = time.monotonic()
-                if self._state.failures >= self.failure_threshold:
-                    self._state.state = "OPEN"
-                    self._half_open_count = 0
-                    print(f"Circuit: CLOSED -> OPEN ({self._state.failures} failures)")
-            raise
-
-class CircuitBreakerOpenError(Exception):
-    pass
-
-async def unstable_service(name, fail_probability=0.4):
-    await asyncio.sleep(random.uniform(0.1, 0.3))
-    if random.random() < fail_probability:
-        raise ConnectionError(f"{name}: transient error")
-    return f"{name}: success"
-
-async def circuit_breaker_demo():
-    cb = AsyncCircuitBreaker(failure_threshold=3, recovery_timeout=2, half_open_max_requests=2)
-
+    q = asyncio.Queue()
+    
+    # Add work items
     for i in range(20):
-        try:
-            result = await cb.call(unstable_service, f"request-{i}", 0.5)
-            print(f"  Request {i}: {result}")
-        except (CircuitBreakerOpenError, ConnectionError) as e:
-            print(f"  Request {i}: {type(e).__name__}: {e}")
-        await asyncio.sleep(0.1)
+        await q.put(f"task-{i}")
+    
+    # Add poison pills (one per worker)
+    workers = [asyncio.create_task(worker(f"W{i}", q)) for i in range(4)]
+    for _ in workers:
+        await q.put(None)
+    
+    await asyncio.gather(*workers)
+    print("All workers stopped")
+
+asyncio.run(main())
+
+# PriorityQueue example
+async def priority_example():
+    pq = asyncio.PriorityQueue()
+    
+    # Put items with priority (lower number = higher priority)
+    await pq.put((3, "low priority"))
+    await pq.put((1, "high priority"))
+    await pq.put((2, "medium priority"))
+    
+    while not pq.empty():
+        priority, task = await pq.get()
+        print(f"Processing: {task} (priority {priority})")
+        pq.task_done()
+
+asyncio.run(priority_example())
+
+# Queue with timeout
+async def get_with_timeout(q, timeout):
+    try:
+        item = await asyncio.wait_for(q.get(), timeout=timeout)
+        q.task_done()
+        return item
+    except asyncio.TimeoutError:
+        print("Get timed out")
+        return None
+```
+
+### Advanced Examples
+```python
+import asyncio
+import random
+
+# Work distribution with Queue
+async def crawler_worker(worker_id, url_queue, result_queue):
+    while True:
+        url = await url_queue.get()
+        if url is None:
+            url_queue.task_done()
+            break
+        
+        # Simulate crawling
+        await asyncio.sleep(random.uniform(0.2, 0.8))
+        result = {
+            "url": url,
+            "worker": worker_id,
+            "title": f"Title for {url}",
+            "links": [f"{url}/link1", f"{url}/link2"],
+        }
+        await result_queue.put(result)
+        url_queue.task_done()
+
+async def result_collector(result_queue, max_results=20):
+    results = []
+    while len(results) < max_results:
+        result = await result_queue.get()
+        results.append(result)
+        print(f"Collected: {result['url']} by worker {result['worker']}")
+        result_queue.task_done()
+    return results
 
 async def main():
-    print("=== Async Circuit Breaker ===")
-    await circuit_breaker_demo()
+    url_queue = asyncio.Queue()
+    result_queue = asyncio.Queue()
+    
+    # Seed URLs
+    urls = [f"https://example.com/page/{i}" for i in range(50)]
+    for url in urls:
+        await url_queue.put(url)
+    
+    # Start workers
+    workers = [asyncio.create_task(crawler_worker(i, url_queue, result_queue)) for i in range(5)]
+    collector = asyncio.create_task(result_collector(result_queue, 20))
+    
+    # Add poison pills
+    for _ in workers:
+        await url_queue.put(None)
+    
+    await asyncio.gather(*workers)
+    results = await collector
+    
+    print(f"Total results: {len(results)}")
 
-    # Async retry with exponential backoff and jitter
-    print("\n=== Async Retry with Jitter ===")
-    async def retry_with_jitter(coro_factory, max_retries=5, base_delay=0.1):
-        for attempt in range(max_retries):
-            try:
-                return await coro_factory()
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    raise
-                delay = base_delay * (2 ** attempt)
-                jitter = random.uniform(0, delay * 0.5)
-                total_delay = delay + jitter
-                print(f"  Attempt {attempt + 1} failed. Retrying in {total_delay:.2f}s")
-                await asyncio.sleep(total_delay)
-        return None
+asyncio.run(main())
 
-    async def flaky_service():
-        await asyncio.sleep(0.1)
-        if random.random() < 0.7:
-            raise TimeoutError("Service timeout")
-        return "Service response"
+# Throttled Queue with rate limiter
+class ThrottledQueue(asyncio.Queue):
+    def __init__(self, maxsize=0, rate_per_second=10):
+        super().__init__(maxsize)
+        self.rate_per_second = rate_per_second
+        self._timestamps = []
+    
+    async def put(self, item):
+        now = asyncio.get_running_loop().time()
+        # Clean old timestamps
+        self._timestamps = [t for t in self._timestamps if now - t < 1.0]
+        
+        if len(self._timestamps) >= self.rate_per_second:
+            wait = 1.0 - (now - self._timestamps[0])
+            if wait > 0:
+                await asyncio.sleep(wait)
+        
+        self._timestamps.append(asyncio.get_running_loop().time())
+        await super().put(item)
 
-    try:
-        result = await retry_with_jitter(flaky_service, max_retries=4)
-        print(f"Retry result: {result}")
-    except Exception as e:
-        print(f"All retries exhausted: {e}")
-
-    # Async pipeline with backpressure
-    print("\n=== Async Pipeline with Backpressure ===")
-    MAX_SIZE = 3
-
-    async def stage1(input_queue, output_queue):
-        while True:
-            try:
-                item = await asyncio.wait_for(input_queue.get(), timeout=1)
-            except asyncio.TimeoutError:
-                break
-            await asyncio.sleep(0.2)
-            transformed = item * 2
-            await output_queue.put(transformed)
-            print(f"Stage1: {item} -> {transformed} (queue: ~{output_queue.qsize()})")
-
-    async def stage2(input_queue, output_queue):
-        while True:
-            try:
-                item = await asyncio.wait_for(input_queue.get(), timeout=1)
-            except asyncio.TimeoutError:
-                break
-            await asyncio.sleep(0.3)
-            transformed = f"P{item}"
-            await output_queue.put(transformed)
-            print(f"Stage2: {item} -> {transformed}")
-
-    async def stage3(input_queue):
-        results = []
-        while True:
-            try:
-                item = await asyncio.wait_for(input_queue.get(), timeout=1)
-            except asyncio.TimeoutError:
-                break
-            results.append(item)
-            print(f"Stage3: collected {item}")
-        return results
-
-    q1, q2, q3 = asyncio.Queue(MAX_SIZE), asyncio.Queue(MAX_SIZE), asyncio.Queue()
-
-    for i in range(8):
-        await q1.put(i)
-
-    s1 = asyncio.create_task(stage1(q1, q2))
-    s2 = asyncio.create_task(stage2(q2, q3))
-    s3 = asyncio.create_task(stage3(q3))
-
-    await asyncio.gather(s1, s2, s3)
-    result = s3.result()
-    print(f"Pipeline final results: {result}")
-
-    # Async context manager for pooled connections
-    print("\n=== Async Connection Pool ===")
-
-    class AsyncConnection:
-        def __init__(self, id):
-            self.id = id
-            self.in_use = False
-
-        async def query(self, sql):
-            await asyncio.sleep(0.1)
-            return f"Conn-{self.id}: result for '{sql}'"
-
-        async def close(self):
-            await asyncio.sleep(0.05)
-
-    class AsyncConnectionPool:
-        def __init__(self, size=3):
-            self._pool = asyncio.Queue(maxsize=size)
-            for i in range(size):
-                self._pool.put_nowait(AsyncConnection(i))
-            self._sem = asyncio.Semaphore(size)
-
-        async def acquire(self):
-            await self._sem.acquire()
-            conn = await self._pool.get()
-            conn.in_use = True
-            return conn
-
-        async def release(self, conn):
-            conn.in_use = False
-            await self._pool.put(conn)
-            self._sem.release()
-
-        async def __aenter__(self):
-            return await self.acquire()
-
-        async def __aexit__(self, *args):
-            await self.release(self._conn)
-            self._conn = None
-
-    pool = AsyncConnectionPool(3)
-
-    async def use_pool(pool, id):
-        async with pool as conn:
-            result = await conn.query(f"SELECT {id}")
-            print(f"  {result}")
-            await asyncio.sleep(random.uniform(0.2, 0.5))
-
-    await asyncio.gather(*[use_pool(pool, i) for i in range(8)])
-    print("Connection pool example completed")
+async def main():
+    q = ThrottledQueue(maxsize=10, rate_per_second=5)
+    
+    async def producer():
+        for i in range(15):
+            await q.put(f"item-{i}")
+            print(f"Produced item-{i}")
+    
+    async def consumer():
+        async def consume():
+            while True:
+                item = await q.get()
+                print(f"  Consumed: {item}")
+                q.task_done()
+                await asyncio.sleep(0.3)
+        task = asyncio.create_task(consume())
+        await asyncio.sleep(5)
+        task.cancel()
+    
+    await asyncio.gather(producer(), consumer())
 
 asyncio.run(main())
 ```
 
-## Real-World Use Cases
+### Real-World Use Cases
+- **Web crawlers** — coordinating URL fetching across multiple workers
+- **Data processing pipelines** — buffering between stages with backpressure
+- **Rate-limited API clients** — queuing requests to respect rate limits
+- **Log aggregation** — collecting log entries from multiple producers
+- **Task schedulers** — distributing jobs to worker coroutines
 
-- **Database connection pools**: Managing async database connections with automatic reconnection
-- **Message brokers**: Async consumers with backpressure and dead-letter queues
-- **Microservice orchestration**: Coordinating multiple async service calls with circuit breakers
-- **Stream processing**: Processing data streams with async generators and backpressure
-- **Real-time dashboards**: WebSocket connections broadcasting updates to thousands of clients
-- **Task queues**: Distributed async task processing with priority queues and retries
+### Common Mistakes
+- Using `Queue` without `task_done()`/`join()` (loses completion tracking)
+- Forgetting that `get()` blocks forever if queue is empty and no more items arrive
+- Not using poison pills to gracefully stop consumer tasks
+- Using `qsize()` for synchronization decisions (not reliable)
+- Confusing `asyncio.Queue` with `queue.Queue` (different blocking semantics)
 
-## Common Mistakes
+### Best Practices
+- Always call `task_done()` after processing each `get()` item
+- Use `join()` to wait for all items to be processed
+- Use poison pills (sentinel values) to signal workers to stop
+- Use `maxsize` to prevent unbounded memory growth
+- Use `PriorityQueue` when task ordering matters
+- Use `LifoQueue` for LIFO patterns (stack)
+- Use with `asyncio.gather()` or `asyncio.create_task()` for worker management
+- Handle `CancelledError` in workers for clean shutdown
 
-- Not using `async for` with async iterators (returns `__anext__` coroutine, not value)
-- Forgetting that async generators don't support `yield from` (use `async for ...: yield value`)
-- Using `asyncio.Queue.get()` without `task_done()` and `queue.join()`
-- Blocking the event loop inside an async generator with `time.sleep()`
-- Not handling `asyncio.CancelledError` in async context managers' `__aexit__`
-- Overlooking the need for locks when sharing mutable state between coroutines
-- Using `asyncio.subprocess` without `communicate()` leads to resource leaks
-- Forgetting that `asyncio.create_subprocess_shell` has security implications
+### Performance Considerations
+- Queue operations are very fast (mostly Python-level operations)
+- Suspension on full/empty uses Futures, not polling (zero CPU while waiting)
+- Large `maxsize` uses more memory but reduces producer contention
+- `task_done()`/`join()` pair adds synchronization overhead
+- `PriorityQueue` uses a heap — O(log n) for put/get
 
-## Best Practices
+### Interview Questions
+1. How does `asyncio.Queue` differ from `queue.Queue` in threading?
+2. What is the purpose of `task_done()` and `join()`?
+3. How do you implement a bounded queue with backpressure?
+4. What is the poison pill pattern and how do you implement it?
+5. How do you add timeouts to queue operations?
 
-- Use async context managers for any resource that needs cleanup (files, connections, locks)
-- Use async generators for streaming data processing pipelines
-- Use `asyncio.Queue` with `maxsize` for backpressure in producer-consumer patterns
-- Implement circuit breakers and retry with jitter for resilient external service calls
-- Use `asyncio.gather(return_exceptions=True)` to prevent one failure from killing all tasks
-- Keep async generators pure (no side effects) for testability
-- Use `asyncio.create_task()` with proper supervision rather than fire-and-forget
+### Coding Challenges
+- Build a web crawler with asyncio.Queue that limits concurrent requests
+- Implement a rate-limited API client using a throttled queue
+- Create a data processing pipeline with multiple stages connected by queues
+- Write a priority-based task scheduler using asyncio.PriorityQueue
 
-## Interview Questions
-
-1. **Q**: How does an async context manager differ from a regular context manager?
-   **A**: Async context managers use `__aenter__` and `__aexit__` coroutines instead of `__enter__`/`__exit__`. They are used with `async with` and allow await expressions during setup/teardown.
-
-2. **Q**: What is the difference between an async generator and an async iterator?
-   **A**: An async generator is defined with `async def` and `yield`, automatically implementing `__aiter__` and `__anext__`. An async iterator requires manually implementing `__aiter__` and `__anext__` as coroutines.
-
-3. **Q**: How do you implement backpressure in an async pipeline?
-   **A**: Use bounded `asyncio.Queue(maxsize=N)`. When the queue is full, producers block on `put()`, naturally limiting the production rate to match consumption.
-
-4. **Q**: What is the purpose of `asyncio.subprocess` vs `asyncio.create_subprocess_exec`?
-   **A**: Both are the same; `create_subprocess_exec` is the coroutine. The module also provides `create_subprocess_shell` for shell-based commands (with security caveats).
-
-5. **Q**: How do you debug asyncio programs effectively?
-   **A**: Enable debug mode with `PYTHONASYNCIODEBUG=1` or `asyncio.run(main(), debug=True)`. Use `loop.slow_callback_duration` (default 0.1s) to detect blocking callbacks. Enable `ResourceWarning` for detecting unclosed resources.
-
-## Coding Challenges
-
-1. **Async Task Scheduler**: Build a scheduler that runs tasks at specified times/cron expressions, with retry logic and notification callbacks.
-
-2. **Streaming Log Aggregator**: Implement an async log pipeline that reads from multiple log streams, transforms lines, and writes to an output with backpressure handling.
-
-3. **Async Web Crawler with Robots.txt**: Build a concurrent crawler that respects robots.txt caching, implements politeness delays, and uses a priority queue for URLs.
-
-4. **Resilient Microservice Client**: Write an async HTTP client with circuit breaker, retry with exponential backoff, request deduplication, and timeout handling.
-
-5. **Real-time Data Pipeline**: Create a multi-stage async data processing pipeline with backpressure, monitoring, and graceful shutdown.
-
-## Summary
-
-Advanced asyncio patterns provide the building blocks for production-grade asynchronous applications. Async context managers, iterators, and generators enable clean resource management and streaming. Synchronization primitives (locks, semaphores, events, conditions), queues with priorities, subprocess management, and circuit breakers handle real-world complexity. Debugging tools help diagnose performance issues and resource leaks.
-
-## Related Topics
-
-Async IO (61.x), Multithreading (59.x), Multiprocessing (60.x), Thread Safety (63.x)
+### Related Topics
+- asyncio, producer-consumer, queue module, async streams, backpressure

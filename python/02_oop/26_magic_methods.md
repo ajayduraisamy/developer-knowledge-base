@@ -2,54 +2,13 @@
 
 ## Introduction
 
-**Magic methods** (also called **dunder methods** — short for "double underscore") are special methods in Python that begin and end with double underscores, like `__init__` or `__str__`. They are not meant to be called directly by your code; instead, Python calls them automatically in response to specific operations such as `len(obj)`, `str(obj)`, `obj == other`, or `obj[key]` — including operators like `+` and `-`.
+Magic methods (also called dunder methods, short for "double underscore") are special methods in Python that begin and end with double underscores. They allow user-defined classes to integrate seamlessly with Python's built-in functions, operators, and protocols. By implementing magic methods, your objects can behave like built-in types — supporting iteration, indexing, arithmetic, string representation, context management, and more.
 
-Magic methods allow you to make your custom objects behave like built-in types, enabling an expressive and intuitive API.
+## __str__ and __repr__
 
-## Why It Is Important
+### What It Is
 
-- **Natural syntax**: Make your objects work with Python's built-in functions and operators.
-- **Interoperability**: Custom objects can be used with `len()`, `str()`, `in`, iteration, slicing, and more.
-- **Duck typing alignment**: Implement the same protocols as built-in types.
-- **Context managers**: `with` statement support via `__enter__` / `__exit__`.
-- **Callable objects**: Use objects as functions via `__call__`.
-- **Memory efficiency**: `__slots__` reduces memory footprint for many instances.
-
-## Syntax
-
-```python
-class MyClass:
-    def __str__(self):
-        return "User-friendly string"
-
-    def __repr__(self):
-        return "MyClass()"
-
-    def __len__(self):
-        return 0
-
-    def __add__(self, other):
-        return ...
-
-    def __eq__(self, other):
-        return ...
-
-    def __getitem__(self, key):
-        return ...
-
-    def __call__(self, *args, **kwargs):
-        return ...
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        return False
-```
-
-## Examples
-
-### `__str__` and `__repr__`
+`__str__` defines the "informal" string representation of an object (used by `print()` and `str()`). `__repr__` defines the "official" representation (used by `repr()` and the interactive interpreter), ideally one that can recreate the object.
 
 ```python
 class Point:
@@ -57,44 +16,44 @@ class Point:
         self.x = x
         self.y = y
 
-    def __repr__(self):
-        return f"Point({self.x}, {self.y})"
-
     def __str__(self):
         return f"({self.x}, {self.y})"
 
-
-p = Point(3, 4)
-print(repr(p))   # Point(3, 4)
-print(str(p))    # (3, 4)
-print(p)         # (3, 4)  (uses __str__)
+    def __repr__(self):
+        return f"Point({self.x}, {self.y})"
 ```
 
-## Beginner Examples
+### Why It Is Important
 
-### 1. `__len__` and `__bool__`
+Proper string representations make objects display meaningfully in logs, debug output, and user interfaces. `__repr__` is especially important for debugging — it should be unambiguous. The rule: `__repr__` is for developers, `__str__` is for users.
+
+### How It Works Internally
+
+When `print(obj)` is called, Python checks for `__str__`. If not found, it falls back to `__repr__`. When `repr(obj)` is called, it looks for `__repr__`. The interactive interpreter displays `repr(obj)` for expressions.
 
 ```python
-class Team:
-    def __init__(self, members):
-        self.members = members
-
-    def __len__(self):
-        return len(self.members)
-
-    def __bool__(self):
-        return len(self.members) > 0
-
-
-team = Team(["Alice", "Bob"])
-print(len(team))   # 2
-print(bool(team))  # True
-
-empty = Team([])
-print(bool(empty))  # False
+p = Point(3, 4)
+print(p)          # __str__ → (3, 4)
+str(p)            # __str__ → (3, 4)
+repr(p)           # __repr__ → Point(3, 4)
+f"{p!r}"          # __repr__ → Point(3, 4)  (!r forces repr)
+f"{p}"            # __str__ → (3, 4)
 ```
 
-### 2. `__eq__` and `__hash__`
+### Syntax
+
+```python
+class MyClass:
+    def __str__(self):
+        """User-friendly string."""
+        return "informal"
+
+    def __repr__(self):
+        """Unambiguous, often eval()-able string."""
+        return "MyClass()"
+```
+
+### Beginner Examples
 
 ```python
 class Person:
@@ -102,125 +61,118 @@ class Person:
         self.name = name
         self.age = age
 
-    def __eq__(self, other):
-        if not isinstance(other, Person):
-            return NotImplemented
-        return self.name == other.name and self.age == other.age
-
-    def __hash__(self):
-        return hash((self.name, self.age))
+    def __str__(self):
+        return f"{self.name} ({self.age})"
 
     def __repr__(self):
-        return f"Person({self.name}, {self.age})"
+        return f"Person('{self.name}', {self.age})"
 
-
-p1 = Person("Alice", 30)
-p2 = Person("Alice", 30)
-p3 = Person("Bob", 25)
-print(p1 == p2)       # True
-print(p1 == p3)       # False
-print(hash(p1))       # some integer
-print({p1, p2, p3})   # deduplicated: {Person(Bob, 25), Person(Alice, 30)}
+p = Person("Alice", 30)
+print(p)           # Alice (30)
+print(repr(p))     # Person('Alice', 30)
 ```
 
-### 3. `__getitem__` and `__setitem__`
+### Intermediate Examples
 
 ```python
-class SimpleDict:
-    def __init__(self):
-        self._data = {}
+from datetime import datetime
 
-    def __getitem__(self, key):
-        return self._data[key]
+class Task:
+    def __init__(self, title, priority=0, due_date=None):
+        self.title = title
+        self.priority = priority
+        self.due_date = due_date or datetime.now()
+        self.completed = False
 
-    def __setitem__(self, key, value):
-        self._data[key] = value
+    def __str__(self):
+        status = "✓" if self.completed else "○"
+        return f"{status} {self.title} (priority: {self.priority})"
 
-    def __contains__(self, key):
-        return key in self._data
+    def __repr__(self):
+        return (
+            f"Task(title={self.title!r}, "
+            f"priority={self.priority}, "
+            f"due_date={self.due_date!r})"
+        )
 
-    def __len__(self):
-        return len(self._data)
-
-
-d = SimpleDict()
-d["name"] = "Alice"
-d["age"] = 30
-print(d["name"])        # Alice
-print("age" in d)       # True
-print(len(d))           # 2
+t = Task("Write report", priority=2)
+print(t)        # ○ Write report (priority: 2)
+print(repr(t))  # Task(title='Write report', priority=2, due_date=datetime.datetime(...))
 ```
 
-## Intermediate Examples
-
-### 1. `__call__` — callable objects
+### Advanced Examples
 
 ```python
-class Counter:
-    def __init__(self):
-        self.count = 0
+import json
+from typing import List, Optional
 
-    def __call__(self, *args, **kwargs):
-        self.count += 1
-        return self.count
+class Node:
+    def __init__(self, value: int, left: Optional["Node"] = None, right: Optional["Node"] = None):
+        self.value = value
+        self.left = left
+        self.right = right
 
+    def __repr__(self):
+        parts = [f"Node({self.value}"]
+        if self.left or self.right:
+            left_repr = repr(self.left) if self.left else "None"
+            right_repr = repr(self.right) if self.right else "None"
+            parts.append(f", left={left_repr}")
+            parts.append(f", right={right_repr}")
+        parts.append(")")
+        return "".join(parts)
 
-counter = Counter()
-print(counter())  # 1
-print(counter())  # 2
-print(counter())  # 3
+    def __str__(self):
+        # Level-order traversal
+        if not self:
+            return "Empty"
+        result = []
+        queue = [self]
+        while queue:
+            node = queue.pop(0)
+            result.append(str(node.value))
+            if node.left:
+                queue.append(node.left)
+            if node.right:
+                queue.append(node.right)
+        return "[" + ", ".join(result) + "]"
+
+# Build tree
+root = Node(1,
+    Node(2, Node(4), Node(5)),
+    Node(3, None, Node(6))
+)
+print(str(root))   # [1, 2, 3, 4, 5, 6]
+print(repr(root))  # Full nested representation
 ```
 
-### 2. `__enter__` / `__exit__` — context manager
+### Real-World Use Cases
 
-```python
-class ManagedFile:
-    def __init__(self, filename, mode="r"):
-        self.filename = filename
-        self.mode = mode
-        self.file = None
+- **Django models**: `__str__` shows human-readable model instances in admin
+- **API responses**: `__repr__` for debugging serialized objects
+- **Collections**: containers display their contents via `__repr__`
+- **Error messages**: custom exceptions with informative `__str__`
 
-    def __enter__(self):
-        self.file = open(self.filename, self.mode)
-        return self.file
+### Common Mistakes
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.file:
-            self.file.close()
-        # Return False to propagate exceptions
-        return False
+1. `__repr__` doesn't return a string (must always return `str`)
+2. `__repr__` that isn't informative enough (should include all significant fields)
+3. `__str__` that raises exceptions (always handle edge cases)
+4. Recursive `__str__` for objects with circular references
 
+### Best Practices
 
-with ManagedFile("test.txt", "w") as f:
-    f.write("Hello, magic methods!")
-```
+- Always implement `__repr__`; `__str__` is optional (falls back to `__repr__`)
+- `__repr__` should be unambiguous, ideally eval-able
+- `__str__` should be readable for end users
+- Use `!r` in f-strings when you need repr output
+- For collections, show length and type
 
-### 3. `__iter__` and `__next__` — iteration protocol
+## __add__ and arithmetic
 
-```python
-class Fibonacci:
-    def __init__(self, max_count):
-        self.max_count = max_count
-        self.count = 0
-        self.a, self.b = 0, 1
+### What It Is
 
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        if self.count >= self.max_count:
-            raise StopIteration
-        self.count += 1
-        self.a, self.b = self.b, self.a + self.b
-        return self.a
-
-
-for n in Fibonacci(10):
-    print(n, end=" ")
-# 1 1 2 3 5 8 13 21 34 55
-```
-
-### 4. `__add__`, `__sub__`, `__mul__`
+`__add__` defines behavior for the `+` operator. Python provides a full suite of arithmetic magic methods for `+`, `-`, `*`, `/`, `//`, `%`, `**`, `@`, and their in-place (`+=`) and reverse variations.
 
 ```python
 class Vector:
@@ -230,240 +182,644 @@ class Vector:
 
     def __add__(self, other):
         return Vector(self.x + other.x, self.y + other.y)
+```
+
+### Why It Is Important
+
+Arithmetic magic methods enable custom types to use intuitive math syntax. This is essential for mathematical objects (vectors, matrices, complex numbers) and domain-specific types (money, quantities, dates).
+
+### How It Works Internally
+
+For `a + b`, Python calls `a.__add__(b)`. If it returns `NotImplemented`, Python tries `b.__radd__(a)`. If both fail, `TypeError` is raised. In-place operators like `+=` call `__iadd__` if available, falling back to `__add__`.
+
+```python
+result = a + b
+# Step 1: a.__add__(b)
+# Step 2: if NotImplemented → b.__radd__(a)
+# Step 3: if both fail → TypeError
+```
+
+### Syntax
+
+```python
+class MyNumber:
+    def __init__(self, value):
+        self.value = value
+
+    def __add__(self, other):       # self + other
+        ...
+    def __radd__(self, other):      # other + self
+        ...
+    def __iadd__(self, other):      # self += other
+        ...
+    def __sub__(self, other):       # self - other
+        ...
+    def __mul__(self, other):       # self * other
+        ...
+    def __truediv__(self, other):   # self / other
+        ...
+```
+
+### Beginner Examples
+
+```python
+class Dollar:
+    def __init__(self, amount):
+        self.amount = amount
+
+    def __add__(self, other):
+        if isinstance(other, Dollar):
+            return Dollar(self.amount + other.amount)
+        return NotImplemented
+
+    def __str__(self):
+        return f"${self.amount:.2f}"
+
+    def __repr__(self):
+        return f"Dollar({self.amount})"
+
+d1 = Dollar(10)
+d2 = Dollar(20)
+print(d1 + d2)  # $30.00
+```
+
+### Intermediate Examples
+
+```python
+class Distance:
+    def __init__(self, meters=0, kilometers=0):
+        self._meters = meters + kilometers * 1000
+
+    @property
+    def meters(self):
+        return self._meters
+
+    @property
+    def kilometers(self):
+        return self._meters / 1000
+
+    def __add__(self, other):
+        if isinstance(other, Distance):
+            return Distance(meters=self._meters + other._meters)
+        return NotImplemented
 
     def __sub__(self, other):
-        return Vector(self.x - other.x, self.y - other.y)
+        if isinstance(other, Distance):
+            return Distance(meters=max(0, self._meters - other._meters))
+        return NotImplemented
 
     def __mul__(self, scalar):
         if isinstance(scalar, (int, float)):
-            return Vector(self.x * scalar, self.y * scalar)
+            return Distance(meters=self._meters * scalar)
         return NotImplemented
 
     def __rmul__(self, scalar):
         return self.__mul__(scalar)
 
-    def __repr__(self):
-        return f"Vector({self.x}, {self.y})"
+    def __eq__(self, other):
+        if isinstance(other, Distance):
+            return abs(self._meters - other._meters) < 0.001
+        return NotImplemented
 
+    def __lt__(self, other):
+        if isinstance(other, Distance):
+            return self._meters < other._meters
+        return NotImplemented
 
-v1 = Vector(1, 2)
-v2 = Vector(3, 4)
-print(v1 + v2)    # Vector(4, 6)
-print(v2 - v1)    # Vector(2, 2)
-print(v1 * 3)     # Vector(3, 6)
-print(3 * v1)     # Vector(3, 6)  # via __rmul__
+    def __str__(self):
+        if self._meters >= 1000:
+            return f"{self.kilometers:.2f} km"
+        return f"{self._meters:.1f} m"
+
+d1 = Distance(kilometers=1.5)
+d2 = Distance(meters=500)
+print(d1 + d2)       # 2.00 km
+print(d1 - d2)       # 1.00 km
+print(d1 * 3)        # 4.50 km
+print(3 * d1)        # 4.50 km
+print(d1 > d2)       # True
 ```
 
-## Advanced Examples
-
-### 1. `__slots__` for memory efficiency
+### Advanced Examples
 
 ```python
-import sys
-
-
-class PointSlots:
-    __slots__ = ("x", "y")
-
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-
-class PointDict:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-
-p1 = PointSlots(1, 2)
-p2 = PointDict(1, 2)
-print(sys.getsizeof(p1))  # 48  (no __dict__)
-print(sys.getsizeof(p2))  # 56  (has __dict__)
-# print(p1.__dict__)      # AttributeError!
-```
-
-### 2. Custom numeric type with all operators
-
-```python
-import math
-
-
-class Fraction:
-    def __init__(self, num, den=1):
-        if den == 0:
-            raise ZeroDivisionError("Denominator cannot be zero")
-        g = math.gcd(num, den) if hasattr(math, 'gcd') else abs(num if num else 1)
-        self.num = num // g
-        self.den = den // g
-        if self.den < 0:
-            self.num = -self.num
-            self.den = -self.den
+class Polynomial:
+    def __init__(self, *coeffs):
+        # coeffs[0] + coeffs[1]*x + coeffs[2]*x^2 + ...
+        self.coeffs = list(coeffs)
 
     def __add__(self, other):
-        if isinstance(other, int):
-            other = Fraction(other)
-        if not isinstance(other, Fraction):
-            return NotImplemented
-        return Fraction(self.num * other.den + other.num * self.den,
-                        self.den * other.den)
+        if isinstance(other, Polynomial):
+            max_len = max(len(self.coeffs), len(other.coeffs))
+            a = self.coeffs + [0] * (max_len - len(self.coeffs))
+            b = other.coeffs + [0] * (max_len - len(other.coeffs))
+            return Polynomial(*[x + y for x, y in zip(a, b)])
+        if isinstance(other, (int, float)):
+            return Polynomial(self.coeffs[0] + other, *self.coeffs[1:])
+        return NotImplemented
 
     def __radd__(self, other):
         return self.__add__(other)
 
     def __sub__(self, other):
-        return self.__add__(-other)
-
-    def __neg__(self):
-        return Fraction(-self.num, self.den)
+        if isinstance(other, Polynomial):
+            max_len = max(len(self.coeffs), len(other.coeffs))
+            a = self.coeffs + [0] * (max_len - len(self.coeffs))
+            b = other.coeffs + [0] * (max_len - len(other.coeffs))
+            return Polynomial(*[x - y for x, y in zip(a, b)])
+        return NotImplemented
 
     def __mul__(self, other):
-        if isinstance(other, int):
-            other = Fraction(other)
-        if not isinstance(other, Fraction):
-            return NotImplemented
-        return Fraction(self.num * other.num, self.den * other.den)
+        if isinstance(other, Polynomial):
+            result = [0] * (len(self.coeffs) + len(other.coeffs) - 1)
+            for i, a in enumerate(self.coeffs):
+                for j, b in enumerate(other.coeffs):
+                    result[i + j] += a * b
+            return Polynomial(*result)
+        if isinstance(other, (int, float)):
+            return Polynomial(*[c * other for c in self.coeffs])
+        return NotImplemented
 
-    def __truediv__(self, other):
-        if isinstance(other, int):
-            other = Fraction(other)
-        if not isinstance(other, Fraction):
-            return NotImplemented
-        return Fraction(self.num * other.den, self.den * other.num)
-
-    def __eq__(self, other):
-        if isinstance(other, int):
-            other = Fraction(other)
-        if not isinstance(other, Fraction):
-            return NotImplemented
-        return self.num == other.num and self.den == other.den
-
-    def __float__(self):
-        return self.num / self.den
-
-    def __repr__(self):
-        return f"Fraction({self.num}, {self.den})"
+    def __call__(self, x):
+        result = 0
+        for power, coeff in enumerate(self.coeffs):
+            result += coeff * (x ** power)
+        return result
 
     def __str__(self):
-        return f"{self.num}/{self.den}"
+        terms = []
+        for power, coeff in enumerate(self.coeffs):
+            if coeff == 0:
+                continue
+            if power == 0:
+                terms.append(f"{coeff}")
+            elif power == 1:
+                terms.append(f"{coeff}x")
+            else:
+                terms.append(f"{coeff}x^{power}")
+        return " + ".join(terms) if terms else "0"
 
+    def __repr__(self):
+        return f"Polynomial({', '.join(str(c) for c in self.coeffs)})"
 
-f1 = Fraction(1, 2)
-f2 = Fraction(1, 3)
-print(f1 + f2)    # 5/6
-print(f1 * 3)     # 3/2
-print(3 * f1)     # 3/2
-print(float(f1))  # 0.5
+p1 = Polynomial(1, 2, 3)   # 1 + 2x + 3x^2
+p2 = Polynomial(0, 1, 1)   # 0 + 1x + x^2
+print(f"p1 = {p1}")
+print(f"p2 = {p2}")
+print(f"p1 + p2 = {p1 + p2}")
+print(f"p1 * p2 = {p1 * p2}")
+print(f"p1(2) = {p1(2)}")  # 1 + 4 + 12 = 17
 ```
 
-### 3. `__getattr__` and `__setattr__` for dynamic attributes
+### Real-World Use Cases
+
+- **Unit conversion**: `Distance(km=1) + Distance(m=500)`
+- **Money arithmetic**: `Price(10, "USD") + Price(5, "EUR")` with auto-conversion
+- **Vector graphics**: `Point(1,2) + Point(3,4)` for translations
+- **Date/time**: `datetime + timedelta`
+- **Database query building**: `Query("users") & Query(age=21)` for compound queries
+
+### Common Mistakes
+
+1. Not returning `NotImplemented` for incompatible types
+2. Forgetting `__radd__` — `5 + obj` breaks without it
+3. Mutating `self` instead of returning a new instance
+4. Not implementing `__iadd__` for `+=` (falls back to `__add__`, but may be slower)
+
+### Best Practices
+
+- Return `NotImplemented`, don't raise `TypeError` for unsupported types
+- Always return a new instance from arithmetic methods
+- Implement `__radd__` whenever `__add__` is implemented
+- Implement `__iadd__` for mutable objects to optimize `+=`
+- Keep operations type-consistent (return same class)
+
+## __getitem__ and indexing
+
+### What It Is
+
+`__getitem__` enables indexing on custom objects using `obj[key]` syntax. It also enables iteration and the `in` operator. `__setitem__` enables assignment `obj[key] = value`, and `__delitem__` enables `del obj[key]`.
 
 ```python
-class DynamicObject:
-    def __init__(self):
-        self._data = {}
+class MyList:
+    def __init__(self, items):
+        self._items = items
 
-    def __getattr__(self, name):
-        if name.startswith("_"):
-            raise AttributeError(name)
-        return self._data.get(name, f"Attribute '{name}' not found")
-
-    def __setattr__(self, name, value):
-        if name.startswith("_"):
-            super().__setattr__(name, value)
-        else:
-            self._data[name] = value
-
-    def __delattr__(self, name):
-        if name in self._data:
-            del self._data[name]
-        else:
-            raise AttributeError(name)
-
-
-obj = DynamicObject()
-obj.name = "Alice"
-obj.age = 30
-print(obj.name)    # Alice
-print(obj.age)     # 30
-print(obj.missing)  # Attribute 'missing' not found
+    def __getitem__(self, index):
+        return self._items[index]
 ```
 
-## Real-World Use Cases
+### Why It Is Important
 
-- **SQLAlchemy models**: `__tablename__`, `__repr__`, `__eq__`, `__hash__` define ORM behaviour.
-- **Requests library**: `__enter__` / `__exit__` on response objects enable `with requests.get(...) as resp`.
-- **NumPy arrays**: Extensive operator overloading via `__add__`, `__mul__`, etc.
-- **Decorators**: Classes with `__call__` act as parameterised decorators.
-- **Pathlib**: `Path` objects implement `__truediv__` so `path / "subdir"` works.
+Indexing is how Python accesses elements in sequences and mappings. Implementing `__getitem__` makes custom collections behave like built-in lists, tuples, and dicts. It's also the gateway to iteration — any class with `__getitem__` is iterable.
 
-## Common Mistakes
+### How It Works Internally
 
-| Mistake | Why it's wrong | Fix |
-|---|---|---|
-| Implementing `__eq__` without `__hash__` | Makes class unhashable (can't use in sets/dict keys) | Implement both or set `__hash__ = None` |
-| Returning `True` from `__exit__` | Suppresses all exceptions, making debugging hard | Return `False` to propagate exceptions |
-| Forgetting `__repr__` | Default `<ClassName object at 0x...>` is unhelpful | Always implement `__repr__` for debugging |
-| Implementing only `__str__` but not `__repr__` | `repr(obj)` falls back to ugly default | `__repr__` should be unambiguous; `__str__` readable |
-| Using `__slots__` but forgetting `__dict__` in a subclass | Subclass with `__dict__` negates memory savings | Either all classes in the hierarchy use `__slots__` |
-| Implementing `__getattr__` vs `__getattribute__` incorrectly | `__getattr__` is called only when normal lookup fails; `__getattribute__` always | Use `__getattr__` for dynamic attributes |
+`obj[key]` calls `type(obj).__getitem__(obj, key)`. For slices, Python passes a `slice(start, stop, step)` object. For iteration, Python calls `__getitem__` with increasing integer indices starting from 0 until `IndexError` is raised.
 
-## Best Practices
+```python
+class SimpleSequence:
+    def __getitem__(self, idx):
+        if 0 <= idx < 5:
+            return f"item_{idx}"
+        raise IndexError
 
-- **Always implement `__repr__`** — it should return an unambiguous string that ideally recreates the object.
-- Implement `__str__` for user-friendly output; it falls back to `__repr__` if absent.
-- When implementing `__eq__`, also implement `__hash__` if the object is immutable and should be hashable.
-- For mutable objects that implement `__eq__`, set `__hash__ = None` (it's automatically set to `None` by Python 3).
-- Return `NotImplemented` (not `NotImplementedError`) from operator overloads when the operation isn't supported for the given type.
-- Use `__slots__` only when you have **many instances** (thousands+) and memory matters.
-- Always call `super().__init__()` in `__init__` when using inheritance if you want parent initialisation.
+for item in SimpleSequence():  # Works! Calls __getitem__(0), (1), ...
+    print(item)
+```
 
-## Interview Questions
+### Syntax
 
-1. **What is the difference between `__str__` and `__repr__`?**
-   *`__repr__` is for developers (unambiguous, should recreate the object). `__str__` is for end users (readable). `__repr__` is used as a fallback for `__str__`.*
+```python
+class Container:
+    def __getitem__(self, key):     # obj[key]
+        ...
 
-2. **Why must `__eq__` and `__hash__` be consistent?**
-   *Objects that compare equal must have the same hash value, otherwise dicts and sets behave incorrectly.*
+    def __setitem__(self, key, value):  # obj[key] = value
+        ...
 
-3. **What does `__enter__` return and what does `__exit__` do with exceptions?**
-   *`__enter__` returns the resource (often `self`). `__exit__` receives exception info; if it returns `True`, the exception is suppressed.*
+    def __delitem__(self, key):     # del obj[key]
+        ...
 
-4. **Explain `__slots__` and its trade-offs.**
-   *`__slots__` prevents `__dict__` creation, saving memory per instance. Trade-offs: no dynamic attributes, must be inherited carefully, can't have `__weakref__` by default.*
+    def __len__(self):             # len(obj)
+        ...
+```
 
-5. **What is the difference between `__getattr__` and `__getattribute__`?**
-   *`__getattribute__` is called for every attribute access; `__getattr__` is called only when normal lookup fails.*
+### Beginner Examples
 
-6. **How does `__call__` make an object callable?**
-   *Defining `__call__` allows an instance to be called like a function: `obj(args)`. This is used for callable classes, decorators, and closures.*
+```python
+class Playlist:
+    def __init__(self):
+        self._songs = []
 
-## Coding Challenges
+    def add(self, song):
+        self._songs.append(song)
 
-1. **Polynomial Class**: Implement a `Polynomial` class with `__add__`, `__sub__`, `__mul__`, `__call__` (evaluate), and `__repr__`.
+    def __getitem__(self, index):
+        return self._songs[index]
 
-2. **Sparse Matrix**: Build a `SparseMatrix` with `__getitem__`, `__setitem__`, `__add__`, `__matmul__` (`@`), and `__len__`.
+    def __setitem__(self, index, song):
+        self._songs[index] = song
 
-3. **Custom Range**: Create `MyRange` that implements `__iter__`, `__next__`, `__len__`, `__getitem__`, `__reversed__`, and `__contains__`.
+    def __len__(self):
+        return len(self._songs)
 
-4. **Timed Context Manager**: Build `Timer` context manager using `__enter__` / `__exit__` that prints elapsed time on exit.
+pl = Playlist()
+pl.add("Song A")
+pl.add("Song B")
+pl.add("Song C")
+print(pl[0])       # Song A
+print(pl[-1])      # Song C
+pl[1] = "Song D"
+print(len(pl))     # 3
+```
 
-5. **Attribute History**: Create `HistoryObj` using `__setattr__` and `__getattr__` that tracks every attribute change with timestamps.
+### Intermediate Examples
 
-## Summary
+```python
+class SparseMatrix:
+    def __init__(self, rows, cols):
+        self.rows = rows
+        self.cols = cols
+        self._data = {}
 
-- **Magic methods** (dunder methods) customise object behaviour for built-in operations.
-- Key categories: **string representation** (`__str__`, `__repr__`), **operators** (`__add__`, `__eq__`), **container** (`__getitem__`, `__len__`), **callable** (`__call__`), **context manager** (`__enter__`, `__exit__`), **iteration** (`__iter__`, `__next__`).
-- Always return `NotImplemented` from operator overloads when type is unsupported.
-- Always implement `__repr__`; implement `__str__` for readable output.
-- `__eq__` and `__hash__` must be consistent for correct set/dict behaviour.
-- `__slots__` saves memory but prevents dynamic attribute creation.
+    def __getitem__(self, key):
+        if isinstance(key, tuple) and len(key) == 2:
+            row, col = key
+            if 0 <= row < self.rows and 0 <= col < self.cols:
+                return self._data.get((row, col), 0)
+            raise IndexError("Index out of bounds")
+        raise TypeError("Expected (row, col) tuple")
 
-## Related Topics
+    def __setitem__(self, key, value):
+        if isinstance(key, tuple) and len(key) == 2:
+            row, col = key
+            if 0 <= row < self.rows and 0 <= col < self.cols:
+                if value != 0:
+                    self._data[(row, col)] = value
+                else:
+                    self._data.pop((row, col), None)
+                return
+            raise IndexError("Index out of bounds")
+        raise TypeError("Expected (row, col) tuple")
 
-- Classes and Objects — magic methods define how objects behave
-- Polymorphism — operator overloading is a form of polymorphism
-- Encapsulation — magic methods often access private attributes
-- Properties — `@property` interacts with attribute access magic
-- Inheritance — magic methods are inherited like regular methods
-- Abstraction — ABCs can declare abstract magic methods
+    def __str__(self):
+        lines = []
+        for r in range(self.rows):
+            row = [str(self[r, c]) for c in range(self.cols)]
+            lines.append("[" + ", ".join(row) + "]")
+        return "\n".join(lines)
+
+m = SparseMatrix(4, 4)
+m[0, 0] = 1
+m[1, 1] = 2
+m[3, 3] = 3
+print(m)
+```
+
+### Advanced Examples
+
+```python
+class TrieNode:
+    __slots__ = ("children", "is_end")
+
+    def __init__(self):
+        self.children = {}
+        self.is_end = False
+
+class Trie:
+    def __init__(self):
+        self._root = TrieNode()
+
+    def insert(self, word):
+        node = self._root
+        for char in word:
+            if char not in node.children:
+                node.children[char] = TrieNode()
+            node = node.children[char]
+        node.is_end = True
+
+    def __getitem__(self, prefix):
+        """Return all words starting with given prefix."""
+        node = self._root
+        for char in prefix:
+            if char not in node.children:
+                return []
+            node = node.children[char]
+        return self._collect_words(node, prefix)
+
+    def __contains__(self, word):
+        node = self._root
+        for char in word:
+            if char not in node.children:
+                return False
+            node = node.children[char]
+        return node.is_end
+
+    def __len__(self):
+        return self._count_words(self._root)
+
+    def _collect_words(self, node, prefix):
+        results = []
+        if node.is_end:
+            results.append(prefix)
+        for char, child in sorted(node.children.items()):
+            results.extend(self._collect_words(child, prefix + char))
+        return results
+
+    def _count_words(self, node):
+        count = 1 if node.is_end else 0
+        for child in node.children.values():
+            count += self._count_words(child)
+        return count
+
+t = Trie()
+t.insert("apple")
+t.insert("app")
+t.insert("apricot")
+t.insert("banana")
+print(t["ap"])          # ['app', 'apple', 'apricot']
+print("apple" in t)     # True
+print("ap" in t)        # False
+print(len(t))           # 4
+```
+
+### Real-World Use Cases
+
+- **Custom collections**: `IndexedList`, `UniqueList` with special indexing behavior
+- **Database cursors**: `cursor[10:20]` for pagination
+- **Pandas DataFrames**: `df["column"]`, `df[0:10]`
+- **Configuration objects**: `config["database.host"]` for dot-path access
+- **Tree structures**: `tree["path/to/node"]` for path-based access
+
+### Common Mistakes
+
+1. Not handling `slice` objects in `__getitem__`
+2. Raising wrong exception type (should raise `IndexError` or `KeyError`)
+3. Not implementing `__setitem__` for mutable collections
+4. Inconsistent behavior between `__getitem__` and `__len__`
+
+### Best Practices
+
+- Support slicing via `isinstance(key, slice)` checks
+- Raise `KeyError` for dict-like access, `IndexError` for sequence-like access
+- Implement `__contains__` for the `in` operator (faster than iterating)
+- For multi-dimensional indexing, accept tuple keys
+- Document whether your container is sequence-like or mapping-like
+
+### Performance Considerations
+
+- `__getitem__` method call overhead per index operation
+- For hot loops, pre-fetch items into local variables
+- `__contains__` should be O(1) for hash-based collections
+- Slice access creates a new slice object each time
+
+## __call__
+
+### What It Is
+
+`__call__` allows an instance of a class to be called like a function. Objects that implement `__call__` are called "callables."
+
+```python
+class Greeter:
+    def __call__(self, name):
+        return f"Hello, {name}!"
+
+greet = Greeter()
+print(greet("World"))  # Hello, World!
+```
+
+### Why It Is Important
+
+`__call__` enables objects to behave like functions while maintaining state. This is useful for decorators, function factories, and objects that represent operations. Callable objects can have configuration and state that plain functions cannot.
+
+### How It Works Internally
+
+`obj(args)` calls `type(obj).__call__(obj, args)`. The check is: does the class have `__call__` in its `__dict__` (or MRO)? If so, the instance is callable. `callable(obj)` returns `True` for objects with `__call__`.
+
+```python
+def is_callable(obj):
+    return hasattr(type(obj), "__call__")
+```
+
+### Syntax
+
+```python
+class Callable:
+    def __call__(self, *args, **kwargs):
+        return result
+
+obj = Callable()
+result = obj(args)  # Calls __call__
+```
+
+### Beginner Examples
+
+```python
+class Counter:
+    def __init__(self, start=0):
+        self.count = start
+
+    def __call__(self):
+        self.count += 1
+        return self.count
+
+counter = Counter(10)
+print(counter())  # 11
+print(counter())  # 12
+print(counter())  # 13
+```
+
+### Intermediate Examples
+
+```python
+import time
+
+class TimedFunction:
+    def __init__(self, func):
+        self.func = func
+        self.total_time = 0
+
+    def __call__(self, *args, **kwargs):
+        start = time.perf_counter()
+        result = self.func(*args, **kwargs)
+        elapsed = time.perf_counter() - start
+        self.total_time += elapsed
+        print(f"{self.func.__name__} took {elapsed:.6f}s")
+        return result
+
+@TimedFunction
+def slow_function(n):
+    total = 0
+    for i in range(n):
+        total += i ** 2
+    return total
+
+result = slow_function(10_000_000)
+print(f"Result: {result}")
+print(f"Total time: {slow_function.total_time:.4f}s")
+```
+
+### Advanced Examples
+
+```python
+import re
+from typing import Dict, Pattern
+
+class RegexValidator:
+    def __init__(self):
+        self._cache: Dict[str, Pattern] = {}
+
+    def __call__(self, pattern: str, text: str) -> bool:
+        if pattern not in self._cache:
+            self._cache[pattern] = re.compile(pattern)
+        return bool(self._cache[pattern].search(text))
+
+    def invalidate(self, pattern: str = None):
+        if pattern:
+            self._cache.pop(pattern, None)
+        else:
+            self._cache.clear()
+
+    @property
+    def cache_size(self) -> int:
+        return len(self._cache)
+
+
+class Partial:
+    """Partial function application via callable object."""
+    def __init__(self, func, *args, **kwargs):
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def __call__(self, *args, **kwargs):
+        merged_kwargs = {**self.kwargs, **kwargs}
+        return self.func(*self.args, *args, **merged_kwargs)
+
+    def __repr__(self):
+        return f"Partial({self.func.__name__}, {self.args}, {self.kwargs})"
+
+
+# Callable as a state machine
+class StateMachine:
+    def __init__(self):
+        self._state = "idle"
+        self._transitions = {
+            "idle": {"start": "running"},
+            "running": {"pause": "paused", "stop": "idle"},
+            "paused": {"resume": "running", "stop": "idle"},
+        }
+
+    def __call__(self, action: str) -> str:
+        if action in self._transitions.get(self._state, {}):
+            self._state = self._transitions[self._state][action]
+            return f"Transitioned to {self._state}"
+        raise ValueError(f"Cannot {action} from {self._state}")
+
+    def __str__(self):
+        return f"StateMachine({self._state})"
+
+
+validator = RegexValidator()
+print(validator(r"\d+", "abc123"))       # True
+print(validator(r"^[a-z]+$", "Hello"))   # False
+print(f"Cached patterns: {validator.cache_size}")
+
+add = lambda x, y: x + y
+add5 = Partial(add, 5)
+print(add5(10))  # 15
+
+sm = StateMachine()
+print(sm("start"))   # Transitioned to running
+print(sm("pause"))   # Transitioned to paused
+print(sm("resume"))  # Transitioned to running
+```
+
+### Real-World Use Cases
+
+- **Decorators**: `@LoggedFunction` as a callable decorator class
+- **Function factories**: `Multiplier(factor)` returns callable that multiplies by factor
+- **GUI callbacks**: button click handlers as callable objects with state
+- **Middleware**: callable objects that wrap request handling
+- **Partial function application**: binding arguments to functions
+
+### Common Mistakes
+
+1. Forgetting `self` parameter in `__call__` definition
+2. Making objects callable unnecessarily (use a plain function when stateless)
+3. Mutable default arguments in `__call__` (same issue as regular functions)
+4. Side effects in `__call__` that surprise users
+
+### Best Practices
+
+- Use `__call__` when your object represents an operation with state
+- Prefer plain functions for stateless operations
+- Document what arguments `__call__` expects
+- Make callable objects idempotent where possible
+- Consider `functools.partial` for simple argument binding
+
+### Performance Considerations
+
+- Calling a callable object has the same overhead as calling a method
+- `__call__` is slightly slower than a plain function call (attribute lookup)
+- For hot loops, pre-bind the callable to a local variable
+- `callable()` check is fast (just checks `tp_call` slot)
+
+### Interview Questions
+
+1. What is the difference between `__str__` and `__repr__`? When would you implement each?
+2. How does Python dispatch `a + b`? What is the role of `NotImplemented`?
+3. How do magic methods enable iteration without explicitly implementing `__iter__`?
+4. What is a callable object and when would you use one instead of a function?
+5. How would you implement a class that supports `obj[1:5:2]`?
+
+### Coding Challenges
+
+1. Create a `Range` class that supports indexing, iteration, and slicing like `range()`.
+2. Implement a `Fraction` class with full arithmetic operator support.
+3. Build a `MemoizedFunction` callable that caches results of expensive computations.
+
+### Related Topics
+
+Properties, Descriptors, Iterators, Generators, Context Managers

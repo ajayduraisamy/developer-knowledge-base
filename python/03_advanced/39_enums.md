@@ -2,175 +2,394 @@
 
 ## Introduction
 
-An enumeration (enum) is a symbolic name for a set of distinct, constant values. Python's `enum` module (introduced in Python 3.4) provides a robust way to define and work with enumerations. Enums group related constants together in a type-safe manner, providing better readability, maintainability, and debugging compared to plain integers or strings.
+Enumerations, or enums, are a way to define a set of symbolic names bound to unique, constant values. Introduced in Python 3.4 via PEP 435, the `Enum` class provides a type-safe way to work with fixed sets of constants. Unlike simple string or integer constants, enums are self-documenting, provide better IDE support, and prevent invalid values from being used.
 
-## Why It Is Important
+## Enum Class
 
-Enums replace "magic numbers" and string constants with named, self-documenting values. They provide type safety (preventing accidental comparison with unrelated values), iteration over members, automatic value assignment, and integration with other Python features like `isinstance()` checks. Enums are essential for representing fixed sets of options (days of the week, directions, status codes, HTTP methods, etc.) and are widely used in APIs, configuration, and domain modeling.
+### What It Is
 
-## Syntax
+`Enum` is the base class for creating enumerated constants in Python. An enum class is created by subclassing `Enum` and defining class attributes as members. Each member has a `name` and a `value`. Enum members are singletons — they are the only instances of the enum class and are compared by identity.
+
+### Why It Is Important
+
+Enums replace error-prone patterns of using string or integer constants. They provide type safety (functions can declare they accept an enum type), better documentation (member names reveal intent), iteration over all members, and protection against invalid values. They also integrate well with type checkers and IDEs.
+
+### How It Works Internally
+
+When Python creates an `Enum` subclass, it uses a metaclass (`EnumMeta`) that collects all class attributes during class creation. Each attribute becomes an enum member, an instance of the enum class. The metaclass ensures that members are unique, sets up `__members__` (an ordered dict of all members), and prevents user instantiation of the enum class.
+
+### Syntax
 
 ```python
-from enum import Enum, auto, IntEnum, StrEnum, Flag, unique
+from enum import Enum
 
 class Color(Enum):
     RED = 1
     GREEN = 2
     BLUE = 3
 
-class Status(Enum):
-    PENDING = auto()
-    ACTIVE = auto()
-    INACTIVE = auto()
-
 # Access
-Color.RED
-Color(1)          # Member by value
-Color['RED']      # Member by name
+Color.RED           # <Color.RED: 1>
+Color.RED.name      # 'RED'
+Color.RED.value     # 1
 ```
 
-## Examples
+### Beginner Examples
 
 ```python
-from enum import Enum, auto, IntEnum, unique, Flag, EnumMeta
-from typing import Any
-```
+from enum import Enum
 
-### Basic Enum
-
-```python
 class Direction(Enum):
     NORTH = 1
     SOUTH = 2
     EAST = 3
     WEST = 4
 
-print(Direction.NORTH)
-print(Direction.NORTH.name)
-print(Direction.NORTH.value)
-print(repr(Direction.NORTH))
+# Accessing members
+print(Direction.NORTH)         # Direction.NORTH
+print(Direction.NORTH.name)    # NORTH
+print(Direction.NORTH.value)   # 1
+
+# Iteration
+for d in Direction:
+    print(f"{d.name}: {d.value}")
+# NORTH: 1, SOUTH: 2, EAST: 3, WEST: 4
+
+# Comparison
+print(Direction.NORTH is Direction.NORTH)  # True (singleton)
+print(Direction.NORTH == Direction.NORTH)  # True
+print(Direction.NORTH == Direction.SOUTH)  # False
+
+# Lookup by name or value
+d = Direction['EAST']
+print(d)  # Direction.EAST
+
+d = Direction(3)
+print(d)  # Direction.EAST
 ```
 
-### Using auto() for Automatic Values
+### Intermediate Examples
 
 ```python
+from enum import Enum
+
+class HttpStatus(Enum):
+    OK = 200
+    CREATED = 201
+    BAD_REQUEST = 400
+    UNAUTHORIZED = 401
+    FORBIDDEN = 403
+    NOT_FOUND = 404
+    INTERNAL_SERVER_ERROR = 500
+
+    @property
+    def is_success(self):
+        return 200 <= self.value < 300
+
+    @property
+    def is_client_error(self):
+        return 400 <= self.value < 500
+
+    @classmethod
+    def from_code(cls, code):
+        try:
+            return cls(code)
+        except ValueError:
+            return None
+
+status = HttpStatus.OK
+print(status.is_success)         # True
+print(status.is_client_error)    # False
+print(HttpStatus.from_code(404)) # HttpStatus.NOT_FOUND
+
+# Using enums in functions
+def handle_response(status: HttpStatus) -> str:
+    if status == HttpStatus.OK:
+        return "Success"
+    elif status.is_client_error:
+        return "Client error"
+    elif status == HttpStatus.INTERNAL_SERVER_ERROR:
+        return "Server error"
+    return "Unknown"
+
+print(handle_response(HttpStatus.CREATED))  # Success
+```
+
+### Advanced Examples
+
+```python
+from enum import Enum, unique
+
+@unique
+class Planet(Enum):
+    MERCURY = ("Mercury", 0.39, 0.0)
+    VENUS = ("Venus", 0.72, 0.0)
+    EARTH = ("Earth", 1.0, 1.0)
+    MARS = ("Mars", 1.52, 2.0)
+    JUPITER = ("Jupiter", 5.2, 67.0)
+    SATURN = ("Saturn", 9.54, 62.0)
+    URANUS = ("Uranus", 19.19, 27.0)
+    NEPTUNE = ("Neptune", 30.07, 14.0)
+
+    def __new__(cls, name_str, au, moons):
+        obj = object.__new__(cls)
+        obj._name_str = name_str
+        obj._au = au
+        obj._moons = moons
+        return obj
+
+    @property
+    def name_str(self):
+        return self._name_str
+
+    @property
+    def distance_from_sun_au(self):
+        return self._au
+
+    @property
+    def moon_count(self):
+        return self._moons
+
+    def light_travel_time_minutes(self):
+        return self._au * 8.317
+
+for planet in Planet:
+    print(f"{planet.name_str}: {planet.distance_from_sun_au} AU, "
+          f"{planet.moon_count} moons, light time: "
+          f"{planet.light_travel_time_minutes():.1f} min")
+```
+
+### Real-World Use Cases
+
+- **HTTP status codes**: Self-documenting status code constants with helper methods.
+- **Days of week / Months**: Fixed sets in scheduling applications.
+- **Order status**: Track order lifecycle states (PENDING, SHIPPED, DELIVERED).
+- **User roles**: Define system roles (ADMIN, USER, MODERATOR) with permissions.
+- **Configuration modes**: DEBUG, PRODUCTION, TEST modes with associated behaviours.
+- **Database field choices**: ORMs like Django use enum classes for field choices.
+
+### Common Mistakes
+
+- Using `class MyEnum(Enum):` without importing `Enum`.
+- Expecting enum values to be auto-incremented integers (use `auto()` for that).
+- Using `==` with non-enum values (won't match, even if value is the same).
+- Assuming enum members are mutable (they are not — enums are immutable by design).
+- Forgetting that enum members are singletons — comparing with `is` is safe.
+
+### Best Practices
+
+- Use `Enum` over integer/string constants for type safety and clarity.
+- Use `auto()` when only uniqueness matters, not specific values.
+- Use `@unique` decorator to ensure no duplicate values.
+- Add methods to enums for behaviour associated with each member.
+- Use `enum_name.MEMBER` syntax consistently throughout the codebase.
+
+### Performance Considerations
+
+Enum member access is a class attribute lookup — very fast. Enum member comparison uses identity (`is`) and is equivalent to comparing any two Python objects. Enum creation at class definition time has negligible overhead. The `@unique` decorator adds validation at class definition time.
+
+### Interview Questions
+
+**Q: How are enum members compared?**
+
+A: Enum members are singletons — they are compared by identity (`is`) and equality (`==`). Two enum members are equal if they are the same member (same enum class, same name). A member is never equal to its value (e.g., `Color.RED == 1` is `False`).
+
+**Q: Can you add methods to an Enum class?**
+
+A: Yes. Enums are classes and can have methods, properties, dunder methods, and even `__new__` for complex member construction. This is a powerful feature for associating behavior with each enum member.
+
+### Coding Challenges
+
+1. Create an `OrderStatus` enum that tracks state transitions (which states can transition to which).
+2. Implement a `Permission` enum with methods that check role-based access.
+3. Build an enum-driven state machine for a traffic light system with timing.
+
+### Related Topics
+
+- `auto()` function
+- `IntEnum`
+- `Flag` enum
+- `@unique` decorator
+- `EnumMeta` metaclass
+
+## auto() Function
+
+### What It Is
+
+`auto()` is a function that generates unique values for enum members automatically. It delegates to `_generate_next_value_` which, by default, assigns incrementing integers starting from 1. Custom enum classes can override `_generate_next_value_` to use different schemes.
+
+### Why It Is Important
+
+`auto()` eliminates the need to manually assign values to enum members when only uniqueness matters. It reduces boilerplate, prevents duplicate values, and makes adding new members simpler (no need to manage value assignments).
+
+### How It Works Internally
+
+When `auto()` is used as a member value, `EnumMeta` calls `_generate_next_value_(name, start, count, last_values)` during class creation. The default implementation returns `count + 1` (1-indexed). Custom enums can override this class method to implement custom auto-numbering schemes.
+
+### Syntax
+
+```python
+from enum import Enum, auto
+
+class Color(Enum):
+    RED = auto()
+    GREEN = auto()
+    BLUE = auto()
+
+# Color.RED.value == 1
+# Color.GREEN.value == 2
+# Color.BLUE.value == 3
+```
+
+### Beginner Examples
+
+```python
+from enum import Enum, auto
+
 class Priority(Enum):
     LOW = auto()
     MEDIUM = auto()
     HIGH = auto()
     CRITICAL = auto()
 
-for priority in Priority:
-    print(f"{priority.name} = {priority.value}")
+for p in Priority:
+    print(f"{p.name}: {p.value}")
+# LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4
+
+# Adding a new priority is easy
+class ExtendedPriority(Enum):
+    LOW = auto()
+    MEDIUM = auto()
+    HIGH = auto()
+    URGENT = auto()
+    CRITICAL = auto()
 ```
 
-### Member Access
+### Intermediate Examples
 
 ```python
-class HTTPStatus(Enum):
-    OK = 200
-    NOT_FOUND = 404
-    INTERNAL_ERROR = 500
+from enum import Enum, auto
 
-# By name
-print(HTTPStatus['OK'])
+class State(Enum):
+    PENDING = auto()
+    PROCESSING = auto()
+    COMPLETED = auto()
+    FAILED = auto()
 
-# By value
-print(HTTPStatus(200))
+    def __str__(self):
+        return self.name.lower()
 
-# Name and value
-s = HTTPStatus.NOT_FOUND
-print(s.name)
-print(s.value)
+    def can_transition_to(self, new_state):
+        transitions = {
+            State.PENDING: {State.PROCESSING, State.FAILED},
+            State.PROCESSING: {State.COMPLETED, State.FAILED},
+            State.COMPLETED: set(),
+            State.FAILED: {State.PENDING},
+        }
+        return new_state in transitions[self]
+
+state = State.PENDING
+new_state = State.PROCESSING
+print(state.can_transition_to(new_state))  # True
 ```
 
-## Beginner Examples
-
-### Iterating Over Enums
+### Advanced Examples
 
 ```python
-class Weekday(Enum):
-    MONDAY = 1
-    TUESDAY = 2
-    WEDNESDAY = 3
-    THURSDAY = 4
-    FRIDAY = 5
-    SATURDAY = 6
-    SUNDAY = 7
+from enum import Enum, auto
 
-for day in Weekday:
-    print(f"{day.name}: {day.value}")
+class AutoName(Enum):
+    def _generate_next_value_(name, start, count, last_values):
+        return name.lower()
 
-# List of members
-days_list = list(Weekday)
-print(days_list)
+class ApiEndpoint(AutoName):
+    USERS = auto()
+    PRODUCTS = auto()
+    ORDERS = auto()
+    AUTH = auto()
+
+print(ApiEndpoint.USERS.value)     # 'users'
+print(ApiEndpoint.PRODUCTS.value)  # 'products'
+
+# Custom auto with formatted values
+class FormattedAuto(Enum):
+    def _generate_next_value_(name, start, count, last_values):
+        return f"{name}_{count + 1}"
+
+class TransactionStatus(FormattedAuto):
+    CREATED = auto()
+    PENDING = auto()
+    SETTLED = auto()
+    CANCELLED = auto()
+
+print(TransactionStatus.CREATED.value)   # 'CREATED_1'
+print(TransactionStatus.SETTLED.value)   # 'SETTLED_3'
 ```
 
-### Enum Comparison
+### Real-World Use Cases
 
-```python
-class Status(Enum):
-    PENDING = 1
-    ACTIVE = 2
-    INACTIVE = 3
+- **Simple state machines**: When only state uniqueness matters, not specific values.
+- **Categories/Tags**: Grouping-related constants where values are irrelevant.
+- **Event types**: Event-driven systems where event names are the key identifier.
+- **Log levels**: When you need ordered but irrelevant actual values.
+- **Options/Flags**: When adding new options frequently (auto handles numbering).
 
-s1 = Status.PENDING
-s2 = Status.PENDING
-s3 = Status.ACTIVE
+### Common Mistakes
 
-print(s1 is s2)       # True (same member object)
-print(s1 == s2)       # True (same member)
-print(s1 == s3)       # False
-print(s1 == 1)        # False (comparison with non-enum)
-print(s1 is Status.PENDING)  # True
-```
+- Mixing `auto()` with explicit values (works but defeats auto's purpose).
+- Expecting `auto()` to start at 0 (it starts at 1 by default).
+- Using `auto()` with `IntEnum` and expecting specific integer values.
+- Forgetting that `auto()` values are determined at class definition time, not runtime.
 
-### Using Enum in Conditional Statements
+### Best Practices
 
-```python
-class OrderStatus(Enum):
-    PENDING = "pending"
-    CONFIRMED = "confirmed"
-    SHIPPED = "shipped"
-    DELIVERED = "delivered"
-    CANCELLED = "cancelled"
+- Use `auto()` for enum members when only uniqueness is required.
+- Override `_generate_next_value_` for custom auto-value schemes.
+- Use `auto()` with `IntEnum` for integer-compatible enums.
+- Document the auto-numbering scheme if overriding `_generate_next_value_`.
 
-def process_order(status: OrderStatus) -> str:
-    if status == OrderStatus.PENDING:
-        return "Order is awaiting confirmation"
-    elif status == OrderStatus.CONFIRMED:
-        return "Order has been confirmed"
-    elif status == OrderStatus.SHIPPED:
-        return "Order has been shipped"
-    elif status == OrderStatus.DELIVERED:
-        return "Order has been delivered"
-    elif status == OrderStatus.CANCELLED:
-        return "Order was cancelled"
-    return "Unknown status"
+### Performance Considerations
 
-print(process_order(OrderStatus.SHIPPED))
-```
+`auto()` resolves at class definition time with no runtime overhead. Custom `_generate_next_value_` methods add a small amount of class-creation time but no per-access cost.
 
-### Enum in Dictionaries
+### Interview Questions
 
-```python
-class Color(Enum):
-    RED = "#FF0000"
-    GREEN = "#00FF00"
-    BLUE = "#0000FF"
+**Q: What values does `auto()` generate by default?**
 
-hex_map = {
-    Color.RED: (255, 0, 0),
-    Color.GREEN: (0, 255, 0),
-    Color.BLUE: (0, 0, 255),
-}
+A: By default, `auto()` generates incrementing integers starting at 1. The first member gets 1, the second gets 2, etc. The implementation is `_generate_next_value_` which returns `len(class.__members__) + 1`.
 
-print(hex_map[Color.RED])
-```
+**Q: How can you customize `auto()` value generation?**
 
-## Intermediate Examples
+A: Override `_generate_next_value_` as a `@staticmethod` on your enum class. It receives `name` (member name), `start` (initial value), `count` (how many auto values so far), and `last_values` (list of previous auto values).
 
-### IntEnum (Integer-compatible Enum)
+### Coding Challenges
+
+1. Create an enum using `auto()` that generates string values matching member names (lowercased).
+2. Implement an enum that uses `auto()` with a custom counter starting at 100 and incrementing by 10.
+3. Build a priority enum where `auto()` values represent a Fibonacci sequence.
+
+### Related Topics
+
+- `Enum` class
+- `_generate_next_value_` method
+- `IntEnum` (integer-compatible enum)
+- `@unique` decorator (prevent duplicate values)
+
+## IntEnum
+
+### What It Is
+
+`IntEnum` is an enum class whose members are also subclasses of `int`. This means IntEnum members can be used anywhere integers are expected, including in arithmetic operations, as list indices, and for comparison with plain integers.
+
+### Why It Is Important
+
+`IntEnum` bridges the gap between enum type safety and integer compatibility. It's useful for replacing integer constants (like HTTP status codes or exit codes) while maintaining backward compatibility with code that expects plain integers. It also allows integer-specific operations like bitwise operations.
+
+### How It Works Internally
+
+`IntEnum` inherits from both `int` and `Enum`. The metaclass creates members that are actual `int` instances, so `isinstance(Status.OK, int)` is `True`. This allows IntEnum values to be used in arithmetic, as dict keys with plain integers, and in any context requiring an integer.
+
+### Syntax
 
 ```python
 from enum import IntEnum
@@ -180,371 +399,325 @@ class Priority(IntEnum):
     MEDIUM = 2
     HIGH = 3
 
-# Can be used where integers are expected
-print(Priority.HIGH > Priority.LOW)
-print(Priority.HIGH + 1)
-print(Priority.LOW * 2)
+assert Priority.LOW == 1    # True (unlike regular Enum)
+```
 
-# Comparison with integers works
-print(Priority.HIGH == 3)
-print(1 < Priority.MEDIUM < 4)
+### Beginner Examples
+
+```python
+from enum import IntEnum
+
+class ExitCode(IntEnum):
+    SUCCESS = 0
+    GENERAL_ERROR = 1
+    USAGE_ERROR = 2
+
+# Works with integers
+print(ExitCode.SUCCESS == 0)  # True (unlike regular Enum)
+
+# Can be used in arithmetic
+print(ExitCode.GENERAL_ERROR + ExitCode.GENERAL_ERROR)  # 2
+
+# Can be used with built-in functions
+numbers = [ExitCode.SUCCESS, ExitCode.GENERAL_ERROR, ExitCode.USAGE_ERROR]
+print(min(numbers))  # ExitCode.SUCCESS
+print(max(numbers))  # ExitCode.USAGE_ERROR
 
 # Can be used as list indices
-items = ["low", "medium", "high"]
-print(items[Priority.LOW - 1])
+items = ["zero", "one", "two"]
+print(items[ExitCode.SUCCESS])  # zero
 ```
 
-### StrEnum (String-compatible Enum, Python 3.11+)
+### Intermediate Examples
 
 ```python
-from enum import StrEnum
+from enum import IntEnum
 
-class Language(StrEnum):
-    PYTHON = "Python"
-    JAVASCRIPT = "JavaScript"
-    RUST = "Rust"
-    GO = "Go"
+class LogLevel(IntEnum):
+    DEBUG = 10
+    INFO = 20
+    WARNING = 30
+    ERROR = 40
+    CRITICAL = 50
 
-# Auto converts to string
-print(Language.PYTHON.upper())
-print(f"Language: {Language.RUST}")
+logger_level = LogLevel.INFO
 
-# Comparison with strings
-print(Language.PYTHON == "Python")
+def log(level: LogLevel, message: str):
+    if level >= logger_level:
+        print(f"[{level.name}] {message}")
+
+log(LogLevel.DEBUG, "debug info")     # Not printed (level < INFO)
+log(LogLevel.WARNING, "warning msg")   # Printed
+log(LogLevel.ERROR, "error msg")      # Printed
+
+# Comparison with plain integers works
+if LogLevel.ERROR >= 40:
+    print("Yes, ERROR >= 40")  # True
 ```
 
-### Unique Enum Values
+### Advanced Examples
 
 ```python
-from enum import unique
+from enum import IntEnum
 
-@unique
-class Status(Enum):
-    PENDING = 1
-    ACTIVE = 2
-    INACTIVE = 3
-    # DELETED = 1  # ValueError: duplicate values
+class Permissions(IntEnum):
+    NONE = 0
+    READ = 4
+    WRITE = 2
+    EXECUTE = 1
+    ALL = READ | WRITE | EXECUTE  # 7
 
-print(list(Status))
+class FilePermissions(IntEnum):
+    OWNER_READ = 0o400
+    OWNER_WRITE = 0o200
+    OWNER_EXEC = 0o100
+    GROUP_READ = 0o040
+    GROUP_WRITE = 0o020
+    GROUP_EXEC = 0o010
+
+# Bitwise operations work because they're integers
+current = Permissions.READ | Permissions.WRITE
+print(current)             # 6
+print(Permissions(current))  # <Permissions.ALL? No, ALL is 7
+
+# Check permission
+has_write = bool(current & Permissions.WRITE)
+has_execute = bool(current & Permissions.EXECUTE)
+print(f"Write: {has_write}, Execute: {has_execute}")  # Write: True, Execute: False
 ```
 
-### Enum with Methods
+### Real-World Use Cases
 
-```python
-class Planet(Enum):
-    MERCURY = (3.303e23, 2.4397e6)
-    VENUS = (4.869e24, 6.0518e6)
-    EARTH = (5.976e24, 6.37814e6)
-    MARS = (6.421e23, 3.3972e6)
+- **HTTP status codes**: Backward-compatible with integer handling in web frameworks.
+- **Exit codes**: System exit codes that need comparison with integer standards.
+- **Bitmask flags**: Combine multiple flags using bitwise OR (use `Flag` or `IntFlag` for better support).
+- **Log levels**: Numeric log levels that can be compared with `>=`.
+- **Protocol constants**: Network protocol constants that must match integer specifications.
 
-    def __init__(self, mass: float, radius: float) -> None:
-        self._mass = mass
-        self._radius = radius
+### Common Mistakes
 
-    @property
-    def mass(self) -> float:
-        return self._mass
+- Using `IntEnum` when a regular `Enum` would suffice (only use when integer compatibility is needed).
+- Forgetting that `IntEnum` members are `int` instances and can be used in unintended arithmetic.
+- Using `IntEnum` for bitmask operations without understanding the values (use `Flag` instead).
+- Passing `IntEnum` to functions that modify the integer (creates plain `int`, not enum).
 
-    @property
-    def radius(self) -> float:
-        return self._radius
+### Best Practices
 
-    @property
-    def surface_gravity(self) -> float:
-        G = 6.673e-11
-        return G * self.mass / (self.radius ** 2)
+- Use `IntEnum` only when you need integer compatibility for existing code or protocols.
+- Prefer regular `Enum` for most new code to maintain type safety.
+- Use `Flag` or `IntFlag` for bitmask operations instead of manual bitwise `IntEnum`.
+- Document that the enum values are integers and must match specific numeric specifications.
 
-for planet in Planet:
-    print(f"{planet.name}: g = {planet.surface_gravity:.2f} m/s²")
-```
+### Performance Considerations
 
-### Enum Custom __init__
+`IntEnum` members are plain `int` instances with no performance overhead for integer operations. Enum operations (member access, name/value lookup) are as fast as regular `Enum`.
 
-```python
-class Shape(Enum):
-    CIRCLE = ("circle", 0)
-    SQUARE = ("square", 4)
-    TRIANGLE = ("triangle", 3)
+### Interview Questions
 
-    def __init__(self, name: str, sides: int) -> None:
-        self.display_name = name
-        self.sides = sides
+**Q: How is `IntEnum` different from regular `Enum`?**
 
-    @property
-    def is_polygon(self) -> bool:
-        return self.sides >= 3
+A: `IntEnum` members are also `int` instances, making them compatible with integers in comparisons, arithmetic, and as sequence indices. Regular `Enum` members are not comparable to their values — `Color.RED == 1` is `False`.
 
-for shape in Shape:
-    print(f"{shape.display_name}: {shape.sides} sides, polygon: {shape.is_polygon}")
-```
+**Q: What is the risk of using `IntEnum`?**
 
-## Advanced Examples
+A: `IntEnum` members can be compared to and used as plain integers, which means they can be passed to `int`-typed parameters anywhere. This weakens the type safety that enums provide and can lead to accidentally passing enum members where integers are expected.
 
-### Flag (Bitwise Enum)
+### Coding Challenges
+
+1. Create an `IntEnum` for Unix process signals (SIGTERM=15, SIGKILL=9, etc.) with appropriate descriptions.
+2. Implement a `HttpStatus` `IntEnum` with methods for checking response categories.
+3. Build a simple logging system that uses `LogLevel(IntEnum)` for filtering.
+
+### Related Topics
+
+- `Enum` class
+- `IntFlag` (for integer-compatible bitmask operations)
+- `Flag` (for bitmask operations without integer compatibility)
+- `auto()` with `IntEnum`
+- `@unique` decorator
+
+## Flag
+
+### What It Is
+
+`Flag` is an enum class designed for bitmask operations. Members should have values that are powers of two (1, 2, 4, 8, ...), allowing combination via bitwise OR (`|`) and testing via bitwise AND (`&`). `Flag` supports the standard bitwise operators and provides `__contains__` for membership testing.
+
+### Why It Is Important
+
+`Flag` provides a type-safe way to work with combinations of options. Instead of passing multiple boolean parameters or integer bitmasks, you can pass a single `Flag` value representing the set of enabled options. It is more readable, type-safe, and self-documenting than raw integer bitmasks.
+
+### How It Works Internally
+
+`Flag` is a subclass of `Enum`. Its metaclass (`FlagMeta`) ensures that member values are powers of two. Combined values (from OR operations) are `Flag` instances. The `__contains__` method checks if a flag's bits are all set in the combined flags. Aliases (combinations) are automatically tracked.
+
+### Syntax
 
 ```python
 from enum import Flag, auto
 
 class Permission(Flag):
-    NONE = 0
     READ = auto()
     WRITE = auto()
     EXECUTE = auto()
-    ADMIN = READ | WRITE | EXECUTE
 
-# Bitwise operations
+# Combine flags
 perm = Permission.READ | Permission.WRITE
-print(perm)
-print(Permission.READ in perm)   # True
-print(Permission.EXECUTE in perm)  # False
 
-perm |= Permission.EXECUTE
-print(perm)
-print(Permission.ADMIN in perm)  # True (now has all)
-
-perm &= ~Permission.WRITE
-print(perm)
+# Check flags
+Permission.READ in perm  # True
+Permission.EXECUTE in perm  # False
 ```
 
-### Enum with Custom Behavior (Singleton-like)
+### Beginner Examples
 
 ```python
-class DatabaseType(Enum):
-    SQLITE = "sqlite"
-    POSTGRES = "postgres"
-    MYSQL = "mysql"
+from enum import Flag, auto
 
-    def connect(self, **kwargs: Any) -> str:
-        if self == DatabaseType.SQLITE:
-            return f"sqlite:///{kwargs.get('path', ':memory:')}"
-        elif self == DatabaseType.POSTGRES:
-            return f"postgresql://{kwargs.get('user')}:{kwargs.get('password')}@{kwargs.get('host')}:{kwargs.get('port', 5432)}/{kwargs.get('db')}"
-        elif self == DatabaseType.MYSQL:
-            return f"mysql://{kwargs.get('user')}:{kwargs.get('password')}@{kwargs.get('host')}:{kwargs.get('port', 3306)}/{kwargs.get('db')}"
-        raise ValueError(f"Unknown database type: {self}")
+class Color(Flag):
+    RED = auto()
+    GREEN = auto()
+    BLUE = auto()
+    WHITE = RED | GREEN | BLUE
+    YELLOW = RED | GREEN
+    CYAN = GREEN | BLUE
+    MAGENTA = RED | BLUE
 
-db_type = DatabaseType.POSTGRES
-url = db_type.connect(
-    user="admin",
-    password="secret",
-    host="localhost",
-    db="mydb"
-)
-print(url)
+# Combine
+purple = Color.RED | Color.BLUE
+print(purple)  # Color.MAGENTA (or Color.RED|BLUE)
+
+# Check membership
+print(Color.RED in purple)    # True
+print(Color.GREEN in purple)  # False
+
+# Iterate over individual flags in a combined value
+for c in Color:
+    if c in purple and c.name.isupper():
+        print(c.name)  # RED, BLUE
 ```
 
-### Enum with Class Methods for Lookup
+### Intermediate Examples
 
 ```python
-class Country(Enum):
-    USA = ("United States", "USD", 840)
-    CANADA = ("Canada", "CAD", 124)
-    UK = ("United Kingdom", "GBP", 826)
-    JAPAN = ("Japan", "JPY", 392)
+from enum import Flag, auto
 
-    def __init__(self, full_name: str, currency: str, numeric_code: int) -> None:
-        self.full_name = full_name
-        self.currency = currency
-        self.numeric_code = numeric_code
+class Access(Flag):
+    NONE = 0
+    READ = auto()
+    WRITE = auto()
+    DELETE = auto()
+    ADMIN = READ | WRITE | DELETE
 
-    @classmethod
-    def from_currency(cls, currency: str) -> 'Country':
-        for member in cls:
-            if member.currency == currency.upper():
-                return member
-        raise ValueError(f"No country with currency: {currency}")
+class Document:
+    def __init__(self, title, content):
+        self.title = title
+        self.content = content
+        self._access_control = {}
 
-    @classmethod
-    def from_numeric(cls, code: int) -> 'Country':
-        for member in cls:
-            if member.numeric_code == code:
-                return member
-        raise ValueError(f"No country with code: {code}")
+    def set_access(self, user, access: Access):
+        self._access_control[user] = access
 
-print(Country.from_currency("JPY"))
-print(Country.from_numeric(840))
+    def can(self, user, access: Access) -> bool:
+        user_access = self._access_control.get(user, Access.NONE)
+        return access in user_access
+
+doc = Document("Report", "Confidential data")
+doc.set_access("alice", Access.READ | Access.WRITE)
+doc.set_access("bob", Access.READ)
+doc.set_access("charlie", Access.ADMIN)
+
+print(doc.can("alice", Access.WRITE))  # True
+print(doc.can("bob", Access.DELETE))   # False
+print(doc.can("charlie", Access.ADMIN))  # True
 ```
 
-### Enum Inheriting from Mixins
+### Advanced Examples
 
 ```python
-class ExtendedEnum(Enum):
-    @classmethod
-    def values(cls) -> list[Any]:
-        return [member.value for member in cls]
+from enum import Flag, auto
 
-    @classmethod
-    def names(cls) -> list[str]:
-        return [member.name for member in cls]
+class Style(Flag):
+    BOLD = auto()
+    ITALIC = auto()
+    UNDERLINE = auto()
+    STRIKETHROUGH = auto()
+    MONOSPACE = auto()
 
-    @classmethod
-    def choices(cls) -> list[tuple[str, Any]]:
-        return [(member.name, member.value) for member in cls]
+class TextFormatter:
+    def __init__(self):
+        self.default_styles = Style.BOLD | Style.MONOSPACE
 
-class Color(ExtendedEnum):
-    RED = 1
-    GREEN = 2
-    BLUE = 3
+    def format(self, text: str, styles: Style) -> str:
+        result = text
+        if Style.BOLD in styles:
+            result = f"**{result}**"
+        if Style.ITALIC in styles:
+            result = f"*{result}*"
+        if Style.UNDERLINE in styles:
+            result = f"_{result}_"
+        if Style.STRIKETHROUGH in styles:
+            result = f"~~{result}~~"
+        return result
 
-print(Color.values())
-print(Color.names())
-print(Color.choices())
+    def format_with_defaults(self, text: str, extra: Style = Style.NONE) -> str:
+        return self.format(text, self.default_styles | extra)
+
+fmt = TextFormatter()
+print(fmt.format("Hello", Style.BOLD | Style.ITALIC))
+# **Hello** with *...* (order depends on implementation)
+
+print(fmt.format_with_defaults("Code", Style.UNDERLINE))
+# **Code** with _..._ and fixed-width
 ```
 
-### Enum Validation with Metaclass
+### Real-World Use Cases
 
-```python
-class ValidatedEnumMeta(EnumMeta):
-    def __new__(mcs, name: str, bases: tuple[type, ...], namespace: dict[str, Any]) -> type:
-        cls = super().__new__(mcs, name, bases, namespace)
-        values_seen: set[Any] = set()
-        duplicates = []
-        for member in cls:
-            v = member.value
-            if v in values_seen:
-                duplicates.append(v)
-            values_seen.add(v)
-        if duplicates:
-            raise ValueError(
-                f"Duplicate values in {name}: {duplicates}"
-            )
-        return cls
+- **User permissions**: Combine READ, WRITE, DELETE, ADMIN flags for access control.
+- **File system attributes**: Represent file flags (HIDDEN, READ_ONLY, SYSTEM, ARCHIVE).
+- **UI component states**: Combine VISIBLE, ENABLED, FOCUSED, SELECTED flags.
+- **Network socket options**: Represent socket flags (NONBLOCK, REUSEADDR, KEEPALIVE).
+- **Configuration flags**: Enable/disable feature combinations.
 
-class Month(metaclass=ValidatedEnumMeta):
-    JAN = 1
-    FEB = 2
-    MAR = 3
-    # JAN_DUP = 1  # Would raise ValueError
-```
+### Common Mistakes
 
-### Enum with Property Shortcuts
+- Using non-power-of-2 values (combinations won't work correctly — use `auto()` to avoid this).
+- Forgetting `NONE = 0` for an empty flag set (without it, you can't represent "no flags").
+- Using `Flag` when only one flag can be set at a time (use regular `Enum` instead).
+- Expecting `Flag` members to be comparable to integers (they are not — use `IntFlag` for that).
 
-```python
-class FileType(Enum):
-    PYTHON = (".py", "text/x-python")
-    JAVASCRIPT = (".js", "text/javascript")
-    HTML = (".html", "text/html")
-    CSS = (".css", "text/css")
-    MARKDOWN = (".md", "text/markdown")
+### Best Practices
 
-    def __new__(cls, extension: str, mime: str) -> 'FileType':
-        obj = object.__new__(cls)
-        obj._value_ = extension
-        obj.extension = extension
-        obj.mime_type = mime
-        return obj
+- Use `auto()` to ensure values are powers of two.
+- Define `NONE = 0` for the empty flag set.
+- Define named combinations for commonly used flag sets (e.g., `ALL`, `NONE`, `READ_WRITE`).
+- Use `Flag` over `IntFlag` when integer compatibility is not needed.
+- Use `x in y` syntax for checking if a flag is set (`Flag.__contains__`).
 
-    def is_code(self) -> bool:
-        return self in (FileType.PYTHON, FileType.JAVASCRIPT)
+### Performance Considerations
 
-print(FileType.PYTHON.extension)
-print(FileType.PYTHON.mime_type)
-print(FileType.CSS.extension)
-print(FileType.HTML.is_code())
-```
+`Flag` operations are bitwise integer operations in C — very fast. The `__contains__` check is a single bitwise AND. Named combinations are computed at class definition time. `auto()` for flags resolves at class definition time.
 
-### Enum with Factory Method
+### Interview Questions
 
-```python
-from typing import Optional
+**Q: How is `Flag` different from `IntFlag`?**
 
-class TemperatureScale(Enum):
-    CELSIUS = "C"
-    FAHRENHEIT = "F"
-    KELVIN = "K"
+A: `Flag` does not inherit from `int`, so flag values are not directly comparable to integers. `IntFlag` does inherit from `int`, making it compatible with integer bitwise operations and comparisons. Use `Flag` for type-safe flags, `IntFlag` for backward compatibility with integer-based code.
 
-    def convert(self, value: float, target: 'TemperatureScale') -> float:
-        """Convert temperature from this scale to target scale."""
-        # Convert to Celsius first
-        if self == TemperatureScale.CELSIUS:
-            celsius = value
-        elif self == TemperatureScale.FAHRENHEIT:
-            celsius = (value - 32) * 5 / 9
-        elif self == TemperatureScale.KELVIN:
-            celsius = value - 273.15
-        else:
-            raise ValueError(f"Unknown scale: {self}")
+**Q: How do you check if a specific flag is set in a combined value?**
 
-        # Convert from Celsius to target
-        if target == TemperatureScale.CELSIUS:
-            return celsius
-        elif target == TemperatureScale.FAHRENHEIT:
-            return celsius * 9 / 5 + 32
-        elif target == TemperatureScale.KELVIN:
-            return celsius + 273.15
-        raise ValueError(f"Unknown target scale: {target}")
+A: Use the `in` operator: `Flag.READ in combined_flags`. This is the `__contains__` method which checks if all bits of the tested flag are set in the combined value.
 
-c = TemperatureScale.CELSIUS
-f = TemperatureScale.FAHRENHEIT
-print(f"{c.convert(100, f):.1f}F")
-```
+### Coding Challenges
 
-## Real-World Use Cases
+1. Implement a `FilePermission` flag with OWNER, GROUP, OTHER and READ, WRITE, EXECUTE access levels.
+2. Create a notification system that uses `Flag` for notification types (EMAIL, SMS, PUSH, IN_APP).
+3. Build an `OrderOption` flag (RUSH, GIFT_WRAP, INSURED, PRIORITY) and a method to calculate total cost.
+4. Implement a feature toggle system using `Flag` for managing feature flags.
 
-- **HTTP status codes**: Mapping integer codes to descriptive names.
-- **Database column types**: Enumerating supported types.
-- **Configuration options**: Setting modes (debug, release, test).
-- **API response statuses**: Success, error, pending, rate-limited.
-- **Event types**: Different kinds of events in an event system.
-- **Permission systems**: Bitwise flags for access control.
-- **Protocol implementation**: Fixed set of states in a state machine.
-- **Menu options**: Commands or actions available to users.
+### Related Topics
 
-## Common Mistakes
-
-- Using `value` as an enum member name (it's a reserved attribute).
-- Comparing enums with plain values: `Color.RED == 1` is `False` for regular `Enum` (use `IntEnum` for integer compatibility).
-- Assuming enum members are ordered — they are not by default (use `IntEnum` for ordering).
-- Forgetting `@unique` when duplicate values should be prevented.
-- Using mutable values (lists, dicts) as enum values — they are shared.
-- Forgetting that `auto()` assigns sequential integers starting from 1.
-- Trying to subclass an enum that already has members.
-
-## Best Practices
-
-- Use `auto()` for automatic value assignment when the actual value doesn't matter.
-- Use `@unique` to prevent duplicate values.
-- Use `IntEnum` when the enum needs to behave like an integer (comparisons, arithmetic).
-- Use `StrEnum` (Python 3.11+) for string-compatible enums.
-- Use `Flag` for bitwise combination of options.
-- Add methods to enums for behavior associated with each member.
-- Use `member.name` and `member.value` for access, not string parsing.
-- Use `is` for singleton comparison (enum members are singletons).
-
-## Interview Questions
-
-1. What is an Enum and why would you use it?
-2. How do you create an enum with automatic values?
-3. What is the difference between `Enum` and `IntEnum`?
-4. What is `Flag` and how do you use bitwise operations on it?
-5. How do you iterate over enum members?
-6. What does `@unique` do?
-7. Can you add methods to an enum class?
-8. What is the difference between `member.name` and `member.value`?
-9. How does `auto()` assign values?
-10. How do enums ensure singleton behavior?
-
-## Coding Challenges
-
-1. **Direction Navigator**: Create an enum for compass directions and a function that returns the opposite direction.
-2. **Roman Numerals**: Map Roman numeral strings to integer values using an enum.
-3. **HTTP Methods**: Create an enum for HTTP methods (GET, POST, PUT, DELETE, PATCH) with associated metadata.
-4. **Traffic Light**: Create a traffic light enum with a method that returns the next color.
-5. **Card Suits**: Create a `Suit` enum and a `Card` dataclass using it.
-6. **File Permissions**: Implement Unix file permissions using `Flag`.
-7. **Order State Machine**: Create a state machine enum with valid transitions.
-8. **Unit Converter**: Build an enum of measurement units with conversion methods.
-
-## Summary
-
-Enums provide a type-safe, readable way to define fixed sets of constants in Python. The `enum` module supports standard enums, integer enums (`IntEnum`), string enums (`StrEnum`), and bitwise flags (`Flag`). Enums support methods, iteration, automatic value assignment, and can be made unique with `@unique`. They are essential for clean, maintainable domain modeling.
-
-## Related Topics
-
-- Constants and named constants
-- Bitwise operations (Flag)
-- Type safety
-- Domain-driven design
-- State machines
-- Configuration management
-- Data validation
+- `IntFlag` (integer-compatible flags)
+- `auto()` for automatic power-of-2 values
+- `Enum` base class
+- Bitwise operations in Python
+- `@unique` decorator

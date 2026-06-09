@@ -1,668 +1,553 @@
 # Memory Management - Garbage collection, reference counting, weakref
 
 ## Introduction
+Python manages memory automatically through a combination of reference counting and a cyclic garbage collector. Every object carries an integer refcount; when it reaches zero, the object is deallocated immediately. The garbage collector (the `gc` module) handles the one situation reference counting cannot: cycles of objects that reference each other but are otherwise unreachable. The `weakref` module allows references that do not increment the refcount, enabling caches and observers without preventing object deallocation. Understanding these three mechanisms is essential for writing memory-efficient, leak-free Python applications.
 
-Python manages memory automatically through a combination of reference counting and a generational garbage collector. The CPython interpreter handles memory allocation, deallocation, and optimization internally. Understanding these mechanisms helps developers write more efficient code and avoid common memory pitfalls.
+## Garbage Collection
 
-## Why It Is Important
+### What It Is
+Python's garbage collector (GC) detects and collects *unreachable* object cycles — groups of objects whose reference counts are positive only because they reference each other in a cycle, with no external references. The GC lives in the `gc` module and runs as part of the interpreter's memory allocation routine (`PyMem_Malloc`). It is generational (three generations) and runs automatically when the number of allocations minus deallocations exceeds a per-generation threshold.
 
-Memory management affects application performance, scalability, and reliability. Poor memory management leads to memory leaks, high memory usage, and degraded performance. Understanding Python's memory model helps developers optimize memory usage, detect leaks, and build more efficient applications.
+### Why It Is Important
+Without a cycle collector, Python would leak memory whenever container objects (lists, dicts, instances of user-defined classes) formed reference cycles and became unreachable. The GC reclaims this memory, preventing unbounded growth in long-running processes such as web servers and background workers.
 
-## Syntax
+### How It Works Internally
+The GC is a stop-the-world mark-and-sweep collector. When triggered:
+1. **Tracking**: The GC maintains a linked list of all tracked container objects (objects that *can* participate in cycles, such as `list`, `dict`, `set`, and instances of user classes).
+2. **Generations**: Objects start in generation 0. If they survive a collection, they move to generation 1, then generation 2. Thresholds are `(700, 10, 10)` by default. Collections become progressively less frequent in higher generations.
+3. **Mark phase**: Starting from a set of root objects (globals, stack frames), the GC follows references, marking reachable objects. The `gc.garbage` list holds objects with `__del__` methods that cannot be collected safely.
+4. **Sweep phase**: Unmarked objects are deallocated by calling `tp_dealloc`.
 
 ```python
-# Reference counting basics
-import sys
-x = []
-print(sys.getrefcount(x))  # Returns reference count
-
-# Garbage collection module
 import gc
-gc.enable()
-gc.disable()
-gc.collect()  # Manual collection
-gc.get_objects()  # Get all tracked objects
-gc.get_stats()  # Get GC statistics
-
-# Weak references
-import weakref
-class MyClass:
-    pass
-obj = MyClass()
-ref = weakref.ref(obj)
-print(ref())  # Returns object if alive
-del obj
-print(ref())  # Returns None
-
-# __slots__ for memory optimization
-class WithSlots:
-    __slots__ = ('x', 'y')
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-# Memory profiling
-# pip install memory_profiler
-# python -m memory_profiler script.py
+gc.get_threshold()   # (700, 10, 10) - gen0, gen1, gen2
+gc.get_count()       # current counters
 ```
 
-## Examples
-
+### Syntax
 ```python
-import sys
 import gc
-import weakref
-from typing import List, Optional
 
+gc.enable()           # enable automatic GC (default on)
+gc.disable()          # disable automatic GC
+gc.collect()          # perform a full collection
+gc.collect(1)         # collect only generation <= 1
+gc.set_debug(gc.DEBUG_STATS)  # print collection stats
+gc.get_objects()      # list of all tracked objects
+gc.is_tracked(obj)    # check if obj is tracked by GC
+```
+
+### Beginner Examples
+```python
+import gc
 
 class Node:
     def __init__(self, value):
         self.value = value
-        self.next: Optional['Node'] = None
+        self.next = None
 
+# Create a cycle
+a = Node(1)
+b = Node(2)
+a.next = b
+b.next = a
 
-def demonstrate_reference_counting():
-    x = []
-    ref_count = sys.getrefcount(x) - 1
-    print(f"Reference count for empty list: {ref_count}")
-    y = x
-    print(f"After assignment y = x: {sys.getrefcount(x) - 1}")
-    del y
-    print(f"After del y: {sys.getrefcount(x) - 1}")
+# Delete external references
+del a, b
 
-
-demonstrate_reference_counting()
-
-
-def demonstrate_cyclic_reference():
-    a = Node(1)
-    b = Node(2)
-    a.next = b
-    b.next = a
-    print(f"GC is tracking: {gc.is_tracked(a)}")
-    print(f"Collected objects: {gc.collect()}")
-
-
-demonstrate_cyclic_reference()
+# Force collection and check
+collected = gc.collect()
+print(f'Collected {collected} objects')
 ```
 
-## Beginner Examples
-
+### Intermediate Examples
 ```python
-import sys
 import gc
-
-
-def reference_count_basics():
-    a = [1, 2, 3]
-    print(f"Refcount after creation: {sys.getrefcount(a) - 1}")
-    b = a
-    print(f"Refcount after b = a: {sys.getrefcount(a) - 1}")
-    c = a
-    print(f"Refcount after c = a: {sys.getrefcount(a) - 1}")
-    del b
-    print(f"Refcount after del b: {sys.getrefcount(a) - 1}")
-    del c
-    print(f"Refcount after del c: {sys.getrefcount(a) - 1}")
-
-
-reference_count_basics()
-
-
-def understanding_gc():
-    print(f"Garbage collector enabled: {gc.isenabled()}")
-    print(f"GC thresholds: {gc.get_threshold()}")
-    gc.set_threshold(700, 10, 10)
-    print(f"New thresholds: {gc.get_threshold()}")
-    gc.set_threshold(700, 10, 5)
-
-
-understanding_gc()
-
-
-def create_and_collect_garbage():
-    for _ in range(100):
-        x = [i for i in range(1000)]
-    print(f"Collected: {gc.collect()} objects")
-    print(f"GC stats: {gc.get_stats()}")
-
-
-create_and_collect_garbage()
-```
-
-## Intermediate Examples
-
-```python
 import sys
-import gc
-import weakref
-from typing import Any, Dict, List
 
-
-class CircularReference:
-    def __init__(self, name: str):
+class Resource:
+    def __init__(self, name):
         self.name = name
-        self.other: 'CircularReference' = None
+        self.other = None
 
     def __del__(self):
-        print(f"Deleting {self.name}")
+        print(f'Deleting {self.name}')
 
+gc.set_debug(gc.DEBUG_STATS)
+gc.set_debug(gc.DEBUG_LEAK)
 
-def create_cyclic_garbage():
-    a = CircularReference('A')
-    b = CircularReference('B')
-    c = CircularReference('C')
-    a.other = b
-    b.other = c
-    c.other = a
-    print(f"Objects tracked: {len(gc.get_objects())}")
-    del a, b, c
-    print(f"Collected: {gc.collect()}")
-    print(f"Objects tracked after: {len(gc.get_objects())}")
+# Manually triggering collection
+for i in range(1000):
+    r = Resource(f'R{i}')
+    r.other = Resource(f'R{i}_other')
+    r.other.other = r     # cycle
 
-
-create_cyclic_garbage()
-
-
-class CacheWithWeakRef:
-    def __init__(self):
-        self._cache: Dict[str, weakref.ref] = {}
-
-    def add(self, key: str, value: Any):
-        self._cache[key] = weakref.ref(value)
-
-    def get(self, key: str) -> Any:
-        ref = self._cache.get(key)
-        if ref is not None:
-            return ref()
-        return None
-
-    def cleanup(self):
-        dead_keys = [k for k, v in self._cache.items() if v() is None]
-        for k in dead_keys:
-            del self._cache[k]
-
-
-def demonstrate_weakref_cache():
-    cache = CacheWithWeakRef()
-    obj = {'data': 'important'}
-    cache.add('key1', obj)
-    print(f"Cache get: {cache.get('key1')}")
-    del obj
-    print(f"Cache get after delete: {cache.get('key1')}")
-    cache.cleanup()
-    print(f"Cache size after cleanup: {len(cache._cache)}")
-
-
-demonstrate_weakref_cache()
-
-
-def weakref_callbacks():
-    class Data:
-        def __init__(self, value):
-            self.value = value
-
-    def on_delete(ref):
-        print(f"Object with ref {ref} was deleted")
-
-    data = Data(42)
-    ref = weakref.ref(data, on_delete)
-    print(f"Object alive: {ref() is not None}")
-    del data
-    print(f"Object alive after delete: {ref() is not None}")
-
-
-weakref_callbacks()
+gc.collect()
+print(f'Uncollectable garbage: {len(gc.garbage)}')
 ```
 
-## Advanced Examples
-
+### Advanced Examples
 ```python
-import sys
 import gc
 import weakref
 import objgraph
-from typing import Any, Dict, List, Optional
 
+class HeavyObject:
+    def __init__(self, data):
+        self.data = data
+        self.ref = None
 
-class MemoryProfiler:
+# Find root cause of memory leak
+def find_leak():
+    gc.collect()
+    objgraph.show_most_common_types(limit=20)
+
+    # Find all reference chains to a specific type
+    chains = objgraph.find_backref_chain(
+        some_instance,
+        objgraph.is_proper_module
+    )
+    objgraph.show_chain(chains)
+
+# Custom GC strategy for real-time systems
+class RealTimeGC:
+    def __init__(self, interval_ms=50):
+        self.interval = interval_ms
+        gc.disable()
+
+    def tick(self):
+        if gc.get_count()[0] >= 1400:  # double default threshold
+            gc.collect(0)
+        if gc.get_count()[1] >= 20:
+            gc.collect(1)
+
+# Debugging with gc.callbacks
+def on_gc_stage(phase, info):
+    if phase == 'start':
+        print(f'GC {info["generation"]} starting, collections: {gc.get_count()}')
+
+gc.callbacks.append(on_gc_stage)
+```
+
+### Real-World Use Cases
+- **Web server memory leak detection**: run `gc.collect()` after each request and compare `gc.get_count()` deltas to identify endpoints that leak.
+- **Game loop memory management**: disable automatic GC in a game loop and call `gc.collect(0)` manually every N frames to avoid unpredictable pauses.
+- **Data science pipelines**: call `gc.collect()` explicitly after large matrix operations to return memory to the OS sooner.
+
+### Common Mistakes
+- Forgetting that `__del__` methods create cycles that the GC cannot collect — they end up in `gc.garbage`.
+- Disabling GC globally without understanding that the application creates cycles — leads to unbounded memory growth.
+- Assuming `gc.collect()` returns memory to the OS — Python's allocator retains free arenas for reuse.
+
+### Best Practices
+- Leave the GC enabled unless you have a specific real-time constraint.
+- Profile object allocations with `gc.get_objects()` and `objgraph` when investigating leaks.
+- Use `gc.DEBUG_SAVEALL` during development to print every collected object.
+
+### Performance Considerations
+- Full GC (generation 2) can take milliseconds and cause latency spikes; for latency-sensitive applications, manually control collection frequency.
+- Disabling the GC improves throughput by 5–15% on allocation-heavy workloads but risks memory leaks if cycles exist.
+- Each tracked object carries a hidden `PyGC_Head` (approximately 32 bytes) overhead.
+
+### Interview Questions
+- **Q**: How does Python detect and collect reference cycles?  
+  **A**: The GC uses a generational mark-and-sweep algorithm starting from root objects, marking reachable containers, and sweeping unmarked ones.
+- **Q**: Why does `gc.garbage` exist and when does it fill up?  
+  **A**: Objects with `__del__` methods that form cycles are moved to `gc.garbage` because the GC cannot determine a safe deallocation order.
+
+### Coding Challenges
+- Implement a cycle detector that walks object references from a given root and returns the set of all reachable objects.
+- Write a context manager that temporarily disables GC, runs a block, then forces collection and logs how many objects were collected.
+
+### Related Topics
+- [Reference counting](#reference-counting)
+- [weakref module](#weakref-module)
+- [memory_profiler](#memory_profiler)
+
+---
+
+## Reference Counting
+
+### What It Is
+Reference counting is Python's primary memory management mechanism. Every Python object (`PyObject`) has an `ob_refcnt` field — an integer that tracks how many references point to that object. When `ob_refcnt` reaches zero, the object's memory is deallocated immediately. This is deterministic, predictable, and requires no separate collection pass.
+
+### Why It Is Important
+Reference counting guarantees that most objects are freed the moment they become unreachable, without waiting for a GC cycle. This makes Python suitable for scripting and automation where predictable teardown (file handles, locks, sockets) is critical.
+
+### How It Works Internally
+The `PyObject` struct starts with `PyObject_HEAD`:
+```c
+typedef struct _object {
+    Py_ssize_t ob_refcnt;
+    PyTypeObject *ob_type;
+} PyObject;
+```
+Operations that modify the refcount:
+- `Py_INCREF(op)` — increments `ob_refcnt` (when a new reference is taken: assignment, passing to a function, appending to a list).
+- `Py_DECREF(op)` — decrements `ob_refcnt` and calls `tp_dealloc` if it reaches zero.
+- `Py_XINCREF` / `Py_XDECREF` — same but accept `NULL` safely.
+
+When `tp_dealloc` is called, the object calls `PyMem_FREE` to release its memory. For containers, `tp_dealloc` first iterates child objects and calls `Py_DECREF` on each, which can trigger cascading deallocations.
+
+### Syntax
+```python
+import sys
+
+# Get reference count
+obj = []
+sys.getrefcount(obj)   # returns 2+ (1 for local var, 1 for argument)
+
+# The refcount increases with each new reference
+a = obj
+b = a
+c = [obj]
+print(sys.getrefcount(obj))  # typically 5+
+
+# Deletion decreases refcount
+del a
+print(sys.getrefcount(obj))  # typically 4+
+
+# Container membership
+d = {}
+d['key'] = obj
+print(sys.getrefcount(obj))
+```
+
+### Beginner Examples
+```python
+import sys
+
+def show_refcounts():
+    x = "hello"
+    print(f'Initial refcount: {sys.getrefcount(x)}')
+
+    y = x
+    print(f'After y = x: {sys.getrefcount(x)}')
+
+    lst = [x]
+    print(f'After list: {sys.getrefcount(x)}')
+
+    d = {1: x}
+    print(f'After dict: {sys.getrefcount(x)}')
+
+    del y, lst, d
+    print(f'After cleanup: {sys.getrefcount(x)}')
+
+show_refcounts()
+```
+
+### Intermediate Examples
+```python
+import sys
+import ctypes
+
+class MutableString:
+    def __init__(self, value):
+        self.value = value
+
+def refcount_address(obj):
+    """Get refcount via ctypes for demonstration."""
+    return ctypes.c_long.from_address(id(obj)).value
+
+a = MutableString("test")
+print(f'Refcount via sys: {sys.getrefcount(a)}')
+print(f'Refcount via ctypes: {refcount_address(a)}')
+
+b = a
+print(f'After b = a: {refcount_address(a)}')
+
+# Interned strings
+s1 = "hello_world_intern"
+s2 = "hello_world_intern"
+print(f'Interned string refcount: {sys.getrefcount(s1)}')
+
+# Small integers are cached
+x = 256
+y = 256
+print(f'Small int (same object): {x is y}')
+print(f'Refcount of 256: {sys.getrefcount(x)}')
+```
+
+### Advanced Examples
+```python
+import sys
+import ctypes
+import gc
+
+# Observing deallocation with weakref callbacks
+import weakref
+
+class Watched:
+    def __init__(self, name):
+        self.name = name
+
+    def __repr__(self):
+        return f'Watched({self.name})'
+
+def on_delete(ref):
+    print(f'{ref} was deleted!')
+
+obj = Watched('test')
+ref = weakref.ref(obj, on_delete)
+
+print(f'Refcount before delete: {sys.getrefcount(obj)}')
+del obj
+print('After del obj')
+
+# Understanding temporary references
+def get_count():
+    return sys.getrefcount(some_global)
+
+some_global = []
+print(f'Refcount inside call (includes temp): {get_count()}')
+
+# Container refcount mechanics
+parent = []
+child = [parent]        # parent refcount += 1 (from child list)
+parent.append(child)    # child refcount += 1 (from parent list)
+
+print(f'Parent refcount: {sys.getrefcount(parent)}')
+print(f'Child refcount: {sys.getrefcount(child)}')
+```
+
+### Real-World Use Cases
+- **Resource cleanup**: file objects, socket connections, and lock objects are freed immediately when their last reference is dropped.
+- **C extension debugging**: if you write C extensions, mismanaging `Py_INCREF`/`Py_DECREF` causes segfaults or memory leaks; `sys.getrefcount` helps debug.
+- **High-frequency trading**: deterministic deallocation ensures that memory pressure never accumulates between ticks.
+
+### Common Mistakes
+- Using `sys.getrefcount(obj)` and forgetting that passing `obj` as an argument increments the refcount by 1.
+- Assuming `del x` always calls `tp_dealloc` — it only decrements the refcount; if other references exist, the object lives on.
+- Creating cycles of container objects without understanding that the GC is required to free them.
+
+### Best Practices
+- For long-lived objects, use `weakref` for caches and back-references to avoid artificially inflating refcounts.
+- Use context managers (`with`) for resources instead of relying on `__del__` — `__del__` may be delayed by the GC.
+- Never manually call `ctypes` to modify refcounts — that violates memory safety.
+
+### Performance Considerations
+- Refcount updates are the most frequent operation in CPython — every assignment, function call, and attribute access touches `ob_refcnt`.
+- The GIL serialises refcount updates, so multithreaded programs do not need atomic refcount operations.
+- PyPy and other non-CPython implementations replace refcounting with a tracing GC to avoid this overhead.
+
+### Interview Questions
+- **Q**: Why doesn't CPython use pure garbage collection instead of reference counting?  
+  **A**: Reference counting provides deterministic deallocation, which is important for resource cleanup. Also, it fits CPython's C heritage where explicit memory management is familiar.
+- **Q**: What happens when two container objects reference each other and all external references are deleted?  
+  **A**: Their refcounts never reach zero (each points to the other), so the GC must collect them via mark-and-sweep.
+
+### Coding Challenges
+- Implement a simple reference-counted wrapper in Python using `ctypes` that prints a message when the object is destroyed.
+- Write a script that detects reference cycles in arbitrary object graphs by simulating a naive reference count subtractor.
+
+### Related Topics
+- [Garbage collection](#garbage-collection)
+- [weakref module](#weakref-module)
+- [CPython Internals](#cpython-internals---bytecode-pyobject-interpreter-loop)
+
+---
+
+## weakref module
+
+### What It Is
+The `weakref` module creates references to objects that do *not* increment the reference count. When the last strong reference to an object is deleted, all weak references become `None` (or invoke a callback). The module provides `ref`, `proxy`, `WeakValueDictionary`, `WeakKeyDictionary`, `WeakSet`, and `finalize`.
+
+### Why It Is Important
+Weak references are essential for caches, event listeners, and graph structures with back-references. Without weakrefs, these patterns would keep objects alive indefinitely, causing memory leaks. Weak references also enable `weakref.finalize` for reliable cleanup callbacks.
+
+### How It Works Internally
+A `weakref.ref` object stores a raw `PyObject*` pointer (*not* incremented) to the target object. The `PyObject` struct includes a `PyObject* ob_weaklist` member — a linked list of all live weak references to that object. When `tp_dealloc` is called (refcount reaches zero), CPython iterates `ob_weaklist`, sets each weak reference's pointer to `NULL`, and invokes any registered callbacks. The weak reference object itself is deallocated separately when its own refcount reaches zero.
+
+### Syntax
+```python
+import weakref
+
+# Basic weak reference
+ref = weakref.ref(target)
+obj = ref()            # returns target or None if dead
+
+# Weak proxy (acts as transparent proxy)
+proxy = weakref.proxy(target)
+proxy.method()         # raises ReferenceError if dead
+
+# Weak value dictionary (keys are strongly referenced)
+d = weakref.WeakValueDictionary()
+d[key] = value         # value may be GC'd if no strong refs
+
+# Weak key dictionary (keys are weakly referenced)
+d = weakref.WeakKeyDictionary()
+d[obj] = value         # entry removed when obj is GC'd
+
+# Weak set
+s = weakref.WeakSet()
+s.add(obj)             # obj removed when GC'd
+
+# Finalize (callback on object death)
+weakref.finalize(obj, callback, *args, **kwargs)
+```
+
+### Beginner Examples
+```python
+import weakref
+
+class ExpensiveData:
+    def __init__(self, name):
+        self.name = name
+        self.data = [0] * 10_000_000
+
+def on_death(ref):
+    print(f'Object {ref} has been garbage collected')
+
+data = ExpensiveData('test')
+ref = weakref.ref(data, on_death)
+proxy = weakref.proxy(data)
+
+print(f'Via ref: {ref().name}')
+print(f'Via proxy: {proxy.name}')
+
+del data
+print(f'After delete ref: {ref()}')     # None
+```
+
+### Intermediate Examples
+```python
+import weakref
+
+class Cache:
     def __init__(self):
-        self._snapshots: List[Dict[str, Any]] = []
+        self._cache = weakref.WeakValueDictionary()
 
-    def take_snapshot(self, label: str = ''):
-        gc.collect()
-        snapshot = {
-            'label': label,
-            'tracked_objects': len(gc.get_objects()),
-            'object_counts': self._count_types(),
-        }
-        self._snapshots.append(snapshot)
-        return snapshot
+    def get(self, key):
+        return self._cache.get(key)
 
-    def _count_types(self) -> Dict[str, int]:
-        counts = {}
-        for obj in gc.get_objects():
-            t = type(obj).__name__
-            counts[t] = counts.get(t, 0) + 1
-        return dict(sorted(counts.items(), key=lambda x: -x[1])[:10])
+    def set(self, key, value):
+        self._cache[key] = value
 
-    def diff(self, label1: str, label2: str) -> Dict[str, int]:
-        snap1 = next(s for s in self._snapshots if s['label'] == label1)
-        snap2 = next(s for s in self._snapshots if s['label'] == label2)
-        diff = {}
-        all_keys = set(snap1['object_counts']) | set(snap2['object_counts'])
-        for k in all_keys:
-            v1 = snap1['object_counts'].get(k, 0)
-            v2 = snap2['object_counts'].get(k, 0)
-            if v1 != v2:
-                diff[k] = v2 - v1
-        return diff
+class DataLoader:
+    def __init__(self, cache: Cache):
+        self._cache = cache
 
+    def load(self, key):
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+        data = self._fetch_from_db(key)
+        self._cache.set(key, data)
+        return data
 
-profiler = MemoryProfiler()
-profiler.take_snapshot('start')
+    def _fetch_from_db(self, key):
+        return {'key': key, 'value': 'expensive'}
 
+# Using finalize for resource cleanup
+import tempfile
+import os
 
-class LargeObject:
-    __slots__ = ('id', 'name', 'data')
+class TempResource:
+    def __init__(self):
+        self.tmpfile = tempfile.NamedTemporaryFile(delete=False)
+        weakref.finalize(self, self._cleanup, self.tmpfile.name)
 
-    def __init__(self, id: int, name: str):
-        self.id = id
+    @staticmethod
+    def _cleanup(path):
+        if os.path.exists(path):
+            os.unlink(path)
+            print(f'Cleaned up {path}')
+```
+
+### Advanced Examples
+```python
+import weakref
+import gc
+
+# Observer pattern without preventing deallocation
+class EventEmitter:
+    def __init__(self):
+        self._listeners = weakref.WeakSet()
+
+    def add_listener(self, listener):
+        self._listeners.add(listener)
+
+    def emit(self, event):
+        dead = []
+        for listener in self._listeners:
+            try:
+                listener(event)
+            except ReferenceError:
+                dead.append(listener)
+        for listener in dead:
+            self._listeners.discard(listener)
+
+class MyListener:
+    def __call__(self, event):
+        print(f'Got event: {event}')
+
+emitter = EventEmitter()
+listener = MyListener()
+emitter.add_listener(listener)
+emitter.emit('test')
+
+del listener
+gc.collect()
+emitter.emit('after_delete')  # no output, listener auto-removed
+
+# Ref graph introspection
+class Node:
+    def __init__(self):
+        self.parent = None
+        self.children = []
+
+    def add_child(self, child):
+        child.parent = weakref.ref(self)  # avoid cycle
+        self.children.append(child)
+
+root = Node()
+child = Node()
+root.add_child(child)
+
+# WeakKeyDictionary for metadata
+metadata = weakref.WeakKeyDictionary()
+
+class Widget:
+    def __init__(self, name):
         self.name = name
-        self.data = [0] * 1000
 
-
-class RegularObject:
-    def __init__(self, id: int, name: str):
-        self.id = id
-        self.name = name
-        self.data = [0] * 1000
-
-
-def compare_slots_vs_dict():
-    large_objects = [LargeObject(i, f'obj_{i}') for i in range(1000)]
-    regular_objects = [RegularObject(i, f'obj_{i}') for i in range(1000)]
-    size_large = sys.getsizeof(large_objects[0])
-    size_regular = sys.getsizeof(regular_objects[0])
-    print(f"LargeObject (__slots__) size: {size_large} bytes")
-    print(f"RegularObject (__dict__) size: {size_regular} bytes")
-    print(f"Memory saved per object: {size_regular - size_large} bytes")
-    print(f"Total saved for 1000 objects: {(size_regular - size_large) * 1000} bytes")
-
-
-compare_slots_vs_dict()
-
-
-def detect_memory_leak():
-    leaked = []
-    class Leaky:
-        def __init__(self):
-            self.data = [i for i in range(10000)]
-
-    for i in range(100):
-        leaked.append(Leaky())
-
-    profiler.take_snapshot('after_leak')
-    print(f"Tracked objects at start: {profiler._snapshots[0]['tracked_objects']}")
-    print(f"Tracked objects after leak: {profiler._snapshots[1]['tracked_objects']}")
-    diff = profiler.diff('start', 'after_leak')
-    print(f"Diff counts: {diff}")
-
-
-detect_memory_leak()
-
-
-def objgraph_usage():
-    print("objgraph usage examples:")
-    print("  import objgraph")
-    print("  objgraph.show_refs([obj], filename='refs.png')")
-    print("  objgraph.show_backrefs([obj], filename='backrefs.png')")
-    print("  objgraph.count('list')  # Count list objects")
-    print("  objgraph.typestats()     # Show type statistics")
-    print("  objgraph.show_growth()   # Show growing objects")
-
-
-objgraph_usage()
+w = Widget('button')
+metadata[w] = {'x': 10, 'y': 20}
+print(metadata[w])
 ```
 
-## Real-World Use Cases
-
-```python
-import gc
-import weakref
-import sys
-from typing import Any, Dict, List, Optional, Set
-
-
-class ConnectionPool:
-    def __init__(self, max_size: int = 10):
-        self._pool: List[weakref.ref] = []
-        self._max_size = max_size
-        self._active: Set[int] = set()
-
-    def acquire(self) -> Optional[Any]:
-        self._cleanup()
-        if self._pool:
-            ref = self._pool.pop()
-            conn = ref()
-            if conn is not None:
-                self._active.add(id(conn))
-                return conn
-        if len(self._active) < self._max_size:
-            conn = self._create_connection()
-            self._active.add(id(conn))
-            return conn
-        return None
-
-    def release(self, conn: Any) -> None:
-        conn_id = id(conn)
-        if conn_id in self._active:
-            self._active.remove(conn_id)
-            self._pool.append(weakref.ref(conn))
-
-    def _cleanup(self):
-        self._pool = [ref for ref in self._pool if ref() is not None]
-
-    def _create_connection(self) -> dict:
-        return {'buffer': [], 'connected': True}
-
-
-pool = ConnectionPool(max_size=3)
-conn1 = pool.acquire()
-conn2 = pool.acquire()
-pool.release(conn1)
-conn3 = pool.acquire()
-print(f"Active connections: {pool._active}")
-
-
-def web_app_memory_management():
-    print("Web app memory best practices:")
-    print("1. Use connection pooling with weakref")
-    print("2. Clear request-scoped caches after each request")
-    print("3. Set max size for caches (LRU)")
-    print("4. Monitor memory usage with gc.get_objects()")
-    print("5. Use __slots__ for dataclass-like objects")
-    print("6. Avoid circular references in request handlers")
-
-
-web_app_memory_management()
-```
-
-## Common Mistakes
-
-```python
-import gc
-import sys
-from typing import List
-
-
-def mistake_1_ignoring_cycles():
-    print("Mistake 1: Creating circular references without cleanup")
-
-    class Parent:
-        def __init__(self):
-            self.children = []
-
-        def __del__(self):
-            print("Parent deleted")
-
-    class Child:
-        def __init__(self, parent):
-            self.parent = parent
-
-        def __del__(self):
-            print("Child deleted")
-
-    p = Parent()
-    c = Child(p)
-    p.children.append(c)
-    print(f"Objects before delete: {len(gc.get_objects())}")
-    del p, c
-    print(f"Objects after delete: {len(gc.get_objects())}")
-    gc.collect()
-    print("After gc.collect(), objects should be freed")
-
-
-def mistake_2_holding_references_in_caches():
-    print("Mistake 2: Caches holding references indefinitely")
-    print("Solution: Use weakref or set max cache size")
-
-
-def mistake_3_not_using_slots():
-    print("Mistake 3: Not using __slots__ for many small objects")
-    print("Each object has __dict__ overhead (~40+ bytes)")
-
-
-def mistake_4_modifying_list_while_iterating():
-    print("Mistake 4: Modifying list while iterating")
-    items = [1, 2, 3, 4, 5]
-    for item in items[:]:
-        if item % 2 == 0:
-            items.remove(item)
-    print(f"Items after safe removal: {items}")
-
-
-def mistake_5_global_variables():
-    print("Mistake 5: Global variables holding large data")
-    print("Globals persist for the entire program lifetime")
-    print("Use function-local or context-managed resources")
-
-
-mistake_1_ignoring_cycles()
-mistake_2_holding_references_in_caches()
-mistake_3_not_using_slots()
-mistake_4_modifying_list_while_iterating()
-mistake_5_global_variables()
-```
-
-## Best Practices
-
-```python
-import gc
-import sys
-import weakref
-from typing import Any, Dict
-
-
-def best_practice_1_use_slots():
-    print("Best Practice 1: Use __slots__ for data-heavy classes")
-
-    class Point:
-        __slots__ = ('x', 'y')
-        def __init__(self, x, y):
-            self.x = x
-            self.y = y
-
-    p = Point(1, 2)
-    print(f"Point size: {sys.getsizeof(p)} bytes")
-
-
-def best_practice_2_weakref_for_caches():
-    print("Best Practice 2: Use weakref for caches and caches")
-    cache: Dict[str, weakref.ref] = {}
-    obj = {'data': 'test'}
-    cache['key'] = weakref.ref(obj)
-    print(f"Cache hit: {cache['key']() is not None}")
-    del obj
-    print(f"Cache miss: {cache['key']() is None}")
-
-
-def best_practice_3_manual_gc_collection():
-    print("Best Practice 3: Manual GC collection at idle times")
-    gc.set_debug(gc.DEBUG_LEAK)
-    gc.collect()
-    gc.set_debug(0)
-
-
-def best_practice_4_use_generators():
-    print("Best Practice 4: Use generators for large data")
-    print("Generators yield one item at a time")
-    print("vs. creating full lists in memory")
-
-
-def best_practice_5_monitor_memory():
-    print("Best Practice 5: Monitor memory regularly")
-    import tracemalloc
-    tracemalloc.start()
-    snapshot = tracemalloc.take_snapshot()
-    top_stats = snapshot.statistics('lineno')
-    for stat in top_stats[:5]:
-        print(stat)
-
-
-def best_practice_6_pool_objects():
-    print("Best Practice 6: Object pooling for expensive objects")
-    print("Reuse objects instead of creating new ones")
-
-
-best_practice_1_use_slots()
-best_practice_2_weakref_for_caches()
-best_practice_3_manual_gc_collection()
-best_practice_4_use_generators()
-best_practice_5_monitor_memory()
-best_practice_6_pool_objects()
-```
-
-## Interview Questions
-
-```python
-def interview_q1():
-    print("Q: How does Python manage memory?")
-    print("A: CPython uses reference counting + generational GC.")
-    print("   Objects are freed when refcount reaches 0.")
-
-
-def interview_q2():
-    print("Q: What is the Garbage Collection algorithm?")
-    print("A: Generational GC: young, middle, old generations.")
-    print("   Objects that survive collection move to older gen.")
-
-
-def interview_q3():
-    print("Q: What are cyclic references and how are they handled?")
-    print("A: When objects reference each other, refcount never")
-    print("   reaches 0. The GC detects and collects these.")
-
-
-def interview_q4():
-    print("Q: What is weakref and when to use it?")
-    print("A: weakref holds a reference that doesn't increase")
-    print("   refcount. Used for caches and parent references.")
-
-
-def interview_q5():
-    print("Q: How does __slots__ save memory?")
-    print("A: It eliminates __dict__ per object, saving ~40+ bytes")
-    print("   and speeds up attribute access.")
-
-
-def interview_q6():
-    print("Q: How do you detect memory leaks in Python?")
-    print("A: Use gc.get_objects(), tracemalloc, memory_profiler,")
-    print("   objgraph for visualization of reference graphs.")
-
-
-def interview_q7():
-    print("Q: What is tracemalloc?")
-    print("A: A module to trace memory allocations. It tracks")
-    print("   which line of code allocated which memory.")
-
-
-interview_q1()
-interview_q2()
-interview_q3()
-interview_q4()
-interview_q5()
-interview_q6()
-interview_q7()
-```
-
-## Coding Challenges
-
-```python
-import gc
-import weakref
-import sys
-
-
-def challenge_1_detect_cycle():
-    print("Challenge 1: Find and fix the cycle in this code")
-
-    class Node:
-        def __init__(self, name):
-            self.name = name
-            self.neighbor = None
-
-    a = Node('A')
-    b = Node('B')
-    a.neighbor = b
-    b.neighbor = a
-    print(f"GC collected: {gc.collect()}")
-    print("Fix: Use weakref for one direction")
-
-
-def challenge_2_optimize_memory():
-    print("Challenge 2: Optimize this class with __slots__")
-
-    class Point:
-        __slots__ = ('x', 'y', 'z')
-        def __init__(self, x, y, z):
-            self.x = x
-            self.y = y
-            self.z = z
-
-    points = [Point(i, i * 2, i * 3) for i in range(1000)]
-    print(f"Point size: {sys.getsizeof(points[0])} bytes")
-
-
-def challenge_3_implement_weak_cache():
-    print("Challenge 3: Implement a weak reference cache")
-
-    class WeakCache:
-        def __init__(self):
-            self._data = {}
-
-        def set(self, key, value):
-            self._data[key] = weakref.ref(value)
-
-        def get(self, key):
-            ref = self._data.get(key)
-            return ref() if ref else None
-
-        def cleanup(self):
-            dead = [k for k, v in self._data.items() if v() is None]
-            for k in dead:
-                del self._data[k]
-
-    cache = WeakCache()
-    obj = [1, 2, 3]
-    cache.set('list1', obj)
-    print(f"Before delete: {cache.get('list1')}")
-    del obj
-    print(f"After delete: {cache.get('list1')}")
-    cache.cleanup()
-    print(f"Cache size: {len(cache._data)}")
-
-
-def challenge_4_profile_memory_usage():
-    print("Challenge 4: Profile memory usage of different data structures")
-    print("Compare list vs tuple vs array.array for storing 10000 integers")
-    print("Use memory_profiler or sys.getsizeof()")
-
-
-challenge_1_detect_cycle()
-challenge_2_optimize_memory()
-challenge_3_implement_weak_cache()
-challenge_4_profile_memory_usage()
-```
-
-## Summary
-
-Python's memory management combines reference counting with generational garbage collection. Key concepts include understanding cyclic references, using weakref appropriately, optimizing with __slots__, detecting memory leaks via gc module and tracemalloc, and profiling memory with tools like memory_profiler and objgraph.
-
-## Related Topics
-
-- Profiling (91_profiling.md)
-- CPython Internals (93_cpython_internals.md)
-- Caching (96_caching.md)
-- Data Structures (97_data_structures.md)
+### Real-World Use Cases
+- **Object-relational mappers (SQLAlchemy)**: use weak references for back-references between related model instances to avoid cycles.
+- **GUI frameworks (tkinter, PyQt)**: store widget callbacks as weak references so that disconnecting a widget does not leak memory.
+- **LRU caches**: combine `WeakValueDictionary` with a strong-reference LRU list to create a cache that evicts when memory is needed.
+
+### Common Mistakes
+- Calling `ref()` and not checking for `None` — causes `AttributeError` if the target was collected.
+- Assuming `WeakValueDictionary` entries are evicted immediately on `del value` — they are removed only during GC or dictionary mutation.
+- Using `weakref.proxy` and catching `ReferenceError` instead of using `ref()` with an explicit `None` check (proxies have overhead).
+
+### Best Practices
+- Use `WeakValueDictionary` for caches where the cache should not keep values alive.
+- Use `WeakKeyDictionary` for metadata attached to objects you do not own.
+- Use `weakref.finalize` instead of `__del__` for cleanup — it is more predictable and does not interact with GC cycles.
+- Always check `ref() is not None` before dereferencing.
+
+### Performance Considerations
+- Creating a weak reference incurs a small allocation (the `weakref.ref` object) plus an insertion into the target's weak list.
+- Dereferencing a live weak reference is only slightly slower than a strong reference (one pointer indirection).
+- `WeakValueDictionary` scans its internal dict for dead refs on mutation — frequent mutations on large dictionaries are O(n).
+
+### Interview Questions
+- **Q**: How does CPython implement weak references at the C level?  
+  **A**: Each `PyObject` has an `ob_weaklist` field; `PyWeakref_NewRef` adds to this list. On deallocation, CPython walks the list, nulls pointers, and fires callbacks.
+- **Q**: What is the difference between `weakref.ref` and `weakref.proxy`?  
+  **A**: `ref` returns the object or `None`; `proxy` provides transparent attribute access but raises `ReferenceError` if the object is dead.
+
+### Coding Challenges
+- Implement a simple `WeakSet` using `weakref.ref` and a regular `set`.
+- Design a thread-safe `WeakCache` that supports TTL and automatic eviction when memory pressure exceeds a threshold.
+
+### Related Topics
+- [Reference counting](#reference-counting)
+- [Garbage collection](#garbage-collection)
+- [Caching](#caching---lru-cache-redis-memoization-cache-invalidation-strategies)

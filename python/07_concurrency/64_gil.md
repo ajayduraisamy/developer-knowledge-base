@@ -1,744 +1,903 @@
-# GIL - Global Interpreter Lock, impact, workarounds (Python 3.13+ free-threading)
-
+﻿# GIL - Global Interpreter Lock, impact, workarounds (Python 3.13+ free-threading)
 ## Introduction
+The Global Interpreter Lock (GIL) is a mutex in CPython that protects access to Python objects, preventing multiple threads from executing Python bytecode simultaneously. This file explains what the GIL is, how it affects performance, workarounds for CPU-bound code, and Python 3.13+'s free-threading mode that makes the GIL optional.
 
-The Global Interpreter Lock (GIL) is a mutex that protects access to Python objects, preventing multiple threads from executing Python bytecode simultaneously in CPython, the reference implementation of Python. It ensures thread safety for CPython's memory management but limits parallel execution of CPU-bound threaded code.
+## Global Interpreter Lock
+### What It Is
+The GIL is a mutex that allows only one thread to execute Python bytecode at a time in a single process. It is part of CPython (the reference Python implementation), not a language requirement. Jython and IronPython do not have a GIL.
 
-## Why It Is Important
+### Why It Is Important
+The GIL simplifies CPython internals by making memory management (reference counting) thread-safe without needing fine-grained locks on every object. This keeps single-threaded performance high and simplifies C extension development. However, it limits multi-threaded CPU-bound parallelism.
 
-The GIL is a defining characteristic of CPython that directly impacts performance and concurrency choices. Understanding the GIL explains why threading is suitable for I/O-bound tasks but not CPU-bound parallelism, why multiprocessing is often preferred for CPU-intensive work, and how to design systems that work effectively within or around the GIL.
+### How It Works Internally
+The GIL is released and re-acquired periodically (every ~5ms in Python 3.2+, via `PyEval_EvalFrameEx`). The mechanism:
+1. A thread holding the GIL executes bytecode for one "tick"
+2. After the tick, it releases the GIL via a condition variable
+3. All waiting threads compete to re-acquire the GIL
+4. I/O operations explicitly release the GIL before blocking and re-acquire after
 
-## Syntax
+The GIL switching uses `PyThread_release_lock` and `PyThread_acquire_lock` around the condition variable. Python 3.2+ uses a more efficient mechanism that reduces switching overhead.
 
+### Syntax
 ```python
 import sys
-import threading
-import time
+sys._enable_gil  # (Python 3.13+) check if GIL is disabled
 
-# Check if GIL is present (CPython has it)
-print(f"Implementation: {sys.implementation.name}")
-
-# GIL is automatically acquired/released by the interpreter
-# No direct syntax to control GIL
-
-# Release GIL during I/O (automatic)
-# time.sleep(), file I/O, network I/O all release the GIL
-
-# For CPU work, use multiprocessing to bypass GIL
-from multiprocessing import Pool
+# The GIL is invisible in normal Python code
+# You never directly interact with it
 ```
 
-## Examples
-
-### Demonstrating the GIL Effect
-
-```python
-import sys
-import time
-import threading
-import multiprocessing as mp
-
-def cpu_intensive(n):
-    """Perform CPU-bound computation."""
-    count = 0
-    for i in range(n):
-        count += i ** 2
-    return count
-
-def io_bound_task(duration):
-    """Simulate I/O-bound work (sleep releases GIL)."""
-    time.sleep(duration)
-    return f"Slept for {duration}s"
-
-def benchmark_cpu_bound():
-    n = 50000000
-
-    print("CPU-bound single thread:")
-    start = time.time()
-    cpu_intensive(n)
-    single_time = time.time() - start
-    print(f"  Time: {single_time:.2f}s")
-
-    print("\nCPU-bound with 2 threads (GIL limits parallelism):")
-    start = time.time()
-    t1 = threading.Thread(target=cpu_intensive, args=(n // 2,))
-    t2 = threading.Thread(target=cpu_intensive, args=(n // 2,))
-    t1.start(); t2.start()
-    t1.join(); t2.join()
-    thread_time = time.time() - start
-    print(f"  Time: {thread_time:.2f}s")
-    print(f"  Thread overhead: {thread_time / single_time:.2f}x slower")
-
-    print("\nCPU-bound with 2 processes (bypasses GIL):")
-    start = time.time()
-    with mp.Pool(2) as pool:
-        pool.map(cpu_intensive, [n // 2, n // 2])
-    process_time = time.time() - start
-    print(f"  Time: {process_time:.2f}s")
-    print(f"  Speedup vs threads: {thread_time / process_time:.2f}x")
-
-def benchmark_io_bound():
-    print("\nI/O-bound with 4 threads (GIL released during I/O):")
-    start = time.time()
-    threads = [threading.Thread(target=io_bound_task, args=(1.0,)) for _ in range(4)]
-    for t in threads: t.start()
-    for t in threads: t.join()
-    io_time = time.time() - start
-    print(f"  Time: {io_time:.2f}s (sequential would be ~4s)")
-
-if __name__ == "__main__":
-    benchmark_cpu_bound()
-    benchmark_io_bound()
-```
-
-### GIL Release During I/O Operations
-
+### Beginner Examples
 ```python
 import threading
 import time
-import socket
-
-def check_gil_release():
-    """Demonstrate that I/O operations release the GIL."""
-
-    flag = {"thread_running": False}
-
-    def cpu_spinner():
-        """CPU-bound loop that holds the GIL."""
-        flag["thread_running"] = True
-        count = 0
-        for _ in range(20000000):
-            count += 1
-        flag["thread_running"] = False
-
-    def io_operation():
-        """I/O operation (sleep releases GIL)."""
-        time.sleep(0.1)
-        print("I/O completed while CPU was spinning")
-
-    t1 = threading.Thread(target=cpu_spinner)
-    t2 = threading.Thread(target=io_operation)
-
-    print("Starting CPU spinner...")
-    t1.start()
-    time.sleep(0.01)
-
-    print("Starting I/O operation...")
-    t2.start()
-
-    t2.join()
-    print(f"CPU spinner still running: {flag['thread_running']}")
-    t1.join()
-
-check_gil_release()
-```
-
-### Checking GIL Status
-
-```python
-import sys
-import threading
-import time
-import dis
-
-def check_gil_presence():
-    print(f"Python implementation: {sys.implementation.name}")
-    print(f"Python version: {sys.version}")
-
-    if hasattr(sys, '_is_gil_enabled'):
-        print(f"GIL explicitly enabled: {sys._is_gil_enabled()}")
-    else:
-        print("GIL status: Default (present in CPython)")
-
-    import _thread
-    if hasattr(_thread, 'interrupt_main'):
-        pass
-    print(f"Threading module available: {threading}")
-
-def show_bytecode_interleaving():
-    """Show how bytecode interleaving causes race conditions due to GIL."""
-    dis_code = '''
-def increment(n):
-    x = 0
-    for i in range(n):
-        x += 1
-    return x
-'''
-    print("Bytecode for increment (shows multiple steps):")
-    compiled = compile('''
-def increment(n):
-    x = 0
-    for i in range(n):
-        x += 1
-    return x
-''', '<string>', 'exec')
-    for instr in dis.get_compiled_bytes(compiled, None):
-        pass
-
-    import dis as dis_module
-    exec(compiled)
-    dis_module.dis(increment)
-
-check_gil_presence()
-print()
-show_bytecode_interleaving()
-```
-
-## Beginner Examples
-
-```python
-# Simple GIL demonstration with timing
-import time
-import threading
 
 def count_down(n):
     while n > 0:
         n -= 1
 
-def count_up(n):
+# CPU-bound function -- GIL prevents parallel speedup
+n = 10000000
+start = time.time()
+count_down(n)
+single_time = time.time() - start
+print(f"Single thread: {single_time:.3f}s")
+
+# Two threads -- no speedup (GIL limits parallelism)
+def thread_worker():
+    count_down(n // 2)
+
+t1 = threading.Thread(target=thread_worker)
+t2 = threading.Thread(target=thread_worker)
+start = time.time()
+t1.start()
+t2.start()
+t1.join()
+t2.join()
+parallel_time = time.time() - start
+print(f"Two threads: {parallel_time:.3f}s")
+print(f"Ratio: {single_time / parallel_time:.2f}")  # ~1.0, not 2.0!
+```
+
+### Intermediate Examples
+```python
+import threading
+import time
+import math
+
+# GIL impact visualization
+def is_prime(n):
+    if n < 2:
+        return False
+    for i in range(2, int(math.sqrt(n)) + 1):
+        if n % i == 0:
+            return False
+    return True
+
+def count_primes(start, end):
     count = 0
-    for i in range(n):
-        count += 1
+    for n in range(start, end):
+        if is_prime(n):
+            count += 1
+    return count
 
-N = 50000000
-
+# Sequential
 start = time.time()
-count_down(N)
-count_up(N)
-sequential = time.time() - start
-print(f"Sequential: {sequential:.2f}s")
+r1 = count_primes(1, 50000)
+r2 = count_primes(50001, 100000)
+seq_time = time.time() - start
+print(f"Sequential: {seq_time:.3f}s, primes: {r1 + r2}")
 
+# Threaded (GIL-bound -- similar time)
+results = [0, 0]
+def worker1():
+    results[0] = count_primes(1, 50000)
+def worker2():
+    results[1] = count_primes(50001, 100000)
+
+t1 = threading.Thread(target=worker1)
+t2 = threading.Thread(target=worker2)
 start = time.time()
-t1 = threading.Thread(target=count_down, args=(N,))
-t2 = threading.Thread(target=count_up, args=(N,))
 t1.start(); t2.start()
 t1.join(); t2.join()
-concurrent = time.time() - start
-print(f"Concurrent (threads): {concurrent:.2f}s")
-print(f"GIL overhead: {concurrent/sequential:.2f}x")
+thread_time = time.time() - start
+print(f"Threaded: {thread_time:.3f}s, primes: {results[0] + results[1]}")
+print(f"Speedup: {seq_time / thread_time:.2f}x")
 
-# I/O vs CPU bound clarification
-def cpu_task():
-    for _ in range(20000000):
-        pass
-
-def io_task():
-    time.sleep(2)
+# I/O-bound tasks DO benefit from threading despite GIL
+def io_task(delay):
+    time.sleep(delay)
+    return delay
 
 start = time.time()
-io_start = time.time()
-t1 = threading.Thread(target=cpu_task)
-t2 = threading.Thread(target=io_task)
+io_task(1)
+io_task(1)
+seq_io = time.time() - start
+
+start = time.time()
+t1 = threading.Thread(target=io_task, args=(1,))
+t2 = threading.Thread(target=io_task, args=(1,))
 t1.start(); t2.start()
 t1.join(); t2.join()
-total = time.time() - start
-print(f"\nCPU + I/O concurrently: {total:.2f}s")
-print("I/O sleep overlaps with CPU work (GIL released during sleep)")
+thread_io = time.time() - start
+print(f"I/O sequential: {seq_io:.3f}s, threaded: {thread_io:.3f}s")
+print(f"I/O speedup: {seq_io / thread_io:.2f}x")
 ```
 
-## Intermediate Examples
-
+### Advanced Examples
 ```python
-# C extension simulation showing GIL release
-import ctypes
 import threading
 import time
-
-# Simulate what C extensions do when releasing the GIL
-class GILSimulator:
-    def __init__(self):
-        self.gil_released = threading.Event()
-        self.result = []
-
-    def compute_without_gil(self, duration):
-        """Simulate C extension that releases GIL for computation."""
-        self.gil_released.set()
-        time.sleep(duration)
-        self.result.append(f"Computed for {duration}s")
-        self.gil_released.clear()
-
-    def compute_with_gil(self, duration):
-        """Simulate Python-level computation (holds GIL)."""
-        start = time.time()
-        while time.time() - start < duration:
-            for _ in range(1000000):
-                pass
-        self.result.append(f"Python computed for {duration}s")
-
-sim = GILSimulator()
-
-def python_worker():
-    sim.compute_with_gil(1)
-
-def c_extension_worker():
-    sim.compute_without_gil(1)
-
-start = time.time()
-t1 = threading.Thread(target=c_extension_worker)
-t2 = threading.Thread(target=python_worker)
-t1.start(); t2.start()
-t1.join(); t2.join()
-elapsed = time.time() - start
-print(f"C-extension (releases GIL) + Python: {elapsed:.2f}s")
-print(f"Results: {sim.result}")
-
-# Using numpy to demonstrate GIL release
-def numpy_gil_demo():
-    try:
-        import numpy as np
-        import threading
-        import time
-
-        size = 5000
-        a = np.random.rand(size, size)
-        b = np.random.rand(size, size)
-
-        def numpy_multiply():
-            return np.dot(a, b)
-
-        def python_work():
-            count = 0
-            for _ in range(20000000):
-                count += 1
-            return count
-
-        print("\nnumpy matrix multiplication (releases GIL):")
-        start = time.time()
-        t1 = threading.Thread(target=numpy_multiply)
-        t2 = threading.Thread(target=python_work)
-        t1.start(); t2.start()
-        t1.join(); t2.join()
-        parallel_time = time.time() - start
-
-        start = time.time()
-        numpy_multiply()
-        numpy_alone = time.time() - start
-
-        print(f"  numpy alone: {numpy_alone:.2f}s")
-        print(f"  numpy + Python thread: {parallel_time:.2f}s")
-        print(f"  numpy parallel efficiency: {numpy_alone / parallel_time:.2f}")
-
-    except ImportError:
-        print("numpy not available, skipping GIL release demo")
-
-numpy_gil_demo()
-```
-
-## Advanced Examples
-
-```python
-# Deep analysis of GIL behavior with sys._current_frames
 import sys
-import threading
-import time
-import tracemalloc
 
-def gil_monitor(duration=2):
-    """Monitor thread execution to observe GIL scheduling."""
-    stop = threading.Event()
-    frame_info = []
+# GIL release in I/O and C extensions
+# The GIL is released automatically for blocking I/O operations
+# C extensions can manually release the GIL using Py_BEGIN_ALLOW_THREADS
 
-    def monitor():
-        while not stop.is_set():
-            frames = sys._current_frames()
-            for thread_id, frame in frames.items():
-                if frame:
-                    code = frame.f_code.co_name
-                    frame_info.append((time.time(), thread_id, code))
-            time.sleep(0.001)
+# Example: numpy releases the GIL (C extension)
+import numpy as np
 
-    def worker(name, duration):
-        count = 0
-        end = time.time() + duration
-        while time.time() < end:
-            count += 1
-        return count
+def numpy_work():
+    a = np.random.rand(1000, 1000)
+    b = np.random.rand(1000, 1000)
+    for _ in range(100):
+        np.dot(a, b)
 
-    monitor_thread = threading.Thread(target=monitor, daemon=True)
-    monitor_thread.start()
+# Two threads -- numpy releases GIL, so this actually parallelizes
+start = time.time()
+t1 = threading.Thread(target=numpy_work)
+t2 = threading.Thread(target=numpy_work)
+t1.start(); t2.start()
+t1.join(); t2.join()
+numpy_time = time.time() - start
+print(f"Numpy threaded: {numpy_time:.3f}s")
 
-    threads = [
-        threading.Thread(target=worker, args=("A", duration)),
-        threading.Thread(target=worker, args=("B", duration)),
-    ]
+# Sequential for comparison
+start = time.time()
+numpy_work()
+numpy_work()
+seq_numpy = time.time() - start
+print(f"Numpy sequential: {seq_numpy:.3f}s")
+print(f"Numpy speedup: {seq_numpy / numpy_time:.2f}x")
 
-    start = time.time()
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+# GIL checking utility
+def check_gil_status():
+    if hasattr(sys, "_enable_gil"):
+        # Python 3.13+
+        print(f"GIL enabled: {sys._enable_gil}")
+    else:
+        print(f"Python {sys.version}")
+        print("GIL is always enabled in this Python version")
 
-    stop.set()
-    print(f"GIL monitor collected {len(frame_info)} samples")
-    thread_a = sum(1 for _, tid, _ in frame_info if tid in [t.ident for t in threads[:1]])
-    thread_b = len(frame_info) - thread_a
-    print(f"Thread A was running: {thread_a} times")
-    print(f"Thread B was running: {thread_b} times")
-    print("GIL switches between threads ~100 times per second")
+# Measuring GIL contention
+def gil_contention():
+    lock = threading.Lock()
+    data = []
 
-gil_monitor(1)
-
-# GIL and context switching overhead
-import threading
-import time
-from queue import Queue
-
-def measure_gil_switch_cost():
-    """Measure the overhead of GIL context switching."""
-
-    N = 1000
-    results = Queue()
-
-    def ping_pong(partner_event, my_event, ident):
-        count = 0
-        start = time.perf_counter_ns()
-        for _ in range(N):
-            partner_event.set()
-            my_event.clear()
-            my_event.wait()
-            count += 1
-        elapsed = time.perf_counter_ns() - start
-        results.put((ident, count, elapsed))
-
-    e1 = threading.Event()
-    e2 = threading.Event()
-
-    t1 = threading.Thread(target=ping_pong, args=(e2, e1, "A"))
-    t2 = threading.Thread(target=ping_pong, args=(e1, e2, "B"))
+    def cpu_work():
+        for i in range(1000000):
+            # CPU work that doesn't call any C extension
+            x = i * i + i
+        with lock:
+            data.append(1)
 
     start = time.time()
-    t1.start()
-    t2.start()
-    e1.set()
-    t1.join()
-    t2.join()
+    threads = [threading.Thread(target=cpu_work) for _ in range(4)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    total = time.time() - start
+    print(f"4 threads (GIL contention): {total:.3f}s")
+    # About the same as single-threaded
 
-    ident, count, elapsed = results.get()
-    avg_switch = elapsed / count if count > 0 else 0
-    print(f"\nGIL context switch cost:")
-    print(f"  {count} switches in {elapsed/1e9:.3f}s")
-    print(f"  Average switch time: {avg_switch/1000:.1f} microseconds")
-    print(f"  Switches per second: {count/(elapsed/1e9):.0f}")
+gil_contention()
+```
 
-measure_gil_switch_cost()
+### Real-World Use Cases
+- Understanding why threading doesn't speed up CPU-bound Python
+- Choosing between threading (I/O) and multiprocessing (CPU)
+- Optimizing C extension development (releasing GIL)
+- Migration planning for Python 3.13+ free-threading
+- Debugging performance issues in concurrent applications
 
-# GIL release in C extensions simulation
-import ctypes
-import struct
+### Common Mistakes
+- Expecting thread-level parallelism for CPU-bound pure Python code
+- Blaming the GIL for all performance issues (often I/O bound)
+- Assuming GIL removal is a magic bullet (requires locks everywhere)
+- Not using multiprocessing for CPU-bound parallel work
 
-class GILReleaseSimulator:
-    """Simulate what C extensions do to release the GIL."""
+### Best Practices
+- Use threading for I/O-bound tasks (network, disk, database)
+- Use multiprocessing for CPU-bound tasks
+- Use C extensions (numpy, pandas, numba) that release the GIL
+- Profile to confirm the GIL is actually your bottleneck
+- Consider asyncio for high-concurrency I/O workloads
+- For Python 3.13+, evaluate free-threading mode for CPU-bound multi-threaded code
 
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._result = 0
+### Performance Considerations
+- Pure Python CPU-bound code gets no benefit from threading
+- I/O-bound code works well with threading (GIL released during I/O)
+- C extensions can release the GIL, achieving parallelism in native code
+- GIL contention adds ~10-20% overhead even for single-threaded programs (negligible)
+- Context switching between threads adds small overhead
+- The GIL's tick interval (~5ms) is a heuristic -- too short wastes CPU, too long hurts responsiveness
 
-    def compute_chunk(self, start, end):
-        """Simulate releasing GIL by dropping Python lock."""
-        with self._lock:
-            local = 0
-            for i in range(start, end):
-                local += i ** 2
-            self._result += local
-        return local
+### Interview Questions
+1. What is the GIL and why does Python have it?
+2. How does the GIL affect threading performance?
+3. When does threading still benefit despite the GIL?
+4. Does the GIL affect asyncio or multiprocessing?
+5. How do C extensions like numpy achieve parallelism?
+6. What changed about the GIL in Python 3.13?
 
-    def parallel_compute(self, total_n=10000000, num_workers=4):
-        chunk_size = total_n // num_workers
-        ranges = [(i * chunk_size, (i + 1) * chunk_size) for i in range(num_workers)]
+### Coding Challenges
+- Write a benchmark that demonstrates GIL impact on CPU-bound vs I/O-bound tasks
+- Create a script that checks if the Python runtime has the GIL enabled
+- Compare threading vs multiprocessing for a CPU-intensive task
 
-        threads = [
-            threading.Thread(target=self.compute_chunk, args=(s, e))
-            for s, e in ranges
-        ]
+### Related Topics
+- Threading, multiprocessing, free-threading, asyncio, C extensions
 
+## Performance impact
+### What It Is
+The GIL's performance impact depends on the workload type. CPU-bound pure Python code sees no parallel speedup with threads. I/O-bound code sees full parallel benefit. Mixed workloads fall in between.
+
+### Why It Is Important
+Understanding when the GIL is a bottleneck prevents misdesign -- using threads when multiprocessing or asyncio is needed, or expecting parallelism where the GIL prevents it.
+
+### How It Works Internally
+When multiple threads compete for the GIL:
+- Each thread runs for ~5ms (the "tick")
+- Then releases the GIL and competes with others to re-acquire
+- The OS scheduler decides which thread runs next
+- Waiting threads spin briefly, then sleep on a condition variable
+- The overhead of GIL contention can be up to ~20% per thread
+
+### Beginner Examples
+```python
+import threading
+import time
+
+def heavy_computation():
+    total = 0
+    for i in range(5000000):
+        total += i * i
+    return total
+
+# Single thread
+start = time.time()
+heavy_computation()
+heavy_computation()
+single = time.time() - start
+
+# Two threads
+start = time.time()
+t1 = threading.Thread(target=heavy_computation)
+t2 = threading.Thread(target=heavy_computation)
+t1.start(); t2.start()
+t1.join(); t2.join()
+parallel = time.time() - start
+
+print(f"Single: {single:.3f}s")
+print(f"Two threads: {parallel:.3f}s")
+# parallel is approximately equal to single (no speedup)
+```
+
+### Intermediate Examples
+```python
+import threading
+import time
+
+# GIL impact on scalability
+def measure_scalability(worker_fn, num_workers_range):
+    for n in num_workers_range:
         start = time.time()
+        threads = [threading.Thread(target=worker_fn) for _ in range(n)]
         for t in threads: t.start()
         for t in threads: t.join()
         elapsed = time.time() - start
+        print(f"{n} workers: {elapsed:.3f}s")
 
-        print(f"\nGIL release simulation:")
-        print(f"  Workers: {num_workers}")
-        print(f"  Result: {self._result}")
-        print(f"  Expected: {sum(i**2 for i in range(total_n))}")
-        print(f"  Time: {elapsed:.3f}s")
+# CPU-bound
+def cpu_work():
+    x = 0
+    for _ in range(2000000):
+        x += 1
 
-sim = GILReleaseSimulator()
-sim.parallel_compute()
+print("CPU-bound (GIL limits):")
+measure_scalability(cpu_work, [1, 2, 4, 8])
 
-# GIL and free-threading (Python 3.13+)
-def check_free_threading():
-    """Check if running with free-threading enabled (Python 3.13+)."""
-    import sys
+# I/O-bound
+def io_work():
+    time.sleep(1)
 
-    print(f"\nPython version: {sys.version}")
-
-    if sys.version_info >= (3, 13):
-        try:
-            import sysconfig
-            gil_disabled = sysconfig.get_config_var('Py_GIL_DISABLED')
-            print(f"Py_GIL_DISABLED from sysconfig: {gil_disabled}")
-        except:
-            pass
-
-        if hasattr(sys, '_is_gil_enabled'):
-            gil_enabled = sys._is_gil_enabled()
-            print(f"GIL Enabled: {gil_enabled}")
-            if not gil_enabled:
-                print("Running WITHOUT GIL (free-threading mode)!")
-            else:
-                print("Running WITH GIL enabled")
-        else:
-            print("GIL status: Unknown")
-
-    else:
-        print(f"Python {sys.version_info.major}.{sys.version_info.minor} - GIL is always present")
-        print("Free-threading (no GIL) requires Python 3.13+")
-
-check_free_threading()
+print("I/O-bound (GIL not an issue):")
+measure_scalability(io_work, [1, 2, 4, 8])
 ```
 
-### Working Around the GIL
-
+### Advanced Examples
 ```python
-import time
 import threading
-import multiprocessing as mp
-import asyncio
-import concurrent.futures
+import time
+import sys
 
-def compute_heavy(n):
-    """CPU-bound task."""
-    total = 0
-    for i in range(n):
-        total += i ** 2
-    return total
-
-def using_multiprocessing(n, workers=4):
-    """Bypass GIL with multiprocessing."""
-    chunk = n // workers
-    with mp.Pool(workers) as pool:
-        results = pool.map(compute_heavy, [chunk] * workers)
-    return sum(results)
-
-def using_threading(n, workers=4):
-    """Stick with threads (limited by GIL for CPU)."""
-    results = []
+# Measuring GIL contention overhead
+def gil_overhead_measurement():
     lock = threading.Lock()
-    chunk = n // workers
+    counter = [0]
 
+    def contended_worker():
+        for _ in range(100000):
+            with lock:
+                counter[0] += 1
+
+    # Measure with varying thread counts
+    for n_threads in [1, 2, 4, 8]:
+        start = time.time()
+        threads = [threading.Thread(target=contended_worker) for _ in range(n_threads)]
+        for t in threads: t.start()
+        for t in threads: t.join()
+        elapsed = time.time() - start
+        ops_per_sec = 100000 * n_threads / elapsed
+        print(f"{n_threads} threads: {elapsed:.3f}s, {ops_per_sec:.0f} ops/s")
+
+    print("\nGIL contention overhead increases with thread count")
+
+# Mixed CPU and I/O workload
+def mixed_workload(cpu_fraction=0.5):
+    start = time.time()
     def worker():
-        total = compute_heavy(chunk)
-        with lock:
-            results.append(total)
+        for _ in range(10):
+            # CPU phase
+            x = 0
+            for i in range(100000):
+                x += i
+            # I/O phase (sleep releases GIL)
+            time.sleep(0.01)
 
-    threads = [threading.Thread(target=worker) for _ in range(workers)]
+    threads = [threading.Thread(target=worker) for _ in range(4)]
     for t in threads: t.start()
     for t in threads: t.join()
-    return sum(results)
+    return time.time() - start
 
-def using_concurrent_futures(n, workers=4):
-    """Using process pool via concurrent.futures."""
-    chunk = n // workers
-    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(compute_heavy, chunk) for _ in range(workers)]
-        return sum(f.result() for f in futures)
-
-def using_asyncio(n, workers=4):
-    """Use asyncio with run_in_executor for CPU work."""
-    chunk = n // workers
-
-    async def run():
-        loop = asyncio.get_running_loop()
-        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as pool:
-            tasks = [
-                loop.run_in_executor(pool, compute_heavy, chunk)
-                for _ in range(workers)
-            ]
-            results = await asyncio.gather(*tasks)
-            return sum(results)
-
-    return asyncio.run(run())
-
-if __name__ == "__main__":
-    N = 10000000
-
-    print("GIL Workarounds Comparison:")
-    print(f"Computing sum of squares up to {N}")
-
-    start = time.time()
-    result = using_multiprocessing(N)
-    mp_time = time.time() - start
-    print(f"Multiprocessing: {mp_time:.2f}s (result: {result})")
-
-    start = time.time()
-    result = using_threading(N)
-    thread_time = time.time() - start
-    print(f"Threading: {thread_time:.2f}s (result: {result})")
-    print(f"Multiprocessing speedup vs threading: {thread_time / mp_time:.2f}x")
-
-    start = time.time()
-    result = using_concurrent_futures(N)
-    cf_time = time.time() - start
-    print(f"concurrent.futures.ProcessPool: {cf_time:.2f}s (result: {result})")
-
-    try:
-        start = time.time()
-        result = using_asyncio(N)
-        asyncio_time = time.time() - start
-        print(f"asyncio + ProcessPool: {asyncio_time:.2f}s (result: {result})")
-    except Exception as e:
-        print(f"asyncio approach: {e}")
+print(f"\nMixed workload: {mixed_workload():.3f}s")
 ```
 
-### Simulation of GIL Scheduling
+### Real-World Use Cases
+- Web servers -- I/O bound, threading works well
+- Data processing -- if CPU-bound and pure Python, need multiprocessing
+- ML inference -- model forward pass in C++/CUDA (releases GIL)
+- Desktop apps -- threading works for UI responsiveness
 
+### Common Mistakes
+- Assuming threading always speeds things up
+- Using threads for CPU-heavy data science code
+- Blaming GIL without profiling first
+- Not checking if a C extension releases the GIL
+
+### Best Practices
+- Profile before optimizing for the GIL
+- Use multiprocessing for CPU-bound pure Python
+- Use C extensions that release the GIL for numerical work
+- For mixed workloads, use a combination of threads and processes
+- Consider asyncio for very high-concurrency I/O
+
+### Performance Considerations
+- GIL contention adds ~5-20% overhead per additional thread
+- Thread count beyond CPU cores increases contention
+- Short tasks suffer more from GIL overhead than long tasks
+- Python 3.2+ GIL improvements significantly reduced switching overhead
+
+### Interview Questions
+1. Does the GIL affect single-threaded performance?
+2. What workloads benefit from threads despite the GIL?
+3. How does a C extension indicate it releases the GIL?
+
+### Coding Challenges
+- Write a script that finds the optimal thread count for an I/O-bound workload
+- Benchmark threading vs multiprocessing for a CPU-intensive task
+
+### Related Topics
+- Threading, multiprocessing, profiling, C extensions, numba
+
+## Workarounds
+### What It Is
+Workarounds to overcome GIL limitations include using multiprocessing, C extensions that release the GIL, asyncio for I/O concurrency, and just-in-time compilation (numba).
+
+### Why It Is Important
+Knowing GIL workarounds is essential for writing performant concurrent Python. The right workaround depends on the workload type (CPU, I/O, mixed) and constraints (memory, latency, library availability).
+
+### How It Works Internally
+- Multiprocessing: each process has its own GIL and interpreter
+- C extensions: use Py_BEGIN_ALLOW_THREADS / Py_END_ALLOW_THREADS macros to release GIL during native computation
+- Numba: compiles Python to machine code, releasing the GIL via nogil=True
+- asyncio: single-threaded cooperative multitasking (no GIL contention)
+
+### Beginner Examples
 ```python
 import time
-import threading
-import random
+import math
 
-class GILScheduler:
-    """Simulate GIL scheduling for educational purposes."""
+# Workaround 1: multiprocessing (true parallelism)
+from multiprocessing import Pool
 
-    def __init__(self, quantum=0.005):
-        self.quantum = quantum
-        self.threads = []
-        self.current = 0
+def cpu_intensive(x):
+    total = 0
+    for i in range(5000000):
+        total += i * i
+    return total
 
-    def add_thread(self, thread_id, work_iterations):
-        self.threads.append({
-            "id": thread_id,
-            "remaining": work_iterations,
-            "progress": 0
-        })
+start = time.time()
+with Pool(processes=2) as pool:
+    results = pool.map(cpu_intensive, [1, 1])
+multiprocess_time = time.time() - start
 
-    def run(self):
-        """Simulate round-robin GIL scheduling."""
-        tick = 0
-        while any(t["remaining"] > 0 for t in self.threads):
-            if self.threads:
-                thread = self.threads[self.current % len(self.threads)]
-                self.current += 1
+# Compare with sequential
+start = time.time()
+cpu_intensive(1)
+cpu_intensive(1)
+sequential_time = time.time() - start
 
-                if thread["remaining"] > 0:
-                    worked = min(thread["remaining"], random.randint(10, 50))
-                    thread["remaining"] -= worked
-                    thread["progress"] += worked
-
-                    print(f"Tick {tick:3d}: Thread {thread['id']} ran "
-                          f"(worked: {worked:3d}, progress: {thread['progress']:5d}, "
-                          f"remaining: {thread['remaining']:5d})")
-                tick += 1
-
-                if tick > 100:
-                    break
-
-        print(f"\nSimulation ended after {tick} ticks")
-
-    def run_with_io(self):
-        """Simulate GIL with I/O operations (GIL release)."""
-        tick = 0
-        while any(t["remaining"] > 0 for t in self.threads):
-            for thread in self.threads:
-                if thread["remaining"] > 0:
-                    worked = min(thread["remaining"], random.randint(10, 30))
-                    thread["remaining"] -= worked
-                    thread["progress"] += worked
-
-                    is_io = random.random() < 0.3
-                    if is_io:
-                        print(f"Tick {tick:3d}: Thread {thread['id']} I/O "
-                              f"(releasing GIL, progress: {thread['progress']})")
-                    else:
-                        print(f"Tick {tick:3d}: Thread {thread['id']} CPU "
-                              f"(holding GIL, progress: {thread['progress']})")
-                    tick += 1
-
-                    if tick > 50:
-                        break
-                if tick > 50:
-                    break
-            if tick > 50:
-                break
-
-        print(f"\nI/O simulation ended after {tick} ticks")
-
-scheduler = GILScheduler(quantum=0.005)
-scheduler.add_thread("A", 100)
-scheduler.add_thread("B", 100)
-scheduler.add_thread("C", 100)
-
-print("GIL Scheduling Simulation (round-robin):")
-scheduler.run()
-
-print("\nGIL with I/O Simulation (GIL released during I/O):")
-scheduler2 = GILScheduler()
-scheduler2.add_thread("X", 80)
-scheduler2.add_thread("Y", 80)
-scheduler2.run_with_io()
+print(f"Sequential: {sequential_time:.3f}s")
+print(f"Multiprocessing: {multiprocess_time:.3f}s")
+print(f"Speedup: {sequential_time / multiprocess_time:.2f}x")
 ```
 
-## Real-World Use Cases
+### Intermediate Examples
+```python
+import threading
+import time
+import math
+from multiprocessing import Process, Queue
 
-- **Web servers**: I/O-bound workloads benefit from threading despite the GIL
-- **Scientific computing**: Using numpy (C extension releases GIL) for parallel math
-- **GUI applications**: Main thread handles UI, worker threads for background tasks
-- **Mixed workloads**: Combining I/O and CPU tasks, using threads for I/O and processes for CPU
-- **Embedded Python**: C extensions that release GIL for intensive computation
-- **Python 3.13+ free-threading**: New experimental no-GIL builds for true thread parallelism
+# Workaround 2: releasing GIL with C extension (numpy)
+import numpy as np
 
-## Common Mistakes
+def numpy_parallel():
+    a = np.random.rand(500, 500)
+    b = np.random.rand(500, 500)
+    for _ in range(50):
+        np.dot(a, b)
 
-- Using threads for CPU-bound work expecting linear speedup (limited by GIL)
-- Thinking asyncio bypasses the GIL (it's cooperative, single-threaded)
-- Assuming all C extensions release the GIL correctly (some don't)
-- Not profiling to determine if a task is CPU-bound or I/O-bound before choosing threading vs multiprocessing
-- Ignoring that `time.sleep()`, I/O, and numpy operations release GIL
-- Overlooking the `nogil` context manager in C extensions
+start = time.time()
+t1 = threading.Thread(target=numpy_parallel)
+t2 = threading.Thread(target=numpy_parallel)
+t1.start(); t2.start()
+t1.join(); t2.join()
+numpy_time = time.time() - start
 
-## Best Practices
+start = time.time()
+numpy_parallel()
+numpy_parallel()
+single_time = time.time() - start
+print(f"Numpy single: {single_time:.3f}s, threaded: {numpy_time:.3f}s")
+print(f"Speedup: {single_time / numpy_time:.2f}x (C ext releases GIL)")
 
-- Use **threading** for I/O-bound tasks (network, file, database)
-- Use **multiprocessing** for CPU-bound tasks that need parallelism
-- Use **asyncio** for high-concurrency I/O without thread overhead
-- Use **numpy/C extensions** for CPU-intensive numerical work (they release GIL)
-- Profile before optimizing: ensure the GIL is actually your bottleneck
-- In Python 3.13+, consider free-threading builds for truly parallel threaded code
-- For mixed workloads, use thread pools for I/O and process pools for CPU
+# Workaround 3: asyncio for I/O concurrency
+import asyncio
 
-## Interview Questions
+async def async_io_task():
+    await asyncio.sleep(1)
 
-1. **Q**: What exactly is the GIL and why does it exist?
-   **A**: The GIL is a mutex that protects CPython's internal state, particularly reference counting and memory management. It exists because CPython's memory management is not thread-safe, and removing the GIL would require fine-grained locking that could degrade single-threaded performance.
+async def async_concurrent():
+    await asyncio.gather(*[async_io_task() for _ in range(10)])
 
-2. **Q**: Does the GIL prevent all parallel execution?
-   **A**: No. I/O operations, `time.sleep()`, and many C extension functions release the GIL, allowing other threads to run. This is why threading works well for I/O-bound tasks. The GIL only prevents parallel execution of Python bytecode.
+start = time.time()
+asyncio.run(async_concurrent())
+async_time = time.time() - start
+print(f"Async 10 tasks: {async_time:.3f}s (single-threaded, non-blocking)")
 
-3. **Q**: How does the GIL affect threading vs multiprocessing decisions?
-   **A**: For CPU-bound tasks, multiprocessing provides true parallelism by spawning separate processes, each with its own GIL. For I/O-bound tasks, threading is sufficient because the GIL is released during I/O waits.
+# Workaround 4: numba JIT with nogil
+try:
+    from numba import njit
 
-4. **Q**: How does numpy achieve performance despite the GIL?
-   **A**: numpy performs its heavy computation in C, releasing the GIL before the computation starts and re-acquiring it when done. This allows Python threads to run concurrently with numpy operations.
+    @njit(nogil=True)
+    def numba_work(n):
+        total = 0
+        for i in range(n):
+            total += i * i
+        return total
 
-5. **Q**: What is changing with the GIL in Python 3.13+?
-   **A**: Python 3.13 introduces experimental free-threading builds (PEP 703) where the GIL is disabled, allowing true parallel thread execution. However, single-threaded performance may be slightly degraded due to the overhead of fine-grained locking.
+    def threaded_numba():
+        start = time.time()
+        t1 = threading.Thread(target=numba_work, args=(10000000,))
+        t2 = threading.Thread(target=numba_work, args=(10000000,))
+        t1.start(); t2.start()
+        t1.join(); t2.join()
+        print(f"Numba threaded: {time.time() - start:.3f}s")
+except ImportError:
+    print("numba not available")
+```
 
-## Coding Challenges
+### Advanced Examples
+```python
+import time
+from multiprocessing import Process, shared_memory
+import numpy as np
 
-1. **GIL Impact Measurement**: Write a benchmark that measures the performance difference between threads and processes for different CPU-to-I/O ratios (100% CPU, 75%/25%, 50%/50%, 25%/75%, 100% I/O).
+# Workaround 5: hybrid threading + multiprocessing
+def hybrid_approach(data_size=1000000):
+    """Use multiprocessing for CPU work, threading for I/O coordination."""
+    from multiprocessing import Pool as MPool
+    from concurrent.futures import ThreadPoolExecutor
 
-2. **Lock-Free Ring Buffer**: Implement a single-producer single-consumer ring buffer that works without locks, demonstrating that some patterns work well even with the GIL.
+    # Heavy computation in processes
+    def compute_chunk(chunk):
+        return np.sum(np.square(chunk))
 
-3. **Hybrid Thread-Process Pool**: Build a thread pool that automatically offloads CPU-bound tasks to a process pool while handling I/O tasks locally.
+    data = np.random.rand(data_size)
+    chunks = np.array_split(data, 4)
 
-4. **GIL-Aware Scheduler**: Implement a simple task scheduler that monitors whether tasks are CPU-bound or I/O-bound and dispatches accordingly to threads or processes.
+    with MPool(processes=4) as pool:
+        partial_sums = pool.map(compute_chunk, chunks)
 
-5. **Numpy Parallel Challenge**: Write a script that performs matrix multiplication concurrently with Python CPU work, measuring how much numpy's GIL release improves overall throughput.
+    # I/O coordination in threads
+    results = []
+    def save_result(r):
+        results.append(r)
 
-## Summary
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(save_result, s) for s in partial_sums]
 
-The GIL is a fundamental constraint of CPython that limits parallel execution of Python bytecode across threads. It simplifies CPython's internals but forces developers to choose between threading (I/O-bound) and multiprocessing (CPU-bound). Understanding when the GIL is released (I/O, C extensions, sleep) enables effective concurrency design. Python 3.13+ introduces experimental free-threading builds that may reshape this landscape.
+    return sum(results)
 
-## Related Topics
+start = time.time()
+total = hybrid_approach()
+print(f"Hybrid result: {total:.2f}, time: {time.time() - start:.3f}s")
 
-Multithreading (59.x), Multiprocessing (60.x), Thread Safety (63.x), Async IO (61.x, 62.x)
+# Workaround 6: selective GIL release via subinterpreters (PEP 554)
+# Python 3.12+ has subinterpreters, but they are experimental
+try:
+    import _xxsubinterpreters as interpreters
+
+    def subinterpreter_demo():
+        interp = interpreters.create()
+        interpreters.run_string(interp, "result = sum(range(1000000))")
+        # Each interpreter has its own GIL
+        print(f"Subinterpreter created")
+except ImportError:
+    print("Subinterpreters not available")
+
+# Workaround 7: Cython with nogil
+# # cython: language_level=3, boundscheck=False, wraparound=False
+# def cython_work(double[:] arr) nogil:
+#     cdef double total = 0
+#     cdef int i
+#     for i in range(arr.shape[0]):
+#         total += arr[i] * arr[i]
+#     return total
+
+# Performance comparison of all approaches
+def benchmark_workarounds():
+    import math
+
+    def cpu_task(n=5000000):
+        total = 0
+        for i in range(n):
+            total += i * i
+        return total
+
+    results = {}
+
+    # Sequential
+    start = time.time()
+    cpu_task()
+    cpu_task()
+    results["sequential"] = time.time() - start
+
+    # Threading
+    start = time.time()
+    t1 = threading.Thread(target=cpu_task)
+    t2 = threading.Thread(target=cpu_task)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+    results["threading"] = time.time() - start
+
+    # Multiprocessing
+    from multiprocessing import Process
+    q = Queue()
+    def task_with_queue():
+        q.put(cpu_task())
+    start = time.time()
+    p1 = Process(target=task_with_queue)
+    p2 = Process(target=task_with_queue)
+    p1.start(); p2.start()
+    p1.join(); p2.join()
+    results["multiprocessing"] = time.time() - start
+
+    for approach, elapsed in results.items():
+        print(f"{approach}: {elapsed:.3f}s")
+```
+
+### Real-World Use Cases
+- Data science: use numpy/pandas (C extensions release GIL)
+- Web scraping: threading for network I/O, multiprocessing for parsing
+- ML training: multiprocessing for data loading, GPU for computation (GIL irrelevant)
+- Real-time systems: asyncio for single-threaded high concurrency
+- Desktop apps: main thread for GUI, worker threads for I/O, processes for computation
+
+### Common Mistakes
+- Using multiprocessing for I/O-bound tasks (unnecessary overhead)
+- Using multiprocessing for tasks that don't benefit from parallelism
+- Forgetting that multiprocessing requires pickling data
+- Not checking if a library already handles parallelism internally
+
+### Best Practices
+- Match the workaround to the workload type
+- Use multiprocessing for CPU-bound pure Python
+- Use threading for I/O-bound tasks
+- Use asyncio for very high-concurrency I/O
+- Use C extensions (numpy, numba) that release the GIL
+- Consider hybrid approaches for mixed workloads
+- Measure before and after to verify improvement
+
+### Performance Considerations
+- Multiprocessing overhead: process creation + data serialization
+- C extension GIL release: zero overhead during native computation
+- Asyncio: lowest overhead for I/O concurrency (single thread)
+- Numba JIT: compilation time upfront, then fast execution
+
+### Interview Questions
+1. What are the main workarounds for GIL limitations?
+2. When would you use threading vs multiprocessing?
+3. How do C extensions achieve parallelism despite the GIL?
+4. Does asyncio bypass the GIL?
+
+### Coding Challenges
+- Write a benchmark comparing threading, multiprocessing, and asyncio for a mixed workload
+- Convert a CPU-bound function to use multiprocessing with a Pool
+
+### Related Topics
+- Multiprocessing, asyncio, numba, C extensions, subinterpreters
+
+## Free-threading (Python 3.13+)
+### What It Is
+Python 3.13 introduces experimental support for disabling the GIL (PEP 703), enabling true multi-threaded parallelism for CPU-bound Python code. This is called "free-threading" or "no-GIL" mode.
+
+### Why It Is Important
+Free-threading finally removes the biggest limitation of CPython threading. It allows Python to scale to multiple cores with threads, simplifying concurrent programming and potentially matching performance of languages without a GIL.
+
+### How It Works Internally
+Without the GIL, CPython must make all object operations thread-safe through:
+- Biased reference counting (per-thread refcount with occasional merging)
+- Per-object locking for mutable objects
+- Immortal objects (refcount never changes) for frequently accessed singletons
+- Modified garbage collector (thread-safe cycle detection)
+
+This adds ~10-30% overhead to single-threaded code but enables true multi-threaded speedup on multi-core systems.
+
+### Syntax
+```python
+# Build Python 3.13+ with --disable-gil
+# ./configure --disable-gil && make
+
+# Check if GIL is enabled
+import sys
+if hasattr(sys, "_enable_gil"):
+    print(f"GIL enabled: {sys.get_ints() and sys._enable_gil}")
+else:
+    print("Not a free-threaded build")
+
+# Run with GIL disabled:
+# python -X gil=0 script.py
+
+# Run with GIL enabled (on free-threaded build):
+# python -X gil=1 script.py
+```
+
+### Beginner Examples
+```python
+import sys
+import threading
+import time
+
+# Check free-threading support
+print(f"Python version: {sys.version}")
+if hasattr(sys, "_enable_gil"):
+    print("Free-threaded build available")
+    print(f"GIL currently enabled: {sys._enable_gil}")
+else:
+    print("Standard CPython build (GIL always enabled)")
+
+# CPU-bound task benefits from free-threading
+def compute():
+    total = 0
+    for i in range(5000000):
+        total += i * i
+    return total
+
+def run_in_threads(n):
+    start = time.time()
+    threads = [threading.Thread(target=compute) for _ in range(n)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    return time.time() - start
+
+# On free-threaded Python, this shows near-linear speedup
+# On standard Python, no speedup
+print(f"1 thread: {run_in_threads(1):.3f}s")
+print(f"4 threads: {run_in_threads(4):.3f}s")
+```
+
+### Intermediate Examples
+```python
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+# Free-threading: ThreadPoolExecutor now works for CPU-bound tasks
+def factorize(n):
+    factors = []
+    d = 2
+    while d * d <= n:
+        while n % d == 0:
+            factors.append(d)
+            n //= d
+        d += 1
+    if n > 1:
+        factors.append(n)
+    return factors
+
+def benchmark_executor():
+    numbers = [112272535095293, 112582705942171, 115280095190773,
+               115797848077099, 1099726899285419] * 2
+
+    # Sequential
+    start = time.time()
+    seq_results = [factorize(n) for n in numbers]
+    seq_time = time.time() - start
+
+    # ThreadPoolExecutor
+    start = time.time()
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        par_results = list(ex.map(factorize, numbers))
+    par_time = time.time() - start
+
+    if hasattr(sys, "_enable_gil") and not sys._enable_gil:
+        print(f"FREE-THREADING: Speedup = {seq_time / par_time:.2f}x")
+    else:
+        print(f"GIL ENABLED: Speedup = {seq_time / par_time:.2f}x")
+
+# Thread safety without GIL
+# In free-threaded Python, mutable objects need synchronization
+
+lock = threading.Lock()
+shared_counter = 0
+iterations = 100000
+
+def safe_increment():
+    global shared_counter
+    for _ in range(iterations):
+        # Still need lock! Free-threading doesn't make Python atomic
+        with lock:
+            shared_counter += 1
+```
+
+### Advanced Examples
+```python
+import sys
+import threading
+import time
+import gc
+
+# Biased reference counting demonstration
+# In free-threaded Python, objects use biased refcounting
+# Most refcount operations are on the owning thread (fast)
+# Cross-thread access requires merging (slow)
+
+# Thread-local vs shared objects
+def thread_local_vs_shared():
+    n = 500000
+    results = {}
+
+    # Thread-local object (no contention)
+    def local_work():
+        lst = []
+        for i in range(n):
+            lst.append(i)
+        return len(lst)
+
+    start = time.time()
+    threads = [threading.Thread(target=local_work) for _ in range(4)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    results["local"] = time.time() - start
+
+    # Shared object (contention on refcount)
+    shared = {}
+    lock = threading.Lock()
+
+    def shared_work():
+        for i in range(n // 4):
+            with lock:
+                shared[i] = i
+
+    start = time.time()
+    threads = [threading.Thread(target=shared_work) for _ in range(4)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    results["shared"] = time.time() - start
+
+    print(f"Thread-local: {results['local']:.3f}s")
+    print(f"Shared (locked): {results['shared']:.3f}s")
+
+# Immortal objects (small integers, None, True, False)
+# In free-threading, these are "immortal" -- refcount never changes
+# This avoids refcount contention on built-in singletons
+
+# GC in free-threading mode
+def gc_comparison():
+    # Free-threading requires a modified GC for thread safety
+    print(f"GC enabled: {gc.isenabled()}")
+    print(f"GC thresholds: {gc.get_threshold()}")
+
+# Migration considerations
+def migration_notes():
+    print("""
+    Migrating to free-threading:
+    - Existing threading code using Lock is still correct
+    - No need to add locks where there were none (still unsafe!)
+    - Atomic operations are NOT guaranteed (use Lock)
+    - C extensions must be updated for thread safety
+    - Single-threaded code may be 10-30% slower
+    - Benefits CPU-bound multi-threaded code significantly
+    """)
+```
+
+### Real-World Use Cases
+- **Data science** — parallel DataFrame operations on multiple columns
+- **Web servers** — handling CPU-heavy requests in thread pool (not just I/O)
+- **Scientific computing** — parallel algorithm execution in pure Python
+- **Game engines** — CPU-bound game logic in threads
+- **CI/CD** — running tests in threads with true parallelism
+
+### Current Limitations (Python 3.13 experimental)
+- 10-30% single-threaded performance regression
+- Not all C extensions are thread-safe yet
+- Requires recompilation with --disable-gil
+- Some standard library modules may have thread-safety issues
+- Not suitable for production use (experimental)
+- Garbage collector has additional overhead
+- Debugging free-threaded code is harder (races become visible)
+
+### Common Mistakes
+- Assuming free-threading eliminates need for locks
+- Expecting linear speedup (Amdahl's law still applies)
+- Running free-threaded Python for single-threaded code (wastes ~20% perf)
+- Not testing with actual multi-threaded workloads
+- Expecting all C extensions to work without changes
+
+### Best Practices
+- Test with both gil=0 and gil=1 to compare performance
+- Keep existing locks in thread-safe code (still needed)
+- Profile to measure actual speedup vs overhead
+- Consider numpy/numba for numerical work (already parallel)
+- Use standard Python for single-threaded apps (no benefit from free-threading)
+- For new projects targeting free-threading, design with thread safety from start
+- Contribute to C extension compatibility efforts
+- Wait for Python 3.14+ for production-ready free-threading
+
+### Performance Considerations
+- Single-threaded regression: ~10-30% for pure Python, less if using C extensions
+- Multi-threaded speedup: up to Nx on N cores for embarassingly parallel workloads
+- Biased refcounting: most ops are fast (same thread), cross-thread ops slower
+- Immortal objects: no refcount contention on singletons
+- C extensions: need explicit thread safety (Py_GIL_DISABLED support)
+- Memory usage: slightly higher due to biased refcount fields
+
+### Interview Questions
+1. What is PEP 703 and what does it propose?
+2. How does free-threading affect single-threaded performance?
+3. What is biased reference counting?
+4. Do you still need locks in free-threaded Python?
+5. What are immortal objects?
+6. Is free-threading ready for production in Python 3.13?
+
+### Coding Challenges
+- Write a script that runs the same computation with threads and checks speedup
+- Compare performance of Python built with and without GIL
+- Implement a test that verifies thread safety under free-threading
+- Benchmark the overhead of free-threading mode for a single-threaded workload
+
+### Related Topics
+- PEP 703, GIL, threading, multiprocessing, C extension thread safety, CPython internals

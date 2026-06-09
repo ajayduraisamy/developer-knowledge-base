@@ -2,131 +2,355 @@
 
 ## Introduction
 
-**Polymorphism** (Greek: "many forms") is the ability of different object types to respond to the same interface or method call in their own way. In Python, polymorphism is primarily achieved through **duck typing** — "If it walks like a duck and quacks like a duck, it's a duck" — meaning the object's behaviour matters, not its explicit type.
+Polymorphism means "many forms." In Python, it allows objects of different types to respond to the same interface. Python implements polymorphism through duck typing (runtime type flexibility), method overriding (inheritance-based), and operator overloading (custom behavior for built-in operators). Python's dynamic nature makes polymorphism especially elegant and pervasive.
 
-Python supports several forms: duck typing, method overriding, operator overloading, and abstract base classes.
+## Duck typing
 
-## Why It Is Important
+### What It Is
 
-- **Flexibility**: Write code that works with any object providing the expected methods.
-- **Extensibility**: Add new types without modifying existing code (open/closed principle).
-- **Reusability**: Generic functions and algorithms work across unrelated classes.
-- **Testability**: Easily swap real implementations with mocks or stubs.
-- **Reduced coupling**: Code depends on behaviour (interfaces), not concrete types.
-
-## Syntax
+Duck typing is a programming style where an object's suitability is determined by the presence of certain methods and properties, rather than by its actual type. The name comes from the saying: "If it walks like a duck and quacks like a duck, it's a duck."
 
 ```python
-# Duck typing — no explicit interface needed
-def make_sound(animal):
-    return animal.speak()
-
-# Method overriding
-class Base:
-    def method(self):
-        return "base"
-
-class Child(Base):
-    def method(self):
-        return "child"
-
-# Operator overloading
-class Vector:
-    def __add__(self, other):
-        ...
-
-# Abstract base class
-from abc import ABC, abstractmethod
-
-class Shape(ABC):
-    @abstractmethod
-    def area(self):
-        ...
+def make_it_quack(thing):
+    thing.quack()  # Any object with quack() works
 ```
 
-## Examples
+### Why It Is Important
 
-### Duck typing in action
+Duck typing enables loose coupling and flexible code. Functions can operate on any object that supports the required interface without requiring explicit inheritance or type checking. This is a cornerstone of Python's "EAFP" (Easier to Ask for Forgiveness than Permission) philosophy.
+
+### How It Works Internally
+
+At the bytecode level, Python simply looks up the attribute (e.g., `.quack()`) on the object. If the attribute exists, it's called. There's no compile-time type checking — type errors only manifest at runtime when an attribute is missing.
 
 ```python
 class Duck:
-    def speak(self):
+    def quack(self):
         return "Quack!"
 
 class Person:
-    def speak(self):
-        return "Hello!"
+    def quack(self):
+        return "I'm quacking!"
 
-def make_sound(entity):
-    print(entity.speak())
+def in_the_forest(animal):
+    print(animal.quack())
 
-make_sound(Duck())    # Quack!
-make_sound(Person())  # Hello!
+in_the_forest(Duck())    # Quack!
+in_the_forest(Person())  # I'm quacking!
 ```
 
-## Beginner Examples
-
-### 1. len() polymorphism
+### Syntax
 
 ```python
-print(len("hello"))     # 5  (str)
-print(len([1, 2, 3]))   # 3  (list)
-print(len({"a": 1}))    # 1  (dict)
-print(len(range(10)))   # 10 (range)
+# Duck typing — no type declaration needed
+def func(obj):
+    obj.method()  # Just call it — if it works, it works
+
+# With type hints (structural subtyping via Protocol)
+from typing import Protocol
+
+class Quackable(Protocol):
+    def quack(self) -> str:
+        ...
 ```
 
-### 2. Method overriding in inheritance
+### Beginner Examples
 
 ```python
-class Animal:
-    def move(self):
-        return "Moving"
+class Cat:
+    def sound(self):
+        return "Meow"
 
-class Fish(Animal):
-    def move(self):
-        return "Swimming"
+class Dog:
+    def sound(self):
+        return "Woof"
 
-class Bird(Animal):
-    def move(self):
-        return "Flying"
+class Car:
+    def sound(self):
+        return "Vroom"
 
-class Snake(Animal):
-    pass  # uses parent move()
+def make_sound(animal):
+    print(animal.sound())
 
-animals = [Fish(), Bird(), Snake()]
-for a in animals:
-    print(a.move())
-# Swimming
-# Flying
-# Moving
+for obj in [Cat(), Dog(), Car()]:
+    make_sound(obj)
+# Meow
+# Woof
+# Vroom
 ```
 
-### 3. Iteration protocol
+### Intermediate Examples
 
 ```python
-class Countdown:
-    def __init__(self, start):
-        self.start = start
+class JSONSerializer:
+    def serialize(self, data):
+        import json
+        return json.dumps(data)
 
-    def __iter__(self):
-        self.n = self.start
-        return self
+class XMLSerializer:
+    def serialize(self, data):
+        return f"<data>{data}</data>"
 
-    def __next__(self):
-        if self.n < 0:
-            raise StopIteration
-        val = self.n
-        self.n -= 1
-        return val
+class YamlSerializer:
+    def serialize(self, data):
+        import yaml
+        return yaml.dump(data)
 
+def export_data(serializer, data, filename):
+    with open(filename, "w") as f:
+        f.write(serializer.serialize(data))
 
-for x in Countdown(3):
-    print(x, end=" ")  # 3 2 1 0
+# Any object with .serialize() works
+export_data(JSONSerializer(), {"key": "value"}, "out.json")
+export_data(XMLSerializer(), "hello", "out.xml")
 ```
 
-## Intermediate Examples
+### Advanced Examples
 
-### 1. Operator overloading
+```python
+from typing import Protocol, List, TypeVar
+
+T = TypeVar("T")
+
+class Drawable(Protocol):
+    def draw(self) -> str:
+        ...
+
+class Circle:
+    def __init__(self, radius: float):
+        self.radius = radius
+
+    def draw(self) -> str:
+        return f"Circle(radius={self.radius})"
+
+class Rectangle:
+    def __init__(self, w: float, h: float):
+        self.w, self.h = w, h
+
+    def draw(self) -> str:
+        return f"Rectangle({self.w}x{self.h})"
+
+class Canvas:
+    def __init__(self):
+        self._shapes: List[Drawable] = []
+
+    def add(self, shape: Drawable) -> None:
+        self._shapes.append(shape)
+
+    def render(self) -> str:
+        return "\n".join(s.draw() for s in self._shapes)
+
+# Works with anything implementing Drawable protocol
+canvas = Canvas()
+canvas.add(Circle(5))
+canvas.add(Rectangle(3, 4))
+print(canvas.render())
+```
+
+### Real-World Use Cases
+
+- **Python's `len()`**: works with any object that has `__len__`
+- **`with` statement**: works with any object having `__enter__`/`__exit__`
+- **Iteration**: `for x in obj` works with any iterable
+- **Django's class-based views**: different HTTP method handlers (get, post, etc.)
+- **Pandas/ NumPy**: functions operate on array-like objects regardless of exact type
+
+### Common Mistakes
+
+1. **Type checking instead of duck typing**: `if isinstance(obj, Duck)` defeats the purpose
+2. **Assuming attributes exist**: always handle `AttributeError` or use `hasattr`
+3. **Inconsistent interfaces**: methods with same name but different semantics
+4. **Over-relying on `hasattr`**: trying to anticipate all required methods
+
+### Best Practices
+
+- Write functions that expect interfaces, not concrete types
+- Use `Protocol` (Python 3.8+) for static type checking with duck typing
+- Document the expected interface in docstrings
+- Trust that callers will pass compatible objects
+- Use `try`/`except AttributeError` sparingly; let errors surface during development
+
+### Performance Considerations
+
+- Duck typing has zero runtime overhead over normal attribute access
+- `hasattr()` internally calls `getattr()` and catches exceptions — slower than direct access
+- `isinstance` checks are fast but couple code to specific types
+- `Protocol` checks in mypy happen at static analysis time only
+
+## Method overriding
+
+### What It Is
+
+Method overriding allows a subclass to provide a specific implementation of a method already defined in its parent class, enabling polymorphic behavior through inheritance.
+
+### Why It Is Important
+
+Overriding is how polymorphic behavior is achieved in class hierarchies. It allows a client to call the same method on different subclasses and get appropriate behavior without knowing the concrete type.
+
+### How It Works Internally
+
+The MRO determines which version of a method is called. Python searches the instance's class first, then parent classes in MRO order. The first match is used.
+
+```python
+class Shape:
+    def area(self):
+        return 0
+
+class Circle(Shape):
+    def __init__(self, r):
+        self.r = r
+
+    def area(self):
+        return 3.14 * self.r ** 2
+
+class Square(Shape):
+    def __init__(self, s):
+        self.s = s
+
+    def area(self):
+        return self.s ** 2
+
+# Polymorphic call
+shapes = [Circle(10), Square(5), Shape()]
+for s in shapes:
+    print(s.area())  # 314.0, 25, 0
+```
+
+### Syntax
+
+```python
+class Parent:
+    def method(self):
+        return "parent"
+
+class Child(Parent):
+    def method(self):
+        return "child"
+```
+
+### Beginner Examples
+
+```python
+class PaymentProcessor:
+    def process(self, amount):
+        raise NotImplementedError
+
+class CreditCard(PaymentProcessor):
+    def process(self, amount):
+        return f"Charged ${amount} to credit card"
+
+class PayPal(PaymentProcessor):
+    def process(self, amount):
+        return f"Processed ${amount} via PayPal"
+
+class Crypto(PaymentProcessor):
+    def process(self, amount):
+        return f"Transferred ${amount} in cryptocurrency"
+
+def checkout(processor, amount):
+    print(processor.process(amount))
+
+checkout(CreditCard(), 100)
+checkout(PayPal(), 50)
+checkout(Crypto(), 200)
+```
+
+### Advanced Examples
+
+```python
+from abc import ABC, abstractmethod
+from typing import List, Optional
+
+class ReportGenerator(ABC):
+    @abstractmethod
+    def header(self, title: str) -> str:
+        pass
+
+    @abstractmethod
+    def body(self, rows: List[dict]) -> str:
+        pass
+
+    @abstractmethod
+    def footer(self) -> str:
+        pass
+
+    def generate(self, title: str, rows: List[dict]) -> str:
+        parts = [
+            self.header(title),
+            self.body(rows),
+            self.footer()
+        ]
+        return "\n".join(parts)
+
+class HTMLReport(ReportGenerator):
+    def header(self, title: str) -> str:
+        return f"<html><head><title>{title}</title></head><body>"
+
+    def body(self, rows: List[dict]) -> str:
+        table = "<table>"
+        for row in rows:
+            table += "<tr>" + "".join(f"<td>{v}</td>" for v in row.values()) + "</tr>"
+        return table + "</table>"
+
+    def footer(self) -> str:
+        return "</body></html>"
+
+class MarkdownReport(ReportGenerator):
+    def header(self, title: str) -> str:
+        return f"# {title}\n\n"
+
+    def body(self, rows: List[dict]) -> str:
+        if not rows:
+            return ""
+        headers = "| " + " | ".join(rows[0].keys()) + " |\n"
+        separator = "| " + " | ".join("---" for _ in rows[0]) + " |\n"
+        data = "\n".join(
+            "| " + " | ".join(str(v) for v in row.values()) + " |"
+            for row in rows
+        )
+        return headers + separator + data
+
+    def footer(self) -> str:
+        return ""
+
+data = [{"Name": "Alice", "Score": 95}, {"Name": "Bob", "Score": 87}]
+print(HTMLReport().generate("Scores", data))
+print(MarkdownReport().generate("Scores", data))
+```
+
+## Operator overloading
+
+### What It Is
+
+Operator overloading allows user-defined classes to define behavior for Python's built-in operators (+, -, *, [], etc.) by implementing special "magic" methods.
+
+### Why It Is Important
+
+Operator overloading makes custom objects behave intuitively with standard operators. It enables mathematical objects (vectors, matrices) to use arithmetic syntax and container-like objects to use indexing syntax.
+
+### How It Works Internally
+
+When Python encounters `a + b`, it calls `a.__add__(b)`. If that returns `NotImplemented`, Python tries `b.__radd__(a)`. This two-way protocol ensures symmetric operator behavior.
+
+```python
+x = 3 + 4
+# Internally: int.__add__(3, 4)
+```
+
+### Syntax
+
+```python
+class Vector:
+    def __add__(self, other): ...
+    def __sub__(self, other): ...
+    def __mul__(self, other): ...
+    def __truediv__(self, other): ...
+    def __getitem__(self, key): ...
+    def __setitem__(self, key, value): ...
+    def __len__(self): ...
+```
+
+### Beginner Examples
 
 ```python
 class Point:
@@ -137,290 +361,176 @@ class Point:
     def __add__(self, other):
         return Point(self.x + other.x, self.y + other.y)
 
-    def __sub__(self, other):
-        return Point(self.x - other.x, self.y - other.y)
-
-    def __mul__(self, scalar):
-        return Point(self.x * scalar, self.y * scalar)
-
-    def __eq__(self, other):
-        return self.x == other.x and self.y == other.y
+    def __str__(self):
+        return f"({self.x}, {self.y})"
 
     def __repr__(self):
         return f"Point({self.x}, {self.y})"
 
-
 p1 = Point(1, 2)
 p2 = Point(3, 4)
-print(p1 + p2)    # Point(4, 6)
-print(p2 - p1)    # Point(2, 2)
-print(p1 * 3)     # Point(3, 6)
-print(p1 == Point(1, 2))  # True
+p3 = p1 + p2
+print(p3)  # (4, 6)
 ```
 
-### 2. Abstract base class with registered subclasses
+### Intermediate Examples
 
 ```python
-from abc import ABC, abstractmethod
+class Money:
+    _exchange_rates = {"USD": 1.0, "EUR": 1.18, "GBP": 1.38}
 
+    def __init__(self, amount, currency="USD"):
+        self.amount = float(amount)
+        self.currency = currency.upper()
 
-class Printable(ABC):
-    @abstractmethod
-    def format(self) -> str:
-        ...
+    def _to_usd(self):
+        return self.amount / self._exchange_rates[self.currency]
 
-
-class Document(Printable):
-    def __init__(self, content):
-        self.content = content
-
-    def format(self):
-        return f"Document: {self.content}"
-
-
-# Registering an existing class without modifying it
-@Printable.register
-class LegacyReport:
-    def format(self):
-        return "Legacy Report"
-
-
-print(isinstance(LegacyReport(), Printable))  # True
-```
-
-### 3. Polymorphic functions with protocol hints
-
-```python
-from typing import Protocol
-
-
-class Speakable(Protocol):
-    def speak(self) -> str:
-        ...
-
-
-def greet(entity: Speakable) -> None:
-    print(f"Greetings: {entity.speak()}")
-
-
-class Robot:
-    def speak(self) -> str:
-        return "Beep boop"
-
-
-class Human:
-    def speak(self) -> str:
-        return "Hello there"
-
-
-greet(Robot())   # Greetings: Beep boop
-greet(Human())   # Greetings: Hello there
-```
-
-## Advanced Examples
-
-### 1. Generic visitor pattern with singledispatch
-
-```python
-from functools import singledispatch
-
-
-@singledispatch
-def render(obj):
-    raise TypeError(f"No renderer for {type(obj)}")
-
-
-@render.register(str)
-def _(obj):
-    return f"String: {obj}"
-
-
-@render.register(int)
-def _(obj):
-    return f"Integer: {obj * 2}"
-
-
-@render.register(list)
-def _(obj):
-    return f"List: {', '.join(str(x) for x in obj)}"
-
-
-@render.register(dict)
-def _(obj):
-    return f"Dict: {len(obj)} keys"
-
-
-print(render("hello"))      # String: hello
-print(render(21))           # Integer: 42
-print(render([1, 2, 3]))    # List: 1, 2, 3
-print(render({"a": 1}))     # Dict: 1 keys
-```
-
-### 2. Custom numeric type with full operator support
-
-```python
-class Complex:
-    def __init__(self, real, imag):
-        self.real = real
-        self.imag = imag
+    def _from_usd(self, usd_amount):
+        return Money(usd_amount * self._exchange_rates[self.currency], self.currency)
 
     def __add__(self, other):
-        if isinstance(other, (int, float)):
-            return Complex(self.real + other, self.imag)
-        return Complex(self.real + other.real, self.imag + other.imag)
+        if not isinstance(other, Money):
+            return NotImplemented
+        usd_total = self._to_usd() + other._to_usd()
+        return self._from_usd(usd_total)
 
-    def __radd__(self, other):
-        return self.__add__(other)
+    def __sub__(self, other):
+        if not isinstance(other, Money):
+            return NotImplemented
+        usd_diff = self._to_usd() - other._to_usd()
+        return self._from_usd(usd_diff)
 
-    def __neg__(self):
-        return Complex(-self.real, -self.imag)
+    def __mul__(self, scalar):
+        if not isinstance(scalar, (int, float)):
+            return NotImplemented
+        return Money(self.amount * scalar, self.currency)
 
-    def __abs__(self):
-        return (self.real ** 2 + self.imag ** 2) ** 0.5
+    def __rmul__(self, scalar):
+        return self.__mul__(scalar)
 
     def __eq__(self, other):
-        if isinstance(other, Complex):
-            return self.real == other.real and self.imag == other.imag
-        return NotImplemented
+        if not isinstance(other, Money):
+            return NotImplemented
+        return abs(self._to_usd() - other._to_usd()) < 0.001
+
+    def __str__(self):
+        return f"{self.currency} {self.amount:.2f}"
 
     def __repr__(self):
-        sign = "+" if self.imag >= 0 else "-"
-        return f"{self.real} {sign} {abs(self.imag)}i"
+        return f"Money({self.amount}, '{self.currency}')"
 
-
-c1 = Complex(3, 4)
-c2 = Complex(1, -2)
-print(c1 + c2)      # 4 + 2i
-print(5 + c1)       # 8 + 4i
-print(-c1)          # -3 - 4i
-print(abs(c1))      # 5.0
-print(c1 == Complex(3, 4))  # True
+m1 = Money(100, "USD")
+m2 = Money(50, "EUR")
+m3 = m1 + m2
+print(m3)          # USD 159.00
+print(m1 * 3)      # USD 300.00
+print(3 * m1)      # USD 300.00
 ```
 
-### 3. Pluggable backend system
+### Advanced Examples
 
 ```python
-from abc import ABC, abstractmethod
+class Matrix:
+    def __init__(self, data):
+        self.data = [list(row) for row in data]
+        self.rows = len(self.data)
+        self.cols = len(self.data[0]) if self.data else 0
 
+    def __add__(self, other):
+        if self.rows != other.rows or self.cols != other.cols:
+            raise ValueError("Matrix dimensions must match")
+        result = [
+            [self.data[i][j] + other.data[i][j] for j in range(self.cols)]
+            for i in range(self.rows)
+        ]
+        return Matrix(result)
 
-class StorageBackend(ABC):
-    @abstractmethod
-    def save(self, key: str, data: bytes) -> None:
-        ...
+    def __mul__(self, other):
+        if isinstance(other, (int, float)):
+            return Matrix([[v * other for v in row] for row in self.data])
+        if isinstance(other, Matrix):
+            if self.cols != other.rows:
+                raise ValueError("Incompatible dimensions")
+            result = [
+                [
+                    sum(self.data[i][k] * other.data[k][j] for k in range(self.cols))
+                    for j in range(other.cols)
+                ]
+                for i in range(self.rows)
+            ]
+            return Matrix(result)
+        return NotImplemented
 
-    @abstractmethod
-    def load(self, key: str) -> bytes:
-        ...
+    def __matmul__(self, other):
+        return self.__mul__(other)
 
+    def __getitem__(self, idx):
+        return self.data[idx]
 
-class DiskStorage(StorageBackend):
-    def save(self, key, data):
-        with open(f"{key}.bin", "wb") as f:
-            f.write(data)
-        print(f"Disk: saved {key}")
+    def __setitem__(self, idx, value):
+        self.data[idx] = list(value)
 
-    def load(self, key):
-        with open(f"{key}.bin", "rb") as f:
-            return f.read()
+    def __len__(self):
+        return self.rows
 
+    def __str__(self):
+        return "\n".join("[" + ", ".join(f"{v:4}" for v in row) + "]" for row in self.data)
 
-class S3Storage(StorageBackend):
-    def save(self, key, data):
-        print(f"S3: saved {key} (simulated)")
+    def __repr__(self):
+        return f"Matrix({self.data})"
 
-    def load(self, key):
-        print(f"S3: loaded {key} (simulated)")
-        return b"data"
-
-
-class StorageClient:
-    def __init__(self, backend: StorageBackend):
-        self._backend = backend
-
-    def store(self, key, data):
-        self._backend.save(key, data)
-
-    def retrieve(self, key):
-        return self._backend.load(key)
-
-
-client = StorageClient(DiskStorage())
-client.store("test", b"hello world")
+A = Matrix([[1, 2], [3, 4]])
+B = Matrix([[5, 6], [7, 8]])
+print(A + B)
+print(A * B)
+print(A * 2)
 ```
 
-## Real-World Use Cases
+### Real-World Use Cases
 
-- **Plugin architectures**: Load different plugins that all follow the same interface.
-- **ORM systems**: A `QuerySet` works the same way whether the backend is PostgreSQL, SQLite, or MySQL.
-- **Middleware pipelines**: Each middleware implements the same `process_request` / `process_response` methods.
-- **Serialization**: `json.dumps()`, `pickle.dumps()`, `yaml.dump()` all accept objects that follow the serialization protocol.
-- **Strategy pattern**: Different algorithms (sorting, compression, encryption) are interchangeable.
+- **NumPy arrays**: extensive operator overloading for array arithmetic
+- **SQLAlchemy**: `==`, `!=`, etc. overloaded to build SQL expressions
+- **pathlib**: `Path / "subdir"` constructs filesystem paths
+- **Web framework query objects**: `query.filter(Model.field == value)`
+- **Decimal/ Fraction types**: arithmetic operations on numeric types
 
-## Common Mistakes
+### Common Mistakes
 
-| Mistake | Why it's wrong | Fix |
-|---|---|---|
-| Checking `type()` instead of using duck typing | Breaks polymorphism and Liskov substitution | Use `hasattr()` or `try-except` or `Protocol` |
-| Not returning `NotImplemented` in overloaded operators | Falls back to the wrong operation | Return `NotImplemented` to let Python try the reverse |
-| Forgetting that `__radd__` exists | `5 + obj` fails | Implement `__radd__` for symmetric operators |
-| Overriding without keeping the same signature | Violates Liskov substitution principle | Keep compatible method signatures |
-| Using ABCs when duck typing would suffice | Unnecessary ceremony | Use ABCs only when you need to enforce an interface |
+1. **Missing `__radd__`**: `2 + obj` won't work without reverse methods
+2. **Returning `NotImplemented` incorrectly**: should return it, not raise it
+3. **Mutating self**: `__add__` should return a new instance, not modify self
+4. **Inconsistent behavior**: `__eq__` and `__hash__` must be consistent
 
-## Best Practices
+### Best Practices
 
-- Prefer **duck typing** over explicit type checks — "ask for forgiveness, not permission."
-- Use `@abstractmethod` when you need to **enforce** that subclasses implement a method.
-- Use `typing.Protocol` for static type checking of duck-typed interfaces.
-- Override operators only when the operation is **natural** for the class (e.g., `+` for vectors).
-- Always return `NotImplemented` from operator overloads when the operation is not supported for the given type.
-- Keep polymorphic interfaces **small** — 1–3 methods is ideal.
+- Return `NotImplemented` for unsupported types (not raise TypeError)
+- Always return a new instance from arithmetic operators
+- Implement both forward and reverse methods (`__add__` + `__radd__`)
+- Keep operator semantics consistent with built-in types
+- Override `__eq__` and `__hash__` together for dict/set compatibility
 
-## Interview Questions
+### Performance Considerations
 
-1. **What is duck typing in Python?**
-   *An object's suitability is determined by the presence of methods/properties, not by its type. "If it walks like a duck, it's a duck."*
+- Operator overloading adds a method call per operation
+- For hot loops, direct attribute access is faster than overloaded operators
+- NumPy avoids Python-level operator overhead with vectorized C operations
+- Reverse method lookup (`__radd__`) adds an extra dispatch attempt
 
-2. **How does Python achieve polymorphism without interfaces?**
-   *Through duck typing and dynamic dispatch — any object that implements the expected methods can be used.*
+### Interview Questions
 
-3. **What is the difference between method overloading and method overriding?**
-   *Overriding: a child class redefines a parent method (runtime polymorphism). Overloading: the same method name with different parameters; Python doesn't support compile-time overloading (use default args or `singledispatch`).*
+1. What is duck typing and how is it different from nominal typing?
+2. How does Python decide which method to call in a polymorphic hierarchy?
+3. Explain the `__add__`/`__radd__` protocol. Why is `__radd__` necessary?
+4. What is the difference between method overriding and method overloading?
+5. How do Protocols (Python 3.8+) enable static duck typing?
 
-4. **Explain the Liskov Substitution Principle.**
-   *Subtypes must be substitutable for their base types without altering the correctness of the program.*
+### Coding Challenges
 
-5. **How does `functools.singledispatch` work?**
-   *It creates a generic function that dispatches on the type of the first argument, allowing polymorphic behaviour without classes.*
+1. Implement a `Polynomial` class with `__add__`, `__sub__`, `__mul__`, and `__call__`.
+2. Build a `Shape` hierarchy with duck-typed `area()` and `perimeter()` methods.
+3. Create a `CustomList` class that overloads slicing, addition, and multiplication like Python lists.
 
-6. **What is the difference between `NotImplemented` and `NotImplementedError`?**
-   *`NotImplemented` is a singleton returned by operator overloads to signal the operation isn't supported (triggers reverse op). `NotImplementedError` is an exception raised for abstract methods that must be overridden.*
+### Related Topics
 
-## Coding Challenges
-
-1. **Shape Area Calculator**: Create `Circle`, `Rectangle`, `Triangle` classes, each with an `area()` method. Write a function `total_area(shapes)` that sums areas polymorphically.
-
-2. **Custom Container**: Implement a `SparseList` that stores only non-default values. Support `__getitem__`, `__setitem__`, `__len__`, `__iter__`, and `__add__`.
-
-3. **Plugin System**: Define a `Plugin` ABC with `process(data)` method. Implement `UpperPlugin`, `ReversePlugin`, `CompressPlugin`. Create a `Pipeline` that runs all plugins.
-
-4. **Polymorphic Serializer**: Build `JSONSerializer`, `XMLSerializer`, `YAMLSerializer`, all implementing `serialize(obj)` and `deserialize(data)`.
-
-5. **Expression Evaluator**: Create `Number`, `Add`, `Subtract`, `Multiply` classes, each with an `eval()` method. Build an AST and evaluate it.
-
-## Summary
-
-- **Polymorphism** means "many forms" — the same interface works with different types.
-- **Duck typing** is Python's native approach: if an object has the method, call it.
-- **Method overriding** allows a child class to replace parent methods.
-- **Operator overloading** customises how operators work with user-defined classes.
-- **ABCs** and **Protocols** provide enforcement and static type checking.
-- The **Liskov Substitution Principle** ensures polymorphic code remains correct.
-
-## Related Topics
-
-- Classes and Objects — the objects that participate in polymorphic behaviour
-- Inheritance — method overriding is a key form of polymorphism
-- Encapsulation — polymorphic methods often access internal state
-- Abstraction — ABCs define polymorphic interfaces
-- Magic Methods — operator overloading uses dunder methods
-- Static and Class Methods — can also be overridden polymorphically
+Magic Methods, Inheritance, Abstract Base Classes, Protocols, Type Hints

@@ -1,772 +1,646 @@
-# Multiprocessing - multiprocessing.Process, Pool, shared memory
-
+﻿# Multiprocessing - multiprocessing.Process, Pool, shared memory
 ## Introduction
+The `multiprocessing` module allows running multiple processes, each with its own Python interpreter and memory space. It sidesteps the GIL limitation, making it suitable for CPU-bound parallel computation. The module provides Process, Pool, Queue, Pipe, and shared memory abstractions.
 
-The `multiprocessing` module allows Python programs to spawn multiple processes, bypassing the Global Interpreter Lock (GIL) to achieve true parallelism. Each process runs its own Python interpreter with its own memory space, making it suitable for CPU-bound tasks.
+## multiprocessing.Process
+### What It Is
+`multiprocessing.Process` represents a separate OS process with its own Python interpreter, GIL, and memory space. It follows an API similar to `threading.Thread` but forks (or spawns) a completely new process.
 
-## Why It Is Important
+### Why It Is Important
+Unlike threads, processes run in parallel across CPU cores without GIL contention. They provide true parallelism for CPU-intensive tasks, fault isolation (one process crash doesn't affect others), and memory isolation (no accidental shared state).
 
-Multiprocessing enables Python to fully utilize multi-core CPUs for computationally intensive tasks. Unlike threading, it sidesteps the GIL limitation, providing true parallel execution. It also offers process isolation, making it less susceptible to memory corruption and allowing separate GILs for each worker.
+### How It Works Internally
+On POSIX systems, `Process` uses `os.fork()` by default (start method `fork`), creating a copy of the parent process. On Windows (and with `spawn` method), it starts a new Python interpreter by executing `__main__` or a specified module. The child process gets a fresh GIL, its own memory space, and a copy of the parent's data (though shared memory can be explicitly created).
 
-## Syntax
-
+### Syntax
 ```python
-import multiprocessing as mp
+import multiprocessing
 
-# Process
-p = mp.Process(target=function, args=(arg,))
+p = multiprocessing.Process(target=func, args=(arg,))
 p.start()
-p.join()
+p.join(timeout=5)
+p.terminate()     # force kill
+p.is_alive()
+p.exitcode        # exit code (0 = success)
+p.pid             # process ID
+p.daemon          # daemon flag
 
-# Pool
-with mp.Pool(processes=4) as pool:
-    pool.map(func, iterable)
-    pool.apply(func, args=(arg,))
-    result = pool.apply_async(func, args=(arg,))
-    results = pool.starmap(func, iterable_of_tuples)
-
-# Queue
-q = mp.Queue()
-q.put(item)
-item = q.get()
-
-# Pipe
-conn1, conn2 = mp.Pipe()
-conn1.send(data)
-data = conn2.recv()
-
-# Shared memory
-shared_value = mp.Value('i', 0)
-shared_array = mp.Array('d', [0.0] * 10)
-
-# Manager
-manager = mp.Manager()
-shared_dict = manager.dict()
-shared_list = manager.list()
+# Start methods
+multiprocessing.set_start_method("fork")   # POSIX only
+multiprocessing.set_start_method("spawn")  # Windows default
+multiprocessing.set_start_method("forkserver")  # POSIX
 ```
 
-## Examples
-
-### Basic Process Creation
-
+### Beginner Examples
 ```python
-import multiprocessing as mp
+import multiprocessing
 import os
-import time
 
 def worker(name):
-    pid = os.getpid()
-    print(f"Worker {name} (PID: {pid}) starting")
-    time.sleep(1)
-    print(f"Worker {name} finishing")
+    print(f"Worker {name} running in process {os.getpid()}")
 
 if __name__ == "__main__":
     processes = []
     for i in range(4):
-        p = mp.Process(target=worker, args=(f"W-{i}",))
+        p = multiprocessing.Process(target=worker, args=(i,))
         processes.append(p)
         p.start()
-        print(f"Started process {i}")
-
+    
     for p in processes:
         p.join()
-
-    print("All processes completed")
+    
+    print(f"Main process: {os.getpid()}")
 ```
 
-### Process with Return Values (Queue)
-
+### Intermediate Examples
 ```python
-import multiprocessing as mp
+import multiprocessing
+import os
 import time
-import random
 
-def compute_square(numbers, queue):
-    results = []
-    for n in numbers:
-        time.sleep(random.uniform(0.1, 0.3))
-        results.append(n * n)
-    queue.put(results)
+class WorkerProcess(multiprocessing.Process):
+    def __init__(self, task_id, duration):
+        super().__init__()
+        self.task_id = task_id
+        self.duration = duration
+    
+    def run(self):
+        print(f"Process {self.task_id} (PID: {os.getpid()}) working for {self.duration}s")
+        time.sleep(self.duration)
+        print(f"Process {self.task_id} done")
+        return self.task_id * 2
 
 if __name__ == "__main__":
-    data_chunks = [
-        [1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9],
-    ]
-
-    queue = mp.Queue()
-    processes = []
-    for i, chunk in enumerate(data_chunks):
-        p = mp.Process(target=compute_square, args=(chunk, queue))
-        processes.append(p)
+    # Start all processes
+    procs = [WorkerProcess(i, 2 - i * 0.3) for i in range(4)]
+    for p in procs:
         p.start()
+    
+    # Monitor
+    for p in procs:
+        p.join(timeout=3)
+        if p.is_alive():
+            print(f"Terminating {p.pid}")
+            p.terminate()
+        
+        print(f"Process {p.pid} exit code: {p.exitcode}")
 
-    all_results = []
-    for _ in processes:
-        all_results.extend(queue.get())
+# Process naming and identification
+def show_info():
+    current = multiprocessing.current_process()
+    print(f"Name: {current.name}, PID: {current.pid}, Daemon: {current.daemon}")
 
-    for p in processes:
-        p.join()
-
-    print(f"Results: {sorted(all_results)}")
+if __name__ == "__main__":
+    p = multiprocessing.Process(target=show_info, name="MyWorker")
+    p.start()
+    p.join()
 ```
 
-### Pool.map and Pool.starmap
+### Advanced Examples
+```python
+import multiprocessing
+import os
+import signal
+import time
 
+# Graceful shutdown with Event
+stop_event = multiprocessing.Event()
+
+def worker_with_shutdown():
+    while not stop_event.is_set():
+        print(f"Working (PID: {os.getpid()})")
+        stop_event.wait(1)
+    print(f"Shutting down {os.getpid()}")
+
+if __name__ == "__main__":
+    procs = [multiprocessing.Process(target=worker_with_shutdown) for _ in range(3)]
+    for p in procs: p.start()
+    time.sleep(3)
+    stop_event.set()
+    for p in procs: p.join(timeout=2)
+    
+# Custom start method
+def check_and_set_start():
+    import multiprocessing.context
+    ctx = multiprocessing.get_context("spawn")
+    p = ctx.Process(target=lambda: print("Spawned!"))
+    p.start()
+    p.join()
+
+if __name__ == "__main__":
+    print(f"Start method: {multiprocessing.get_start_method()}")
+    check_and_set_start()
+
+# Process identity and inheritance
+import multiprocessing.shared_memory
+
+class ComputationProcess(multiprocessing.Process):
+    def __init__(self, data_slice, result_queue):
+        super().__init__()
+        self.data_slice = data_slice
+        self.result_queue = result_queue
+    
+    def run(self):
+        # Heavy computation
+        result = sum(x * x for x in self.data_slice)
+        self.result_queue.put(result)
+
+if __name__ == "__main__":
+    large_data = list(range(1000000))
+    chunk_size = len(large_data) // 4
+    q = multiprocessing.Queue()
+    
+    procs = [
+        ComputationProcess(large_data[i:i+chunk_size], q)
+        for i in range(0, len(large_data), chunk_size)
+    ]
+    
+    for p in procs: p.start()
+    for p in procs: p.join()
+    
+    total = sum(q.get() for _ in procs)
+    print(f"Total: {total}")
+```
+
+### Real-World Use Cases
+- **Parallel data processing** — split large datasets across CPU cores
+- **Web scraping at scale** — each process handles independent URL batches
+- **Machine learning** — hyperparameter tuning, model training in parallel
+- **Image/video processing** — frame-by-frame parallel processing
+- **Scientific computing** — Monte Carlo simulations, numerical integration
+
+### Common Mistakes
+- Forgetting the `if __name__ == "__main__":` guard (causes infinite spawning on Windows)
+- Passing unpicklable arguments to Process (all args must be picklable)
+- Starting too many processes (OS resource limit, thrashing)
+- Not handling zombie processes (failing to `join()`)
+- Assuming shared state is automatically synchronized (each process has its own copy)
+
+### Best Practices
+- Always use `if __name__ == "__main__":` guard for cross-platform compatibility
+- Use `Process` for independent tasks; use `Pool` for data parallelism
+- Terminate processes that hang or take too long
+- Use `multiprocessing.Queue` or `Pipe` for inter-process communication
+- Prefer `join()` with timeout to prevent indefinite blocking
+- Limit the number of concurrent processes to `os.cpu_count()`
+
+### Performance Considerations
+- Process creation is expensive (spawn method copies interpreter state)
+- `fork` start method is faster but unsafe in threaded programs
+- IPC (inter-process communication) adds overhead for data transfer
+- Context switching between processes is more expensive than between threads
+- Memory usage scales with number of processes
+
+### Interview Questions
+1. What is the difference between Process and Thread?
+2. What are the three start methods in multiprocessing?
+3. Why must `if __name__ == "__main__":` be used?
+4. How do processes communicate with each other?
+5. What is a zombie process and how do you avoid it?
+
+### Coding Challenges
+- Write a program that computes the sum of squares for a large array using 4 processes
+- Build a parallel file compressor using multiprocessing.Process
+- Create a process pool from scratch that manages worker processes
+
+### Related Topics
+- multiprocessing.Pool, shared memory, Queue, threading, concurrent.futures
+
+## Pool
+### What It Is
+`multiprocessing.Pool` provides a convenient way to parallelize function execution across multiple input values, distributing the work across a pool of worker processes. It supports `map`, `apply`, `starmap`, and `imap` operations.
+
+### Why It Is Important
+Pool abstracts away the complexity of manually managing process creation, task distribution, and result collection. It is the go-to tool for embarrassingly parallel problems — applying the same function to many independent data items.
+
+### How It Works Internally
+Pool maintains a fixed number of worker processes. When `map()` is called, the input iterable is chunked and distributed to worker processes via an internal Queue. Each worker picks up chunks, processes items, and sends results back through a result queue. The `Pool` uses `multiprocessing.Queue` internally for task distribution and result collection.
+
+### Syntax
+```python
+from multiprocessing import Pool
+
+with Pool(processes=4) as pool:
+    results = pool.map(func, iterable)
+    results = pool.starmap(func, iterable_of_tuples)
+    results = pool.map_async(func, iterable).get()
+    result = pool.apply(func, args)
+    result = pool.apply_async(func, args).get()
+    
+    # Lazy iteration
+    for res in pool.imap(func, iterable, chunksize=10):
+        pass
+```
+
+### Beginner Examples
 ```python
 import multiprocessing as mp
 import time
 
 def square(n):
-    time.sleep(0.5)
     return n * n
 
-def multiply(a, b):
-    time.sleep(0.3)
-    return a * b
+if __name__ == "__main__":
+    numbers = list(range(20))
+    
+    # Create a pool with 4 workers
+    with mp.Pool(processes=4) as pool:
+        results = pool.map(square, numbers)
+    
+    print(f"Squares: {results}")
+
+# Parallel sleep (demonstrates parallelism)
+def slow_square(n):
+    time.sleep(1)
+    return n * n
 
 if __name__ == "__main__":
+    start = time.time()
     with mp.Pool(processes=4) as pool:
-        numbers = list(range(10))
-        squares = pool.map(square, numbers)
-        print(f"Map squares: {squares}")
-
-    with mp.Pool(processes=4) as pool:
-        pairs = [(i, j) for i in range(1, 4) for j in range(1, 4)]
-        products = pool.starmap(multiply, pairs)
-        print(f"Starmap products: {products}")
-
-    with mp.Pool(processes=2) as pool:
-        results = []
-        for number in [5, 10, 15, 20]:
-            result = pool.apply_async(square, (number,))
-            results.append(result)
-
-        squares = [r.get() for r in results]
-        print(f"Apply async squares: {squares}")
+        results = pool.map(slow_square, range(8))
+    elapsed = time.time() - start
+    print(f"8 tasks with 4 workers: {elapsed:.2f}s (would be ~8s sequentially)")
 ```
 
-### Pool.imap and imap_unordered
+### Intermediate Examples
+```python
+import multiprocessing as mp
 
+# Starmap for multiple arguments
+def power(base, exp):
+    return base ** exp
+
+if __name__ == "__main__":
+    args = [(2, 3), (3, 4), (4, 5), (5, 6)]
+    with mp.Pool(processes=2) as pool:
+        results = pool.starmap(power, args)
+    print(f"Powers: {results}")
+
+# Apply with single tasks
+def process_data(data, config=None):
+    return {"data": data, "config": config, "result": data * 2}
+
+if __name__ == "__main__":
+    with mp.Pool(processes=2) as pool:
+        result1 = pool.apply(process_data, args=(10,), kwds={"config": "fast"})
+        result2 = pool.apply_async(process_data, args=(20,), kwds={"config": "slow"})
+        print(f"Direct: {result1}")
+        print(f"Async: {result2.get()}")
+
+# Map with chunksize control
+import math
+
+def is_prime(n):
+    if n < 2: return False
+    for i in range(2, int(math.sqrt(n)) + 1):
+        if n % i == 0: return False
+    return True
+
+if __name__ == "__main__":
+    numbers = range(10**7, 10**7 + 1000)
+    with mp.Pool(processes=4) as pool:
+        # Larger chunksize reduces IPC overhead
+        result = any(pool.imap(is_prime, numbers, chunksize=100))
+    print(f"Found prime: {result}")
+
+# imap (lazy) vs map (eager)
+if __name__ == "__main__":
+    with mp.Pool(processes=2) as pool:
+        # imap yields results as they're ready
+        for result in pool.imap_unordered(slow_square, range(10)):
+            print(f"Got: {result}")  # Results in arbitrary order
+```
+
+### Advanced Examples
 ```python
 import multiprocessing as mp
 import time
 import random
+from functools import partial
 
-def slow_square(n):
+# Partial function application with Pool
+def process_row(delimiter, row):
+    fields = row.strip().split(delimiter)
+    return [len(f) for f in fields]
+
+if __name__ == "__main__":
+    data_rows = ["a,b,c", "hello,world", "python,multiprocessing,pool"]
+    
+    process_csv = partial(process_row, ",")
+    
+    with mp.Pool(processes=2) as pool:
+        results = pool.map(process_csv, data_rows)
+    print(f"CSV stats: {results}")
+
+# Progress bar with imap
+def simulate_work(n):
     time.sleep(random.uniform(0.1, 0.5))
     return n * n
 
 if __name__ == "__main__":
-    numbers = list(range(10))
-
-    with mp.Pool(4) as pool:
-        print("imap (ordered):")
-        for result in pool.imap(slow_square, numbers):
-            print(f"  {result}", end=" ")
-        print()
-
-    with mp.Pool(4) as pool:
-        print("\nimap_unordered (completion order):")
-        for result in pool.imap_unordered(slow_square, numbers):
-            print(f"  {result}", end=" ")
-        print()
-```
-
-### Queue for Inter-Process Communication
-
-```python
-import multiprocessing as mp
-import time
-import random
-
-def producer(queue, id, num_items):
-    for i in range(num_items):
-        item = f"P{id}-item-{i}"
-        time.sleep(random.uniform(0.1, 0.3))
-        queue.put(item)
-        print(f"Producer {id}: produced {item}")
-    queue.put(None)
-
-def consumer(queue, id):
-    while True:
-        item = queue.get()
-        if item is None:
-            queue.put(None)
-            break
-        print(f"Consumer {id}: consumed {item}")
-        time.sleep(random.uniform(0.2, 0.4))
-
-if __name__ == "__main__":
-    queue = mp.Queue(maxsize=5)
-
-    producers = [
-        mp.Process(target=producer, args=(queue, i, 5))
-        for i in range(2)
-    ]
-
-    consumers = [
-        mp.Process(target=consumer, args=(queue, i))
-        for i in range(3)
-    ]
-
-    for c in consumers:
-        c.start()
-
-    for p in producers:
-        p.start()
-
-    for p in producers:
-        p.join()
-
-    for c in consumers:
-        c.join()
-
-    print("Queue IPC example completed")
-```
-
-### Pipe for Two-Way Communication
-
-```python
-import multiprocessing as mp
-import time
-
-def worker(conn, name):
-    print(f"{name}: waiting for message...")
-    msg = conn.recv()
-    print(f"{name}: received '{msg}'")
-    time.sleep(0.5)
-    conn.send(f"Response from {name}")
-    conn.close()
-
-if __name__ == "__main__":
-    parent_conn, child_conn = mp.Pipe()
-
-    p = mp.Process(target=worker, args=(child_conn, "Worker"))
-    p.start()
-
-    parent_conn.send("Hello from main process!")
-    response = parent_conn.recv()
-    print(f"Main: received '{response}'")
-
-    p.join()
-    parent_conn.close()
-    print("Pipe example completed")
-```
-
-### Shared Memory (Value and Array)
-
-```python
-import multiprocessing as mp
-import time
-
-def increment_counter(counter, lock, increments):
-    for _ in range(increments):
-        with lock:
-            counter.value += 1
-
-def process_array(shared_arr, lock, start, end):
-    for i in range(start, end):
-        with lock:
-            shared_arr[i] = shared_arr[i] * 2
-
-if __name__ == "__main__":
-    counter = mp.Value("i", 0)
-    lock = mp.Lock()
-
-    processes = [
-        mp.Process(target=increment_counter, args=(counter, lock, 10000))
-        for _ in range(4)
-    ]
-
-    for p in processes:
-        p.start()
-
-    for p in processes:
-        p.join()
-
-    print(f"Counter value: {counter.value} (expected: {40000})")
-
-    shared_arr = mp.Array("d", range(10))
-    processes = [
-        mp.Process(target=process_array, args=(shared_arr, lock, 0, 5)),
-        mp.Process(target=process_array, args=(shared_arr, lock, 5, 10)),
-    ]
-
-    for p in processes:
-        p.start()
-
-    for p in processes:
-        p.join()
-
-    print(f"Doubled array: {list(shared_arr)}")
-```
-
-### Manager for Shared Data Structures
-
-```python
-import multiprocessing as mp
-import time
-
-def worker(shared_dict, shared_list, name):
-    shared_dict[name] = mp.current_process().pid
-    shared_list.append(name)
-    time.sleep(0.5)
-
-if __name__ == "__main__":
-    with mp.Manager() as manager:
-        shared_dict = manager.dict()
-        shared_list = manager.list()
-
-        processes = [
-            mp.Process(target=worker, args=(shared_dict, shared_list, f"W-{i}"))
-            for i in range(4)
-        ]
-
-        for p in processes:
-            p.start()
-
-        for p in processes:
-            p.join()
-
-        print(f"Shared dict: {dict(shared_dict)}")
-        print(f"Shared list: {list(shared_list)}")
-```
-
-### Pool with Context Manager
-
-```python
-import multiprocessing as mp
-import time
-
-def cpu_intensive(n):
-    total = 0
-    for i in range(n):
-        total += i ** 2
-    return total
-
-if __name__ == "__main__":
-    tasks = [10_000_000, 20_000_000, 30_000_000, 15_000_000]
-
-    start = time.time()
+    total = 50
     with mp.Pool(processes=4) as pool:
-        results = pool.map(cpu_intensive, tasks)
+        for i, result in enumerate(pool.imap_unordered(simulate_work, range(total))):
+            # Simple progress indicator
+            if (i + 1) % 10 == 0:
+                print(f"Progress: {i + 1}/{total}")
 
-    elapsed = time.time() - start
-    print(f"Results: {results}")
-    print(f"Parallel execution time: {elapsed:.3f}s")
+# Nested pools (one pool per task)
+def worker_group(group_id, items):
+    with mp.Pool(processes=2) as inner_pool:
+        return inner_pool.map(simulate_work, items)
 
-    start = time.time()
-    serial_results = [cpu_intensive(t) for t in tasks]
-    serial_elapsed = time.time() - start
-    print(f"Serial execution time: {serial_elapsed:.3f}s")
-    print(f"Speedup: {serial_elapsed / elapsed:.2f}x")
+if __name__ == "__main__":
+    groups = [(i, range(i * 10, (i + 1) * 10)) for i in range(4)]
+    with mp.Pool(processes=4) as outer_pool:
+        results = outer_pool.starmap(worker_group, groups)
+    print(f"Group results: {results}")
+
+# Worker initialization and state
+def init_worker(data_ref):
+    global shared_data
+    shared_data = data_ref
+
+def worker_func(x):
+    return x * shared_data["multiplier"]
+
+if __name__ == "__main__":
+    config = {"multiplier": 10}
+    # initializer is called once per worker at startup
+    with mp.Pool(processes=2, initializer=init_worker, initargs=(config,)) as pool:
+        results = pool.map(worker_func, [1, 2, 3, 4])
+    print(f"With initializer: {results}")
 ```
 
-## Beginner Examples
+### Real-World Use Cases
+- **Data processing pipelines** — CSV parsing, image processing, text analysis
+- **Web scraping** — parallel page fetching and parsing
+- **Scientific computing** — parameter sweeps, Monte Carlo simulations
+- **ETL jobs** — transform and load large datasets in parallel
+- **Machine learning** — cross-validation folds, grid search hyperparameters
 
+### Common Mistakes
+- Using `map()` with a generator (it's consumed eagerly but needs a sequence)
+- Not calling `.get()` on `apply_async()` results (errors are silently swallowed)
+- Using `Pool` inside a class method without proper pickling
+- Creating too many workers (oversubscription)
+- Passing large data through `map()` repeatedly (expensive serialization)
+
+### Best Practices
+- Use `with Pool() as pool:` context manager for automatic cleanup
+- Use `chunksize=...` to control granularity — larger for fast functions
+- Use `imap_unordered` for the best performance when order doesn't matter
+- Use `apply_async` for heterogeneous tasks
+- Call `.get()` on async results with timeout to prevent hangs
+- Use `initializer` to set up per-worker state
+- Match `processes` to `os.cpu_count()` for CPU-bound tasks
+
+### Performance Considerations
+- `map()` chunks the iterable and distributes chunks — large chunks reduce IPC
+- `imap` and `imap_unordered` are more memory-efficient than `map`
+- Serialization/pickling of arguments and results adds overhead
+- Pool workers inherit the parent process's memory (with `fork`)
+- Creating and destroying pools is expensive — reuse if possible
+
+### Interview Questions
+1. What is the difference between `map()` and `imap()`?
+2. How does `chunksize` affect performance?
+3. What is the advantage of `imap_unordered` over `imap`?
+4. How do you pass initial state to Pool workers?
+5. What happens when you call `apply_async().get()`?
+
+### Coding Challenges
+- Write a parallel word count using Pool.map on a large text file
+- Build a parallel image thumbnail generator using starmap
+- Implement a simple map-reduce framework using Pool
+
+### Related Topics
+- concurrent.futures.ProcessPoolExecutor, multiprocessing.Process, dask, ray
+
+## Shared memory
+### What It Is
+The `multiprocessing.shared_memory` module (Python 3.8+) allows multiple processes to access the same region of memory, avoiding the overhead of serialization and IPC for large data. It includes `SharedMemory` for raw memory access and `ShareableList` for typed arrays.
+
+### Why It Is Important
+Sharing memory directly eliminates the serialization bottleneck when passing large numpy arrays, images, or dataframes between processes. It enables true zero-copy parallelism for data-intensive workloads.
+
+### How It Works Internally
+`SharedMemory` allocates a POSIX shared memory object (`/dev/shm` on Linux) or a Windows named shared memory section. Each process maps this memory into its address space via `mmap` (POSIX) or `MapViewOfFile` (Windows). The memory is reference-counted — when all handles are closed, the memory is deallocated.
+
+### Syntax
 ```python
-# Parallel file hashing
-import multiprocessing as mp
-import hashlib
-from pathlib import Path
+from multiprocessing import shared_memory
 
-def hash_file(filepath):
-    path = Path(filepath)
-    if not path.is_file():
-        return (filepath, None, "NOT FOUND")
-    content = path.read_bytes()
-    md5 = hashlib.md5(content).hexdigest()
-    sha256 = hashlib.sha256(content).hexdigest()
-    return (filepath, md5, sha256)
+# Create
+shm = shared_memory.SharedMemory(name="myshm", create=True, size=1024)
 
-if __name__ == "__main__":
-    import sys
-    files = [str(p) for p in Path(".").glob("*.py")[:8]]
+# Attach to existing
+shm = shared_memory.SharedMemory(name="myshm")
 
-    if not files:
-        print("No Python files found for hashing demo")
-    else:
-        with mp.Pool(processes=4) as pool:
-            results = pool.map(hash_file, files)
+# Read/write via buffer protocol
+shm.buf[0:4] = bytes([0, 1, 2, 3])
+data = bytes(shm.buf[:10])
 
-        for filepath, md5, sha256 in results:
-            if md5:
-                print(f"{filepath}: MD5={md5[:16]}... SHA256={sha256[:16]}...")
-            else:
-                print(f"{filepath}: {sha256}")
+# ShareableList
+slist = shared_memory.ShareableList(["hello", 42, 3.14])
 
-# Simple worker process pool from scratch
-import multiprocessing as mp
-import time
-from queue import Empty
-
-class SimpleProcessPool:
-    def __init__(self, num_workers):
-        self.tasks = mp.Queue()
-        self.results = mp.Queue()
-        self.workers = []
-
-        for i in range(num_workers):
-            p = mp.Process(target=self._worker_loop, args=(self.tasks, self.results))
-            p.start()
-            self.workers.append(p)
-
-    @staticmethod
-    def _worker_loop(tasks, results):
-        while True:
-            try:
-                task = tasks.get(timeout=1)
-                if task is None:
-                    break
-                func, args, kwargs = task
-                try:
-                    result = func(*args, **kwargs)
-                    results.put((True, result))
-                except Exception as e:
-                    results.put((False, str(e)))
-            except Exception:
-                break
-
-    def submit(self, func, *args, **kwargs):
-        self.tasks.put((func, args, kwargs))
-
-    def get_results(self, timeout=None):
-        collected = []
-        start = time.time()
-        while len(collected) < len(self.workers):
-            try:
-                success, value = self.results.get(timeout=0.1)
-                collected.append(value if success else None)
-            except Exception:
-                if timeout and time.time() - start > timeout:
-                    break
-        return collected
-
-    def shutdown(self):
-        for _ in self.workers:
-            self.tasks.put(None)
-        for w in self.workers:
-            w.join()
+# Cleanup
+shm.close()
+shm.unlink()  # remove the shared memory
 ```
 
-## Intermediate Examples
-
+### Beginner Examples
 ```python
-# Parallel data processing pipeline
-import multiprocessing as mp
-import time
-import random
+from multiprocessing import shared_memory, Process
 
-def stage1_reader(data_chunk):
-    """Simulate reading and parsing raw data."""
-    time.sleep(random.uniform(0.1, 0.2))
-    return [x * 10 for x in data_chunk]
-
-def stage2_processor(data):
-    """Simulate CPU-intensive transformation."""
-    time.sleep(random.uniform(0.2, 0.4))
-    return [x ** 2 for x in data]
-
-def stage3_writer(data):
-    """Simulate writing results."""
-    time.sleep(random.uniform(0.1, 0.2))
-    return sum(data)
+def modify_buffer(name):
+    shm = shared_memory.SharedMemory(name=name)
+    shm.buf[0:5] = b"WORLD"
+    print(f"Child read: {bytes(shm.buf[:11])}")
+    shm.close()
 
 if __name__ == "__main__":
-    data = [list(range(i * 10, (i + 1) * 10)) for i in range(8)]
-
-    start = time.time()
-
-    with mp.Pool(4) as pool1, mp.Pool(4) as pool2, mp.Pool(2) as pool3:
-        stage1_results = pool1.map(stage1_reader, data)
-        stage2_results = pool2.map(stage2_processor, stage1_results)
-        stage3_results = pool3.map(stage3_writer, stage2_results)
-
-    elapsed = time.time() - start
-    print(f"Pipeline results: {stage3_results}")
-    print(f"Total: {sum(stage3_results)}")
-    print(f"Pipeline completed in {elapsed:.3f}s")
-
-# Parallel matrix multiplication
-def multiply_row(args):
-    matrix_a, matrix_b_row, row_idx = args
-    result_row = []
-    n = len(matrix_b_row[0]) if matrix_b_row else 0
-    for j in range(n):
-        total = 0
-        for k in range(len(matrix_a[row_idx])):
-            total += matrix_a[row_idx][k] * matrix_b_row[k][j]
-        result_row.append(total)
-    return result_row
-
-def parallel_matrix_multiply(A, B, num_workers=None):
-    if not A or not B:
-        return []
-    B_transposed = list(zip(*B))
-    with mp.Pool(num_workers) as pool:
-        args = [(A, B_transposed, i) for i in range(len(A))]
-        result = pool.map(multiply_row, args)
-    return result
-
-if __name__ == "__main__":
-    size = 200
-    A = [[1 if i == j else 0 for j in range(size)] for i in range(size)]
-    B = [[i * size + j for j in range(size)] for i in range(size)]
-
-    start = time.time()
-    C = parallel_matrix_multiply(A, B)
-    elapsed = time.time() - start
-    print(f"Matrix multiplication ({size}x{size}) completed in {elapsed:.3f}s")
+    # Create 11 bytes of shared memory (for "HELLO WORLD")
+    shm = shared_memory.SharedMemory(create=True, size=11)
+    shm.buf[:5] = b"HELLO"
+    shm.buf[6:11] = b"WORLD"
+    
+    print(f"Before: {bytes(shm.buf[:11])}")
+    
+    p = Process(target=modify_buffer, args=(shm.name,))
+    p.start()
+    p.join()
+    
+    print(f"After: {bytes(shm.buf[:11])}")
+    shm.close()
+    shm.unlink()
 ```
 
-## Advanced Examples
-
+### Intermediate Examples
 ```python
-# Advanced process manager with dynamic scaling, health checks, and result aggregation
-import multiprocessing as mp
-import time
-import random
-import os
-import signal
-from typing import Callable, List, Any, Optional
+from multiprocessing import shared_memory, Process
+import array
 
-class ProcessWorker(mp.Process):
-    def __init__(self, task_queue, result_queue, worker_id):
-        super().__init__()
-        self.task_queue = task_queue
-        self.result_queue = result_queue
-        self.worker_id = worker_id
-        self.daemon = True
-
-    def run(self):
-        print(f"Worker {self.worker_id} (PID: {os.getpid()}) started")
-        while True:
-            try:
-                task = self.task_queue.get(timeout=1)
-                if task is None:
-                    break
-                task_id, func, args, kwargs = task
-                try:
-                    result = func(*args, **kwargs)
-                    self.result_queue.put((task_id, True, result))
-                except Exception as e:
-                    self.result_queue.put((task_id, False, str(e)))
-            except Exception:
-                break
-        print(f"Worker {self.worker_id} shutting down")
-
-class DynamicProcessPool:
-    def __init__(self, min_workers=2, max_workers=8, idle_timeout=10):
-        self.min_workers = min_workers
-        self.max_workers = max_workers
-        self.idle_timeout = idle_timeout
-        self.task_queue = mp.Queue()
-        self.result_queue = mp.Queue()
-        self.workers: List[ProcessWorker] = []
-        self.next_task_id = 0
-        self.pending_tasks = {}
-        self._stop = mp.Event()
-
-        self._start_workers(min_workers)
-
-    def _start_workers(self, count):
-        for _ in range(count):
-            w = ProcessWorker(self.task_queue, self.result_queue, len(self.workers))
-            w.start()
-            self.workers.append(w)
-
-    def submit(self, func: Callable, *args, **kwargs) -> int:
-        task_id = self.next_task_id
-        self.next_task_id += 1
-        self.pending_tasks[task_id] = (func, args, kwargs)
-        self.task_queue.put((task_id, func, args, kwargs))
-
-        if len(self.pending_tasks) > len(self.workers) * 2 and len(self.workers) < self.max_workers:
-            self._start_workers(1)
-            print(f"Scaled up to {len(self.workers)} workers")
-
-        return task_id
-
-    def get_results(self, timeout: Optional[float] = None) -> List[Any]:
-        results = []
-        collected = set()
-        deadline = time.time() + timeout if timeout else None
-
-        while len(collected) < len(self.pending_tasks):
-            try:
-                remaining = (deadline - time.time()) if deadline else 1
-                task_id, success, value = self.result_queue.get(timeout=min(remaining, 1))
-                if task_id not in collected:
-                    collected.add(task_id)
-                    if success:
-                        results.append(value)
-                    else:
-                        print(f"Task {task_id} failed: {value}")
-            except Exception:
-                if deadline and time.time() > deadline:
-                    print(f"Timeout waiting for {len(self.pending_tasks) - len(collected)} tasks")
-                    break
-
-        return results
-
-    def shutdown(self):
-        for _ in self.workers:
-            self.task_queue.put(None)
-        for w in self.workers:
-            w.join(timeout=5)
-        print(f"Pool shut down. {len(self.workers)} workers terminated.")
-
-def heavy_compute(x):
-    time.sleep(random.uniform(0.5, 1.5))
-    return x * x * x
-
-pool = DynamicProcessPool(min_workers=2, max_workers=6)
-
-task_ids = []
-for i in range(20):
-    tid = pool.submit(heavy_compute, i)
-    task_ids.append(tid)
-
-results = pool.get_results(timeout=30)
-print(f"Collected {len(results)} results: {sorted(results)[:5]}...{sorted(results)[-5:]}")
-
-pool.shutdown()
-
-# Parallel genetic algorithm skeleton
-import multiprocessing as mp
-import random
-
-def evaluate_fitness(individual):
-    """Evaluate fitness function for a single individual."""
-    return sum(gene ** 2 for gene in individual)
-
-def mutate(individual, mutation_rate=0.1):
-    return [
-        gene + random.gauss(0, 1) if random.random() < mutation_rate else gene
-        for gene in individual
-    ]
-
-def crossover(parent1, parent2):
-    point = random.randint(1, len(parent1) - 1)
-    child = parent1[:point] + parent2[point:]
-    return child
-
-def parallel_ga_step(args):
-    population, fitness_fn, mutation_rate, elite_count = args
-    fitnesses = [fitness_fn(ind) for ind in population]
-    sorted_indices = sorted(range(len(fitnesses)), key=lambda i: fitnesses[i])
-    population = [population[i] for i in sorted_indices]
-
-    elite = population[:elite_count]
-    offspring = elite[:]
-
-    while len(offspring) < len(population):
-        p1 = random.choice(population[:len(population)//2])
-        p2 = random.choice(population[:len(population)//2])
-        child = crossover(p1, p2)
-        child = mutate(child, mutation_rate)
-        offspring.append(child)
-
-    return offspring, fitnesses[sorted_indices[0]]
-
-class ParallelGeneticAlgorithm:
-    def __init__(self, population_size=100, genome_length=10, num_islands=4):
-        self.population_size = population_size
-        self.genome_length = genome_length
-        self.num_islands = num_islands
-
-    def run(self, generations=50):
-        islands = [
-            [[random.gauss(0, 1) for _ in range(self.genome_length)]
-             for _ in range(self.population_size // self.num_islands)]
-            for _ in range(self.num_islands)
-        ]
-
-        with mp.Pool(self.num_islands) as pool:
-            for gen in range(generations):
-                args = [(island, evaluate_fitness, 0.1, 2) for island in islands]
-                results = pool.map(parallel_ga_step, args)
-
-                best_fitness = min(r[1] for r in results)
-                islands = [r[0] for r in results]
-
-                if gen % 10 == 0:
-                    print(f"Generation {gen}: best fitness = {best_fitness:.4f}")
-
-        return islands
+# Share numeric arrays via shared memory
+def worker(shm_name, size):
+    shm = shared_memory.SharedMemory(name=shm_name)
+    arr = array.array("i", [0]) * size
+    arr.buffer_info()  # Use buffer protocol
+    # Read from shared memory into array
+    for i in range(size):
+        # Read 4 bytes per int
+        val = int.from_bytes(shm.buf[i*4:(i+1)*4], "little")
+        shm.buf[i*4:(i+1)*4] = (val * 2).to_bytes(4, "little")
+    shm.close()
 
 if __name__ == "__main__":
-    ga = ParallelGeneticAlgorithm(population_size=40, genome_length=5, num_islands=4)
-    final_populations = ga.run(generations=20)
-    print(f"Final population size: {sum(len(p) for p in final_populations)}")
+    size = 1000
+    shm = shared_memory.SharedMemory(create=True, size=size * 4)
+    
+    # Initialize with values 0..999
+    for i in range(size):
+        shm.buf[i*4:(i+1)*4] = i.to_bytes(4, "little")
+    
+    p = Process(target=worker, args=(shm.name, size))
+    p.start()
+    p.join()
+    
+    # Read results
+    results = [int.from_bytes(shm.buf[i*4:(i+1)*4], "little") for i in range(size)]
+    print(f"First 10 values: {results[:10]}")  # Each value doubled
+    
+    shm.close()
+    shm.unlink()
 ```
 
-## Real-World Use Cases
+### Advanced Examples
+```python
+from multiprocessing import shared_memory, Process
+import numpy as np
 
-- **Image/Video processing**: Applying filters, transformations, or encoding to multiple frames in parallel
-- **Data science preprocessing**: Parallel feature extraction, normalization, and data cleaning on large datasets
-- **Scientific simulations**: Monte Carlo simulations, parameter sweeps, and ensemble computations
-- **Web scraping**: Crawling multiple pages simultaneously without being limited by I/O
-- **Batch file processing**: Converting, compressing, or analyzing thousands of files
-- **Machine learning**: Parallel grid search for hyperparameter tuning, ensemble training
+# Zero-copy numpy array sharing
+def process_numpy(shm_name, shape, dtype):
+    shm = shared_memory.SharedMemory(name=shm_name)
+    arr = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
+    
+    # Modify in-place (zero-copy)
+    arr[:] = arr * 2
+    
+    shm.close()
 
-## Common Mistakes
+if __name__ == "__main__":
+    # Create a large numpy array
+    shape = (1000, 1000)
+    original = np.ones(shape, dtype=np.float64)
+    nbytes = original.nbytes
+    
+    # Create shared memory and map numpy array to it
+    shm = shared_memory.SharedMemory(create=True, size=nbytes)
+    shared_arr = np.ndarray(shape, dtype=np.float64, buffer=shm.buf)
+    shared_arr[:] = original  # Copy data into shared memory
+    
+    # Process modifies in-place
+    p = Process(target=process_numpy, args=(shm.name, shape, np.float64))
+    p.start()
+    p.join()
+    
+    print(f"First element: {shared_arr[0, 0]}")  # 2.0 (doubled)
+    
+    shm.close()
+    shm.unlink()
 
-- Forgetting to wrap process-spawning code in `if __name__ == "__main__":` on Windows
-- Passing unpicklable objects (lambdas, bound methods) as targets or arguments
-- Creating more processes than CPU cores, causing excessive context switching
-- Not handling process termination properly, leaving zombie processes
-- Using shared state without proper synchronization (locks on shared Value/Array)
-- Overusing Manager for data sharing (slower than Value/Array/Pipe)
-- Ignoring that `fork` (default on Linux) can cause deadlocks with threads
-- Not closing Queues and Pipes, leading to resource leaks
+# ShareableList example
+def modify_shareable(shm_name):
+    slist = shared_memory.ShareableList(name=shm_name)
+    slist[0] = slist[0].upper()
+    slist[1] = slist[1] * 2
+    slist.shm.close()
 
-## Best Practices
+if __name__ == "__main__":
+    slist = shared_memory.ShareableList(
+        ["hello", 42, 3.14, "world"],
+        name="mylist"
+    )
+    
+    p = Process(target=modify_shareable, args=(slist.shm.name,))
+    p.start()
+    p.join()
+    
+    print(f"After: list(slist) = {list(slist)}")
+    
+    slist.shm.close()
+    slist.shm.unlink()
 
-- Always guard process-spawning code with `if __name__ == "__main__":`
-- Use `Pool` for most parallel tasks instead of managing individual processes
-- Prefer `Pool.map()` and `Pool.starmap()` for data-parallel operations
-- Use `mp.Queue` or `mp.Pipe` for communication, avoiding shared state when possible
-- Use `mp.Manager` for complex shared data structures, `mp.Value`/`mp.Array` for simple types
-- Set reasonable chunk sizes in `map` to balance load distribution
-- Use `pool.imap_unordered()` when result order doesn't matter for better performance
-- Always terminate pools with `pool.close()` followed by `pool.join()`
+# Race condition demonstration (need locking with shared memory)
+from multiprocessing import Lock
 
-## Interview Questions
+def unsafe_increment(shm_name, lock):
+    shm = shared_memory.SharedMemory(name=shm_name)
+    for _ in range(1000):
+        with lock:
+            val = int.from_bytes(shm.buf[0:4], "little")
+            val += 1
+            shm.buf[0:4] = val.to_bytes(4, "little")
+    shm.close()
 
-1. **Q**: How does multiprocessing bypass the GIL?
-   **A**: Each process has its own Python interpreter with its own GIL, so multiple processes can execute Python bytecode truly in parallel across CPU cores.
+if __name__ == "__main__":
+    shm = shared_memory.SharedMemory(create=True, size=4)
+    shm.buf[0:4] = (0).to_bytes(4, "little")
+    lock = Lock()
+    
+    procs = [Process(target=unsafe_increment, args=(shm.name, lock)) for _ in range(4)]
+    for p in procs: p.start()
+    for p in procs: p.join()
+    
+    result = int.from_bytes(shm.buf[0:4], "little")
+    print(f"Counter: {result} (expected 4000)")
+    
+    shm.close()
+    shm.unlink()
+```
 
-2. **Q**: What is the difference between `Pool.map()` and `Pool.apply_async()`?
-   **A**: `Pool.map()` applies a function to every item in an iterable, blocking until all results are ready. `Pool.apply_async()` submits a single task and returns a result object immediately, allowing asynchronous result retrieval.
+### Real-World Use Cases
+- **Data science** — sharing large DataFrames/numpy arrays between processes
+- **Video processing** — raw frame buffer shared across encoding processes
+- **Real-time systems** — sensor data shared between acquisition and processing
+- **Web servers** — shared cache among worker processes
+- **Game engines** — shared world state across process boundaries
 
-3. **Q**: When would you use `mp.Queue` vs `mp.Pipe`?
-   **A**: Use Queue for multiple producers/consumers (thread-safe, supports many-to-many). Use Pipe for two-way communication between two processes (simpler and faster for point-to-point).
+### Common Mistakes
+- Forgetting to `unlink()` shared memory (causes resource leak)
+- Not using synchronization (locks) with shared mutable data
+- Using `SharedMemory` with incompatible Python versions (< 3.8)
+- Assuming `ShareableList` supports arbitrary types (limited to basic types)
+- Creating shared memory without checking if it already exists
 
-4. **Q**: What is the difference between `fork`, `spawn`, and `forkserver` start methods?
-   **A**: `fork` (default on Unix) clones the parent process including all threads, which can cause deadlocks. `spawn` (default on Windows) starts a fresh Python process. `forkserver` (Unix) uses a server process that forks for each new process, avoiding thread issues.
+### Best Practices
+- Always pair `create=True` with an eventual `unlink()` call
+- Use `try/finally` to ensure cleanup on exceptions
+- Use Lock or other synchronization for mutable shared data
+- Prefer `ShareableList` for simple shared data structures
+- Use numpy's buffer interface for zero-copy array sharing
+- Name shared memory segments meaningfully for debugging
+- Close shared memory in all processes after use
 
-5. **Q**: How do you share state between processes?
-   **A**: Options include: (1) `mp.Value`/`mp.Array` for simple shared memory, (2) `mp.Manager` for high-level shared objects, (3) `mp.Queue`/`mp.Pipe` for message passing, (4) Redis or other external stores for distributed state.
+### Performance Considerations
+- Shared memory is significantly faster than Queue/Pipe for large data (microseconds vs milliseconds)
+- No serialization overhead — zero-copy access
+- Memory is allocated once and mapped into each process
+- Synchronization (Lock) adds overhead when coordinating writes
+- `ShareableList` uses more memory than raw `SharedMemory` (metadata overhead)
 
-## Coding Challenges
+### Interview Questions
+1. How does `multiprocessing.shared_memory` differ from using `Queue`?
+2. What happens if you don't call `unlink()` on a `SharedMemory` object?
+3. How can numpy arrays be shared between processes with shared memory?
+4. What types does `ShareableList` support?
+5. What synchronization issues arise with shared memory?
 
-1. **Parallel Prime Sieve**: Implement a parallel version of the Sieve of Eratosthenes that splits the number range across multiple processes and merges results.
+### Coding Challenges
+- Build a shared counter that multiple processes increment safely
+- Implement a producer-consumer with shared memory ring buffer
+- Create a parallel image processing pipeline sharing image buffers via shared memory
+- Write a benchmark comparing Queue vs shared memory for large data transfer
 
-2. **Distributed MapReduce**: Build a simple MapReduce framework using multiprocessing. Implement word count as a test case with mapper and reducer processes.
-
-3. **Parallel Image Processor**: Write a script that applies a filter (e.g., Gaussian blur) to multiple images in parallel using a process pool.
-
-4. **Monte Carlo Pi Estimator**: Estimate pi using Monte Carlo simulation with parallel workers, each running a fraction of the total samples.
-
-5. **Process Monitoring Dashboard**: Create a tool that spawns worker processes, monitors their CPU/memory usage, and provides a live dashboard of their status.
-
-## Summary
-
-The `multiprocessing` module provides true parallelism in Python by spawning separate processes with independent GILs. Key components include Process, Pool, Queue, Pipe, Value/Array for shared memory, and Manager for complex shared data. Multiprocessing is the go-to solution for CPU-bound tasks that need to utilize multiple cores.
-
-## Related Topics
-
-Multithreading (59.x), Thread Safety (63.x), GIL (64.x), Async IO (61.x)
+### Related Topics
+- multiprocessing.Queue, multiprocessing.Pipe, mmap, numpy, multiprocessing.Manager

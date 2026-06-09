@@ -2,486 +2,569 @@
 
 ## Introduction
 
-An iterator is an object that defines a sequence of values and implements the **iterator protocol**, consisting of two methods: `__iter__()` (which returns itself) and `__next__()` (which returns the next value or raises `StopIteration`). Iterators allow uniform traversal of container types, streams, and custom data sources. The `for` loop in Python works by calling `iter()` on the target object to get an iterator, then repeatedly calling `next()` until `StopIteration` is raised.
+Iterators are the engine behind Python's `for` loop and all iteration constructs. Any object that can produce a sequence of values one at a time via the iterator protocol is an iterator. The protocol consists of two methods: `__iter__()` (return the iterator object itself) and `__next__()` (return the next value or raise `StopIteration`). Understanding iterators is fundamental to mastering Python's data processing capabilities.
 
-## Why It Is Important
+## __iter__ and __next__
 
-The iterator protocol is the foundation of iteration in Python. It enables lazy evaluation (values produced on demand), uniform access to diverse data structures (lists, strings, files, dictionaries, sets), and integration with the `for` loop, comprehensions, and `map()`/`filter()` functions. Understanding iterators is essential for creating custom iterable objects and for grasping how generators, `itertools`, and async iteration work under the hood.
+### What It Is
 
-## Syntax
+`__iter__` and `__next__` are the two methods that define the iterator protocol in Python. `__iter__` should return the iterator object (usually `self`). `__next__` should return the next value in the sequence, raising `StopIteration` when there are no more items. Together, they allow an object to be used in `for` loops and other iteration contexts.
+
+### Why It Is Important
+
+The iterator protocol provides a uniform interface for iterating over any sequence of values, whether the underlying data is a list, a file, a database cursor, or a generated sequence. This abstraction allows functions and loops to work with any iterable without knowing its internal structure, enabling polymorphic iteration.
+
+### How It Works Internally
+
+When Python executes a `for x in obj` loop, it calls `iter(obj)` which invokes `obj.__iter__()` to get an iterator. Then it repeatedly calls `next(iterator)` which invokes `iterator.__next__()`, catching `StopIteration` to exit the loop. This protocol is implemented at the C level for built-in types and is the foundation of all iteration in Python.
+
+### Syntax
 
 ```python
-# Iterator protocol
-class MyIterator:
+class IteratorClass:
+    def __iter__(self):
+        return self  # Usually return self for iterator objects
+
+    def __next__(self):
+        if not more_items:
+            raise StopIteration
+        return next_value
+```
+
+### Beginner Examples
+
+```python
+class CountDown:
+    def __init__(self, start):
+        self.current = start
+
     def __iter__(self):
         return self
 
     def __next__(self):
-        if no_more_items:
+        if self.current <= 0:
             raise StopIteration
-        return next_item
+        value = self.current
+        self.current -= 1
+        return value
 
-# Iterable protocol
-class MyIterable:
+for num in CountDown(5):
+    print(num)  # 5, 4, 3, 2, 1
+
+# Equivalent manual iteration
+counter = iter(CountDown(3))
+print(next(counter))  # 3
+print(next(counter))  # 2
+print(next(counter))  # 1
+# print(next(counter))  # StopIteration
+```
+
+### Intermediate Examples
+
+```python
+class FileLineReader:
+    def __init__(self, filename):
+        self.filename = filename
+        self.file = None
+
     def __iter__(self):
-        return MyIterator()
+        self.file = open(self.filename)
+        return self
 
-# Built-in functions
-iterator = iter(iterable)
-item = next(iterator)
-item = next(iterator, default_value)  # No StopIteration if provided
-```
+    def __next__(self):
+        line = self.file.readline()
+        if not line:
+            self.file.close()
+            raise StopIteration
+        return line.strip()
 
-## Examples
+# Usage: for line in FileLineReader("data.txt"): print(line)
 
-```python
-from typing import Iterator, Any, Optional
-import sys
-```
 
-### Manually Using an Iterator
-
-```python
-numbers = [10, 20, 30]
-it = iter(numbers)
-print(next(it))  # 10
-print(next(it))  # 20
-print(next(it))  # 30
-# print(next(it))  # Raises StopIteration
-```
-
-### Using next() with Default
-
-```python
-it = iter([1, 2, 3])
-print(next(it, "END"))
-print(next(it, "END"))
-print(next(it, "END"))
-print(next(it, "END"))  # "END" instead of StopIteration
-```
-
-### for Loop Internals
-
-```python
-# Internally, this:
-for x in [1, 2, 3]:
-    print(x)
-
-# Is equivalent to:
-_it = iter([1, 2, 3])
-while True:
-    try:
-        x = next(_it)
-    except StopIteration:
-        break
-    print(x)
-```
-
-## Beginner Examples
-
-### Custom Iterator for a Range-like Object
-
-```python
-class MyRange:
-    """Custom iterator that behaves like built-in range."""
-    def __init__(self, start: int, stop: int, step: int = 1) -> None:
+class Range:
+    """Custom range implementation."""
+    def __init__(self, start, stop, step=1):
         self.current = start
         self.stop = stop
         self.step = step
 
-    def __iter__(self) -> 'MyRange':
+    def __iter__(self):
         return self
 
-    def __next__(self) -> int:
-        if self.current >= self.stop:
+    def __next__(self):
+        if (self.step > 0 and self.current >= self.stop) or \
+           (self.step < 0 and self.current <= self.stop):
             raise StopIteration
         value = self.current
         self.current += self.step
         return value
 
-for i in MyRange(0, 10, 2):
-    print(i)
+print(list(Range(1, 10, 2)))  # [1, 3, 5, 7, 9]
 ```
 
-### Iterable vs Iterator
+### Advanced Examples
 
 ```python
-# A list is iterable (has __iter__), but not an iterator (no __next__)
-my_list = [1, 2, 3]
-print(hasattr(my_list, '__iter__'))   # True
-print(hasattr(my_list, '__next__'))   # False
+class CircularBuffer:
+    def __init__(self, items):
+        self.items = items
+        self.index = 0
 
-# Getting an iterator from it
-it = iter(my_list)
-print(hasattr(it, '__iter__'))   # True
-print(hasattr(it, '__next__'))   # True
-print(it is iter(it))            # True -- iterators are also iterable
+    def __iter__(self):
+        self.index = 0
+        return self
+
+    def __next__(self):
+        if self.index >= len(self.items):
+            raise StopIteration
+        value = self.items[self.index]
+        self.index = (self.index + 1) % len(self.items)
+        return value
+
+    def infinite_cycle(self):
+        while True:
+            yield from self.items
+
+# Iterator vs iterable separation
+class IterableCollection:
+    def __init__(self, data):
+        self.data = data
+
+    def __iter__(self):
+        return Iterator(self.data)
+
+class Iterator:
+    def __init__(self, data):
+        self.data = data
+        self.index = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.index >= len(self.data):
+            raise StopIteration
+        value = self.data[self.index]
+        self.index += 1
+        return value
+
+# Multiple independent iterators
+collection = IterableCollection([1, 2, 3])
+it1 = iter(collection)
+it2 = iter(collection)
+print(next(it1))  # 1
+print(next(it2))  # 1 (independent)
 ```
 
-### Iterator for Fibonacci Sequence
+### Real-World Use Cases
+
+- **Database cursors**: Database drivers implement iterators over query results.
+- **File objects**: Python's file objects are iterators over lines.
+- **Network streams**: Iterator over incoming data packets.
+- **Paginated API responses**: Iterator that transparently fetches next pages.
+- **Lazy data loading**: Iterators over chunks of large datasets.
+
+### Common Mistakes
+
+- Making an object iterable but not an iterator (needs `__iter__` only for iterable, both for iterator).
+- Returning `self` from `__iter__` when the object is not an iterator (use separate iterator class).
+- Not resetting state when `__iter__` is called on a reusable iterator.
+- Forgetting to raise `StopIteration` (causes infinite loop).
+- Implementing `__next__` without `__iter__` (object won't work in `for` loops directly).
+
+### Best Practices
+
+- Separate iterables (have `__iter__` return a new iterator) from iterators (implement both).
+- Use generators instead of custom iterator classes for simple cases.
+- Ensure `__iter__` returns a fresh iterator for iterables (supports multiple passes).
+- Raise `StopIteration` cleanly — don't use `return` as a substitute.
+- Implement `__length_hint__` if the iterator can estimate remaining items.
+
+### Performance Considerations
+
+Iterator overhead is minimal — each `__next__` call is a single Python function call. The real cost is in the computation per item. File iterators buffer reads for efficiency. Custom iterators should avoid per-item overhead by processing in batches where possible.
+
+### Interview Questions
+
+**Q: What is the difference between an iterable and an iterator?**
+
+A: An iterable has `__iter__()` that returns an iterator. An iterator has both `__iter__()` (returns self) and `__next__()` (raises `StopIteration` when done). All iterators are iterables, but not vice versa. Lists, tuples, and strings are iterables but not iterators.
+
+**Q: What happens when you call `next()` on a generator?**
+
+A: It executes the generator function until the next `yield`, returns the yielded value, and suspends. On `StopIteration`, the generator is exhausted.
+
+**Q: Can you reset an iterator?**
+
+A: No standard way. You must create a new iterator from the iterable. Some custom iterators can add a `reset()` method, but that's non-standard.
+
+### Coding Challenges
+
+1. Implement an `Iterator` class that iterates over only the even-indexed elements of a sequence.
+2. Create a `PeekableIterator` that implements `__next__` and has a `peek()` method to look at the next value without consuming it.
+3. Implement a `ZipIterator` that yields tuples from multiple iterables, stopping when any is exhausted.
+4. Build an iterator that yields all permutations of a list without using `itertools`.
+
+### Related Topics
+
+- Generators (the easiest way to create iterators)
+- `StopIteration` exception
+- `for` loop internals
+- `itertools` module (advanced iterator tools)
+- Async iterators (`__aiter__`, `__anext__`)
+
+## iter() and next()
+
+### What It Is
+
+`iter()` is a built-in function that returns an iterator for a given object. `next()` is a built-in function that retrieves the next item from an iterator. These are the standard Python interfaces for working with iterators without explicit `for` loop syntax.
+
+### Why It Is Important
+
+`iter()` and `next()` give programmers fine-grained control over iteration. They are essential for manual iteration, implementing custom iteration patterns (such as partial consumption or conditional advancement), and working with iterators in contexts where `for` loops are inconvenient.
+
+### How It Works Internally
+
+`iter(obj)` calls `obj.__iter__()`. If `obj` supports the sequence protocol (`__getitem__` with integer indices starting at 0), Python creates a sequence iterator that calls `__getitem__` with increasing indices until `IndexError`. `next(iterator)` calls `iterator.__next__()`.
+
+### Syntax
+
+```python
+iterator = iter(iterable)           # Get iterator
+item = next(iterator)               # Get next item
+item = next(iterator, default)      # Get next or default if exhausted
+```
+
+### Beginner Examples
+
+```python
+fruits = ["apple", "banana", "cherry"]
+it = iter(fruits)
+
+print(next(it))  # apple
+print(next(it))  # banana
+print(next(it))  # cherry
+# print(next(it))  # StopIteration
+
+# With default value
+it = iter([1, 2, 3])
+print(next(it, "done"))  # 1
+print(next(it, "done"))  # 2
+print(next(it, "done"))  # 3
+print(next(it, "done"))  # done (no exception)
+```
+
+### Intermediate Examples
+
+```python
+def consume(iterator, n):
+    """Consume n items from an iterator and return them as a list."""
+    result = []
+    for _ in range(n):
+        try:
+            result.append(next(iterator))
+        except StopIteration:
+            break
+    return result
+
+it = iter(range(100))
+first_10 = consume(it, 10)
+print(first_10)  # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+next_5 = consume(it, 5)
+print(next_5)    # [10, 11, 12, 13, 14]
+
+# iter() with callable and sentinel
+def read_blocks(file_obj, block_size=1024):
+    return iter(lambda: file_obj.read(block_size), "")
+
+with open("data.txt") as f:
+    for block in read_blocks(f):
+        print(f"Read block of {len(block)} bytes")
+```
+
+### Advanced Examples
+
+```python
+class PaginatedAPI:
+    def __init__(self, base_url, page_size=50):
+        self.base_url = base_url
+        self.page_size = page_size
+        self.page = 0
+        self.items = []
+        self.index = 0
+
+    def fetch_page(self, page_num):
+        import requests
+        resp = requests.get(
+            f"{self.base_url}?page={page_num}&size={self.page_size}"
+        )
+        return resp.json().get("results", [])
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.index >= len(self.items):
+            self.page += 1
+            self.items = self.fetch_page(self.page)
+            self.index = 0
+            if not self.items:
+                raise StopIteration
+        value = self.items[self.index]
+        self.index += 1
+        return value
+
+# Manual control with next() and sentinel
+def find_first(predicate, iterable):
+    """Return the first item matching predicate, or None."""
+    return next((item for item in iterable if predicate(item)), None)
+
+first_even = find_first(lambda x: x % 2 == 0, [1, 3, 5, 7, 8, 9])
+print(first_even)  # 8
+```
+
+### Real-World Use Cases
+
+- **Processing head of a stream**: Use `next()` to check first item before processing rest.
+- **Combining iterators**: `zip()` and `map()` work with `iter()` internally.
+- **Sentinel-based reading**: `iter(f.read, '')` for reading file chunks until empty.
+- **Default values**: `next(it, default)` to avoid `StopIteration` when iterable might be empty.
+- **Skipping items**: Call `next()` multiple times to skip header lines.
+
+### Common Mistakes
+
+- Forgetting that `iter()` raises `TypeError` for non-iterables.
+- Using `next()` on an exhausted iterator without a default (raises `StopIteration`).
+- Calling `iter()` on an iterator (returns `self`, which is already consumed).
+- Expecting `iter()` to work on objects without `__iter__` or `__getitem__`.
+
+### Best Practices
+
+- Use the two-argument form of `next(iterator, default)` to avoid `StopIteration`.
+- Prefer `for` loops over manual `next()` for full iteration.
+- Use `iter(callable, sentinel)` for repeated function calls until a termination condition.
+- Use `next()` with generator expressions for "find first" patterns.
+
+### Performance Considerations
+
+`iter()` and `next()` are C-optimized and very fast. The two-argument `next()` avoids exception handling overhead by returning a default instead of raising `StopIteration`. The `iter(callable, sentinel)` form is more efficient than an equivalent `while` loop because the sentinel check is done in C.
+
+### Interview Questions
+
+**Q: What is the sentinel form of `iter()` and when is it useful?**
+
+A: `iter(callable, sentinel)` repeatedly calls `callable` until it returns `sentinel`. It's useful for reading blocks from files (`iter(f.read, '')`) or processing streams until a termination marker.
+
+**Q: How does `iter()` handle objects without `__iter__`?**
+
+A: If `__iter__` is not defined, `iter()` looks for `__getitem__`. If found, it creates a sequence iterator that calls `__getitem__` with increasing indices starting from 0, catching `IndexError` to stop. This allows iteration over legacy sequence-like objects.
+
+### Coding Challenges
+
+1. Implement `iter()` manually using only `__getitem__` and `IndexError`.
+2. Use `iter(callable, sentinel)` to implement a `until` function that calls a function until it returns a specific value.
+3. Write a function `batched(iterable, n)` that uses `iter()` and `next()` to yield chunks of `n` items.
+
+### Related Topics
+
+- `for` loop internals
+- Generator functions
+- `StopIteration` exception
+- `itertools.islice` (for slicing iterators)
+- Sequence protocol (`__getitem__`)
+
+## Custom Iterators
+
+### What It Is
+
+Custom iterators are user-defined classes that implement the iterator protocol (`__iter__` and `__next__`). They allow creating objects that can produce sequences of values tailored to specific business logic, such as traversing custom data structures, generating algorithmic sequences, or wrapping external resources.
+
+### Why It Is Important
+
+Custom iterators encapsulate iteration logic in a reusable, testable class. They provide a clean interface for complex iteration patterns that cannot be expressed with simple generators or built-in types. They are essential when the iteration logic involves maintaining state, managing resources, or implementing domain-specific traversal rules.
+
+### How It Works Internally
+
+Custom iterators work exactly like built-in iterators at the protocol level. The Python interpreter calls `__iter__` to obtain an iterator and `__next__` to advance it. The `StopIteration` exception signals completion. The key difference is that custom iterators can maintain arbitrary state, interact with external systems, and implement complex termination logic.
+
+### Syntax
+
+```python
+class CustomIterator:
+    def __init__(self, *args):
+        # Initialize state
+        pass
+
+    def __iter__(self):
+        return self  # Usually self for iterators
+
+    def __next__(self):
+        if not self._has_more():
+            raise StopIteration
+        return self._next_value()
+```
+
+### Beginner Examples
+
+```python
+class EvenNumbers:
+    def __init__(self, limit):
+        self.limit = limit
+        self.current = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.current > self.limit:
+            raise StopIteration
+        value = self.current
+        self.current += 2
+        return value
+
+for num in EvenNumbers(10):
+    print(num)  # 0, 2, 4, 6, 8, 10
+```
+
+### Intermediate Examples
 
 ```python
 class FibonacciIterator:
-    def __init__(self, max_count: int) -> None:
+    def __init__(self, max_value=None, max_count=None):
+        self.max_value = max_value
         self.max_count = max_count
         self.count = 0
         self.a, self.b = 0, 1
 
-    def __iter__(self) -> 'FibonacciIterator':
+    def __iter__(self):
         return self
 
-    def __next__(self) -> int:
-        if self.count >= self.max_count:
+    def __next__(self):
+        if self.max_count and self.count >= self.max_count:
+            raise StopIteration
+        if self.max_value is not None and self.a > self.max_value:
             raise StopIteration
         value = self.a
         self.a, self.b = self.b, self.a + self.b
         self.count += 1
         return value
 
-for fib in FibonacciIterator(10):
-    print(fib)
-```
+fib = FibonacciIterator(max_count=10)
+print(list(fib))  # [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
 
-### Infinite Iterator
 
-```python
-class NaturalNumbers:
-    def __iter__(self) -> 'NaturalNumbers':
+class BatchIterator:
+    """Iterate over an iterable in batches."""
+    def __init__(self, iterable, batch_size):
+        self.iterator = iter(iterable)
+        self.batch_size = batch_size
+        self.exhausted = False
+
+    def __iter__(self):
         return self
 
-    def __next__(self) -> int:
-        self.n = getattr(self, 'n', 0) + 1
-        return self.n
-
-import itertools
-nat = NaturalNumbers()
-first_10 = list(itertools.islice(nat, 10))
-print(first_10)
-```
-
-## Intermediate Examples
-
-### Sentinel-based Iteration
-
-```python
-def until_sentinel() -> Iterator[str]:
-    """Read input lines until empty string."""
-    return iter(input, "")  # iter(callable, sentinel)
-
-# print("Enter text (blank to stop):")
-# for line in until_sentinel():
-#     print(f"> {line}")
-```
-
-### Bidirectional Iterator
-
-```python
-class BidirectionalIterator:
-    def __init__(self, data: list[Any]) -> None:
-        self.data = data
-        self._index = 0
-
-    def __iter__(self) -> 'BidirectionalIterator':
-        return self
-
-    def __next__(self) -> Any:
-        if self._index >= len(self.data):
+    def __next__(self):
+        if self.exhausted:
             raise StopIteration
-        value = self.data[self._index]
-        self._index += 1
-        return value
-
-    def prev(self) -> Any:
-        if self._index <= 0:
-            raise StopIteration
-        self._index -= 1
-        return self.data[self._index]
-
-it = BidirectionalIterator([10, 20, 30, 40])
-print(next(it))
-print(next(it))
-print(it.prev())
-print(next(it))
-```
-
-### Iterator with Peek Support
-
-```python
-class PeekableIterator:
-    def __init__(self, iterable: Iterable[Any]) -> None:
-        self._iterator = iter(iterable)
-        self._cache: Optional[Any] = None
-        self._has_cache = False
-
-    def __iter__(self) -> 'PeekableIterator':
-        return self
-
-    def __next__(self) -> Any:
-        if self._has_cache:
-            self._has_cache = False
-            return self._cache
-        return next(self._iterator)
-
-    def peek(self) -> Any:
-        if not self._has_cache:
+        batch = []
+        for _ in range(self.batch_size):
             try:
-                self._cache = next(self._iterator)
-                self._has_cache = True
+                batch.append(next(self.iterator))
             except StopIteration:
-                raise StopIteration("No items left to peek")
-        return self._cache
+                self.exhausted = True
+                break
+        if not batch:
+            raise StopIteration
+        return batch
 
-it = PeekableIterator([1, 2, 3])
-print(it.peek())  # 1
-print(next(it))   # 1
-print(it.peek())  # 2
+data = list(range(10))
+for batch in BatchIterator(data, 3):
+    print(batch)  # [0,1,2], [3,4,5], [6,7,8], [9]
 ```
 
-### Reusable Iterator via Iterable
+### Advanced Examples
 
 ```python
-class Squares:
-    """Iterable that can be iterated multiple times (not an iterator itself)."""
-    def __init__(self, n: int) -> None:
-        self.n = n
+class SmarterFibonacci:
+    """Fibonacci iterator implementing the full iterator protocol."""
+    def __init__(self, max_value=None):
+        self.max_value = max_value
 
-    def __iter__(self) -> Iterator[int]:
-        for i in range(1, self.n + 1):
-            yield i * i
+    def __iter__(self):
+        return FibonacciIterator(self.max_value)
 
-sq = Squares(5)
-print(list(sq))
-print(list(sq))  # Works again -- fresh iterator each time
-```
 
-## Advanced Examples
-
-### Iterator for a Binary Tree Traversal
-
-```python
-class TreeNode:
-    def __init__(self, value: Any, left: Optional['TreeNode'] = None, right: Optional['TreeNode'] = None) -> None:
-        self.value = value
-        self.left = left
-        self.right = right
-
-class InOrderIterator:
-    def __init__(self, root: Optional[TreeNode]) -> None:
-        self.stack: list[TreeNode] = []
+class TreeIterator:
+    """Iterator over a binary tree (in-order traversal)."""
+    def __init__(self, root):
+        self.stack = []
         self._push_left(root)
 
-    def _push_left(self, node: Optional[TreeNode]) -> None:
+    def _push_left(self, node):
         while node:
             self.stack.append(node)
             node = node.left
 
-    def __iter__(self) -> 'InOrderIterator':
+    def __iter__(self):
         return self
 
-    def __next__(self) -> Any:
+    def __next__(self):
         if not self.stack:
             raise StopIteration
         node = self.stack.pop()
         self._push_left(node.right)
         return node.value
-
-root = TreeNode(1,
-    TreeNode(2, TreeNode(4), TreeNode(5)),
-    TreeNode(3)
-)
-print(list(InOrderIterator(root)))  # [4, 2, 5, 1, 3]
 ```
 
-### Iterator for Cartesian Product
+### Real-World Use Cases
 
-```python
-class ProductIterator:
-    def __init__(self, *iterables: Iterable[Any], repeat: int = 1) -> None:
-        self.pools = [tuple(iterable) for iterable in iterables] * repeat
-        self.indices = [0] * len(self.pools)
-        self._done = any(len(p) == 0 for p in self.pools)
+- **Tree/graph traversal**: In-order, pre-order, post-order, BFS, DFS iterators over custom data structures.
+- **Database result sets**: Iterators that fetch rows lazily from a database cursor.
+- **Sensor data streams**: Iterators over hardware device readings.
+- **Protocol parsers**: Iterators over parsed messages from a byte stream.
+- **Backtracking solvers**: Iterators that yield valid solutions to constraint satisfaction problems.
 
-    def __iter__(self) -> 'ProductIterator':
-        return self
+### Common Mistakes
 
-    def __next__(self) -> tuple[Any, ...]:
-        if self._done:
-            raise StopIteration
-        result = tuple(pool[i] for pool, i in zip(self.pools, self.indices))
-        i = len(self.pools) - 1
-        while i >= 0:
-            self.indices[i] += 1
-            if self.indices[i] < len(self.pools[i]):
-                break
-            self.indices[i] = 0
-            i -= 1
-        if i < 0:
-            self._done = True
-        return result
+- Making an iterator that cannot be reused (needs separate iterable/iterator classes for multiple passes).
+- Not resetting state in `__iter__` when the iterator should be restartable.
+- Implementing resource cleanup only in `__del__` instead of providing a `close()` method.
+- Yielding mutable internal state that the caller modifies (defensive copy needed).
+- Implementing `__getitem__` for iteration but not `__iter__` (works but is slower and less idiomatic).
 
-for p in ProductIterator([1, 2], ['a', 'b']):
-    print(p)
-```
+### Best Practices
 
-### Lazy CSV File Iterator
+- Separate the iterable (creates iterators) from the iterator (consumes the iterable).
+- Use generators for simple iteration patterns, custom classes for complex state management.
+- Support `with` statements for resource cleanup in iterators that manage external resources.
+- Provide a `close()` method and implement `__del__` for proper resource cleanup.
+- Consider implementing `__length_hint__` for performance optimization.
 
-```python
-import csv
-from typing import TextIO
+### Performance Considerations
 
-class CSVRowIterator:
-    def __init__(self, file_path: str) -> None:
-        self.file_path = file_path
-        self._file: Optional[TextIO] = None
-        self._reader: Optional[Iterator[list[str]]] = None
+Custom iterators avoid creating intermediate collections, saving memory. The function call overhead per `__next__` is the same as for generators. For compute-intensive `__next__` methods, consider batching computations or using caching. Resource-based iterators should use buffering to reduce system call overhead.
 
-    def __iter__(self) -> 'CSVRowIterator':
-        self._file = open(self.file_path, 'r', newline='', encoding='utf-8')
-        self._reader = csv.reader(self._file)
-        return self
+### Interview Questions
 
-    def __next__(self) -> list[str]:
-        if not self._reader:
-            raise StopIteration
-        try:
-            return next(self._reader)
-        except StopIteration:
-            if self._file:
-                self._file.close()
-            raise
-```
+**Q: How would you implement a reusable iterator that can be iterated over multiple times?**
 
-### Cyclic Iterator
+A: Create a separate iterable class with `__iter__` that returns a new iterator instance each time. The iterator class implements `__next__` with independent state.
 
-```python
-class CyclicIterator:
-    def __init__(self, iterable: Iterable[Any]) -> None:
-        self._items = list(iterable)
-        self._index = 0
+**Q: What is the advantage of a custom iterator over a generator function?**
 
-    def __iter__(self) -> 'CyclicIterator':
-        return self
+A: Custom iterators can maintain complex state across methods, support resource cleanup protocols, be serializable, and implement additional methods beyond `__iter__` and `__next__` (like `peek()`, `close()`, or `reset()`).
 
-    def __next__(self) -> Any:
-        if not self._items:
-            raise StopIteration("Empty iterable")
-        value = self._items[self._index]
-        self._index = (self._index + 1) % len(self._items)
-        return value
+### Coding Challenges
 
-import itertools
-colors = CyclicIterator(['red', 'green', 'blue'])
-first_8 = list(itertools.islice(colors, 8))
-print(first_8)
-```
+1. Implement a `ReverseIterator` that iterates backwards over a sequence.
+2. Create a `MergeIterator` that takes two sorted iterables and yields items in sorted order.
+3. Implement a `WindowIterator` that yields sliding windows of a fixed size over an iterable.
+4. Build an iterator that yields all subsets of a given set.
 
-### Iterator with Filtering (Predicate-based)
+### Related Topics
 
-```python
-class FilterIterator:
-    def __init__(self, iterable: Iterable[Any], predicate) -> None:
-        self._iterator = iter(iterable)
-        self._predicate = predicate
-
-    def __iter__(self) -> 'FilterIterator':
-        return self
-
-    def __next__(self) -> Any:
-        while True:
-            item = next(self._iterator)
-            if self._predicate(item):
-                return item
-
-fil = FilterIterator(range(10), lambda x: x % 2 == 0)
-print(list(fil))
-```
-
-### Chained Iterator
-
-```python
-class ChainIterator:
-    def __init__(self, *iterables: Iterable[Any]) -> None:
-        self._iterators = [iter(it) for it in iterables]
-        self._current_idx = 0
-
-    def __iter__(self) -> 'ChainIterator':
-        return self
-
-    def __next__(self) -> Any:
-        while self._current_idx < len(self._iterators):
-            try:
-                return next(self._iterators[self._current_idx])
-            except StopIteration:
-                self._current_idx += 1
-        raise StopIteration
-
-chained = ChainIterator([1, 2], [3, 4], [5, 6])
-print(list(chained))
-```
-
-## Real-World Use Cases
-
-- **Database cursor iteration**: `for row in cursor:` works because cursors implement the iterator protocol.
-- **File reading**: `for line in file:` reads line by line without loading the whole file.
-- **Pagination**: API pagination wrappers that yield pages or records on demand.
-- **Stream processing**: Processing network streams, sensor data, or log files incrementally.
-- **Custom collection classes**: Making custom data structures iterable via `__iter__`.
-- **Tree/graph traversal**: Depth-first, breadth-first, or custom order traversal using iterators.
-- **Lazy evaluation frameworks**: Django QuerySets, pandas iterrows(), etc.
-
-## Common Mistakes
-
-- Confusing iterables with iterators — an iterable can produce many iterators, but itself is not exhausted.
-- Forgetting to raise `StopIteration` in `__next__` — causing infinite loops.
-- Not implementing `__iter__` in an iterator (should return `self`).
-- Attempting to reuse an exhausted iterator — must call `iter()` again.
-- Modifying a collection while iterating over it — raises `RuntimeError` for some types.
-- Returning `None` instead of raising `StopIteration` at the end.
-- Creating iterators that hold file handles or network connections without cleanup.
-
-## Best Practices
-
-- Use `Iterable` and `Iterator` from `typing` for type hints.
-- Always implement `__iter__` returning `self` for iterators; for iterables, return a fresh iterator.
-- Use `next(iterator, default)` to avoid manual `StopIteration` handling.
-- Prefer generators over custom iterator classes for simplicity.
-- Document whether your class is an iterable (can be iterated multiple times) or an iterator (single-use).
-- Use context managers for iterators that manage resources (files, connections).
-- Implement `__length_hint__` for performance hints when possible.
-
-## Interview Questions
-
-1. What is the difference between an iterable and an iterator?
-2. How does a `for` loop work internally?
-3. What methods must an iterator implement?
-4. What is the purpose of `StopIteration`?
-5. Can you make an object both iterable and an iterator?
-6. How does `iter(callable, sentinel)` work?
-7. What is the difference between an iterator and a generator?
-8. How do you create a custom iterator?
-9. Why does `list(iterator)` exhaust it?
-10. What is `__length_hint__` and where is it used?
-
-## Coding Challenges
-
-1. **Range Iterator**: Reimplement `range()` as a custom iterator class.
-2. **Zip Iterator**: Implement `zip()` as an iterator class.
-3. **Paginated API Iterator**: Create an iterator that fetches pages from a fake API.
-4. **Flatten Iterator**: Build an iterator that flattens nested lists.
-5. **Round-Robin Iterator**: Create an iterator that cycles through multiple iterables in turn.
-6. **Skip Iterator**: Implement an iterator that skips every Nth element.
-7. **Windowed Iterator**: Create an iterator that yields sliding windows over a sequence.
-8. **Chunked Iterator**: Build an iterator that yields chunks of fixed size from an iterable.
-
-## Summary
-
-Iterators are the backbone of iteration in Python, using the `__iter__()`/`__next__()` protocol and `StopIteration` to signal completion. They enable lazy, memory-efficient traversal and work seamlessly with `for` loops, comprehensions, and built-in functions. Understanding the distinction between iterables and iterators, and how to implement both, is fundamental for advanced Python programming.
-
-## Related Topics
-
-- Generators
-- Generator expressions
-- itertools module
-- for loop internals
-- Collections abstract base classes
-- Async iterators (__aiter__, __anext__)
+- Iterable protocol (`__iter__` only)
+- Generator functions (simpler alternative to custom iterators)
+- `itertools` module
+- Sequence protocol (`__getitem__`)
+- Async iterators (`__aiter__`, `__anext__`)

@@ -1,716 +1,476 @@
 # SQLAlchemy - Engine, Session, ORM models, relationships, Alembic
 
 ## Introduction
+SQLAlchemy is the most powerful and widely used Object-Relational Mapping (ORM) library for Python. It provides a full suite of database interaction tools: a high-level ORM that maps Python classes to database tables, a low-level Core expression language for building SQL queries programmatically, connection pooling, schema migration support via Alembic, and compatibility with virtually every major SQL database (PostgreSQL, MySQL, SQLite, Oracle, MSSQL). SQLAlchemy's design philosophy centers on the "unit of work" pattern, where changes are tracked and flushed to the database in batches, minimizing round trips and providing a clean separation between application logic and persistence concerns.
 
-SQLAlchemy is the most popular SQL toolkit and Object-Relational Mapping (ORM) library for Python. It provides a full suite of enterprise-level persistence patterns designed for efficient and high-performing database access. SQLAlchemy offers both a low-level Core API (SQL expression language) and a high-level ORM that maps Python classes to database tables.
+## Engine
 
-## Why It Is Important
+### What It Is
+The Engine is the starting point for any SQLAlchemy application. It represents a connection factory and database dialect configuration, encapsulating connection pooling, URL-based database specification, and execution strategies. The Engine does not represent an active connection itself but rather the ability to create connections on demand.
 
-SQLAlchemy abstracts away database differences, allowing you to write Python code that works with SQLite, PostgreSQL, MySQL, Oracle, and more without changing your application logic. The ORM eliminates boilerplate SQL, provides relationship management between models, and includes features like lazy/eager loading, identity maps, and unit of work pattern. It's the de facto standard for database access in Python web frameworks like FastAPI and Flask.
+### Why It Is Important
+The Engine centralizes database configuration and provides thread-safe connection management. It handles connection pooling, reconnection logic, and dialect-specific behaviors, allowing the rest of the application to remain database-agnostic.
 
-## Syntax
+### How It Works Internally
+SQLAlchemy's Engine uses a `Pool` object to manage connections. When `engine.connect()` is called, the pool returns a `Connection` object wrapped around a DBAPI-native connection. The Dialect component translates SQLAlchemy's generic SQL expressions into database-specific syntax (e.g., PostgreSQL's `ILIKE` vs SQLite's `LIKE`). The Engine lazily initializes the pool on first use and can be configured with pool size, overflow, timeout, and recycling settings.
 
+### Syntax
 ```python
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy import create_engine
+
+# SQLite
+engine = create_engine("sqlite:///mydb.db")
+
+# PostgreSQL
+engine = create_engine("postgresql://user:pass@localhost/mydb")
+
+# MySQL
+engine = create_engine("mysql+pymysql://user:pass@localhost/mydb")
+
+# With connection pool settings
+engine = create_engine(
+    "postgresql://user:pass@localhost/mydb",
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=3600,
+    echo=True  # Log all SQL
+)
+```
+
+### Beginner Examples
+```python
+from sqlalchemy import create_engine, text
+
+engine = create_engine("sqlite:///:memory:")
+with engine.connect() as conn:
+    conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"))
+    conn.execute(
+        text("INSERT INTO users (name) VALUES (:name)"),
+        {"name": "Alice"}
+    )
+    result = conn.execute(text("SELECT * FROM users"))
+    for row in result:
+        print(row)
+    conn.commit()
+```
+
+### Intermediate Examples
+```python
+from sqlalchemy import create_engine, text
+
+engine = create_engine("sqlite:///orders.db", echo=True)
+
+# Transactional execution
+def transfer_funds(from_id, to_id, amount):
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE accounts SET balance = balance - :amount WHERE id = :id"),
+            {"amount": amount, "id": from_id}
+        )
+        conn.execute(
+            text("UPDATE accounts SET balance = balance + :amount WHERE id = :id"),
+            {"amount": amount, "id": to_id}
+        )
+    # Auto-committed if no exception, auto-rolled back on error
+```
+
+## Session
+
+### What It Is
+The Session is the central unit of work in SQLAlchemy ORM. It tracks the state of all objects loaded during its lifetime and manages their synchronization with the database. The Session implements the "Identity Map" pattern, ensuring that each database row corresponds to at most one Python object instance within the session's scope.
+
+### Why It Is Important
+The Session provides a transactional scope for ORM operations. It handles dirty tracking (detecting modified objects), cascade operations (automatically persisting related objects), and flush timing (synchronizing changes to the database at the right moment).
+
+### How It Works Internally
+The Session maintains several collections: `new` (objects pending INSERT), `dirty` (modified objects pending UPDATE), and `deleted` (objects pending DELETE). When `session.flush()` is called, SQLAlchemy generates INSERT/UPDATE/DELETE statements in the correct order respecting foreign key dependencies. The Session binds to an Engine and creates transactions lazily. The Identity Map (stored in `session.identity_map`) caches objects by their primary key, enabling fast lookups and ensuring consistency.
+
+### Syntax
+```python
+from sqlalchemy.orm import Session
+
+# Basic usage
+session = Session(engine)
+
+# Context manager
+with Session(engine) as session:
+    user = session.get(User, 1)
+    user.name = "Bob"
+    session.commit()
+
+# Sessionmaker (recommended)
+from sqlalchemy.orm import sessionmaker
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+session = SessionLocal()
+```
+
+### Beginner Examples
+```python
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.orm import declarative_base, Session
 
 Base = declarative_base()
-engine = create_engine("sqlite:///database.db")
-Session = sessionmaker(bind=engine)
-session = Session()
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     name = Column(String)
 
+engine = create_engine("sqlite:///:memory:")
 Base.metadata.create_all(engine)
+
+with Session(engine) as session:
+    user = User(name="Alice")
+    session.add(user)
+    session.commit()
+    print(f"Created user with id: {user.id}")
 ```
 
-## Examples
-
-### Core Setup and Basic Models
-
+### Intermediate Examples
 ```python
-import os
-from datetime import datetime
-from typing import List, Optional
+from sqlalchemy.orm import sessionmaker
 
-from sqlalchemy import (
-    create_engine, Column, Integer, String, Float, Boolean,
-    Text, DateTime, Date, Enum, ForeignKey, Table, UniqueConstraint,
-    Index, and_, or_, not_, func, desc, asc
-)
-from sqlalchemy.orm import (
-    declarative_base, sessionmaker, relationship, backref,
-    joinedload, selectinload, subqueryload, contains_eager,
-    Session as SASession
-)
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-import enum
+SessionLocal = sessionmaker(bind=engine)
 
-DB_URL = os.environ.get("DATABASE_URL", "sqlite:///blog.db")
-engine = create_engine(DB_URL, echo=False)
-Base = declarative_base()
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-
-
-class UserRole(str, enum.Enum):
-    admin = "admin"
-    editor = "editor"
-    viewer = "viewer"
-
-
-post_tags = Table(
-    "post_tags", Base.metadata,
-    Column("post_id", Integer, ForeignKey("posts.id"), primary_key=True),
-    Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True)
-)
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, nullable=False, index=True)
-    email = Column(String(120), unique=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.viewer)
-    is_active = Column(Boolean, default=True)
-    bio = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    posts = relationship("Post", back_populates="author", cascade="all, delete-orphan")
-    profile = relationship("Profile", uselist=False, back_populates="user", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        UniqueConstraint("email", name="uq_user_email"),
-        Index("ix_user_username_email", "username", "email"),
-    )
-
-    def __repr__(self):
-        return f"<User(id={self.id}, username='{self.username}', role='{self.role}')>"
-
-
-class Profile(Base):
-    __tablename__ = "profiles"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    full_name = Column(String(100))
-    avatar_url = Column(String(500))
-    website = Column(String(500))
-    location = Column(String(100))
-    birthday = Column(Date, nullable=True)
-    phone = Column(String(20))
-
-    user = relationship("User", back_populates="profile")
-
-    def __repr__(self):
-        return f"<Profile(user_id={self.user_id}, name='{self.full_name}')>"
-
-
-class Category(Base):
-    __tablename__ = "categories"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(50), unique=True, nullable=False)
-    slug = Column(String(50), unique=True, nullable=False)
-    description = Column(Text, nullable=True)
-
-    posts = relationship("Post", back_populates="category")
-
-    def __repr__(self):
-        return f"<Category(id={self.id}, name='{self.name}')>"
-
-
-class Tag(Base):
-    __tablename__ = "tags"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(30), unique=True, nullable=False)
-    slug = Column(String(30), unique=True, nullable=False)
-
-    posts = relationship("Post", secondary=post_tags, back_populates="tags")
-
-    def __repr__(self):
-        return f"<Tag(id={self.id}, name='{self.name}')>"
-
-
-class Post(Base):
-    __tablename__ = "posts"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(200), nullable=False)
-    slug = Column(String(200), unique=True, nullable=False, index=True)
-    content = Column(Text, nullable=False)
-    excerpt = Column(String(500), nullable=True)
-    is_published = Column(Boolean, default=False)
-    view_count = Column(Integer, default=0)
-    rating = Column(Float, default=0.0)
-    published_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    author_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False, index=True)
-
-    author = relationship("User", back_populates="posts")
-    category = relationship("Category", back_populates="posts")
-    tags = relationship("Tag", secondary=post_tags, back_populates="posts")
-    comments = relationship("Comment", back_populates="post", cascade="all, delete-orphan")
-
-    def __repr__(self):
-        return f"<Post(id={self.id}, title='{self.title}', published={self.is_published})>"
-
-
-class Comment(Base):
-    __tablename__ = "comments"
-
-    id = Column(Integer, primary_key=True, index=True)
-    content = Column(Text, nullable=False)
-    author_name = Column(String(100), nullable=False)
-    author_email = Column(String(120), nullable=False)
-    is_approved = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False, index=True)
-
-    post = relationship("Post", back_populates="comments")
-
-    def __repr__(self):
-        return f"<Comment(id={self.id}, post_id={self.post_id}, author='{self.author_name}')>"
-
-
-Base.metadata.create_all(engine)
-```
-
-### CRUD Operations and Queries
-
-```python
-from datetime import datetime, timedelta
-from sqlalchemy import func, text
-
-
-def get_session() -> SASession:
+# Dependency injection pattern (e.g., FastAPI)
+def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
+# Bulk operations
+def create_users(names):
+    with SessionLocal() as session:
+        users = [User(name=name) for name in names]
+        session.add_all(users)
+        session.commit()
+        return users
 
-def create_user(session: SASession, username: str, email: str, password: str, role: UserRole = UserRole.viewer) -> User:
-    user = User(
-        username=username,
-        email=email,
-        hashed_password=password,
-        role=role
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    return user
-
-
-def bulk_create_users(session: SASession, users_data: list) -> List[User]:
-    users = [User(**data) for data in users_data]
-    session.add_all(users)
-    session.commit()
-    return users
-
-
-def get_user_by_id(session: SASession, user_id: int) -> Optional[User]:
-    return session.query(User).filter(User.id == user_id).first()
-
-
-def get_user_by_username(session: SASession, username: str) -> Optional[User]:
-    return session.query(User).filter(User.username == username).first()
-
-
-def get_active_users(session: SASession) -> List[User]:
-    return session.query(User).filter(User.is_active == True).order_by(User.created_at.desc()).all()
-
-
-def get_users_by_role(session: SASession, role: UserRole) -> List[User]:
-    return session.query(User).filter(User.role == role).all()
-
-
-def update_user_email(session: SASession, user_id: int, new_email: str) -> bool:
-    rows = session.query(User).filter(User.id == user_id).update({"email": new_email})
-    session.commit()
-    return rows > 0
-
-
-def update_user_batch(session: SASession, user_ids: list, updates: dict) -> int:
-    rows = session.query(User).filter(User.id.in_(user_ids)).update(updates, synchronize_session="fetch")
-    session.commit()
-    return rows
-
-
-def delete_user(session: SASession, user_id: int) -> bool:
-    user = session.query(User).filter(User.id == user_id).first()
-    if not user:
-        return False
-    session.delete(user)
-    session.commit()
-    return True
-
-
-def delete_inactive_users(session: SASession) -> int:
-    rows = session.query(User).filter(User.is_active == False).delete(synchronize_session="fetch")
-    session.commit()
-    return rows
-
-
-def create_post(session: SASession, title: str, content: str, author_id: int, category_id: int, tags: List[Tag] = None) -> Post:
-    slug = title.lower().replace(" ", "-")
-    post = Post(
-        title=title,
-        slug=slug,
-        content=content,
-        author_id=author_id,
-        category_id=category_id,
-        tags=tags or []
-    )
-    session.add(post)
-    session.commit()
-    session.refresh(post)
-    return post
-
-
-def get_published_posts(session: SASession) -> List[Post]:
-    return session.query(Post).filter(Post.is_published == True).order_by(Post.published_at.desc()).all()
-
-
-def get_posts_by_author(session: SASession, author_id: int) -> List[Post]:
-    return session.query(Post).filter(Post.author_id == author_id).order_by(Post.created_at.desc()).all()
-
-
-def get_posts_by_category(session: SASession, category_slug: str) -> List[Post]:
-    return session.query(Post).join(Category).filter(Category.slug == category_slug).all()
-
-
-def get_posts_by_tag(session: SASession, tag_slug: str) -> List[Post]:
-    return session.query(Post).join(Post.tags).filter(Tag.slug == tag_slug).all()
-
-
-def search_posts(session: SASession, query: str) -> List[Post]:
-    return session.query(Post).filter(
-        or_(
-            Post.title.ilike(f"%{query}%"),
-            Post.content.ilike(f"%{query}%")
-        )
-    ).order_by(Post.created_at.desc()).all()
-
-
-def get_recent_posts(session: SASession, limit: int = 10) -> List[Post]:
-    return session.query(Post).filter(
-        Post.is_published == True
-    ).order_by(Post.published_at.desc()).limit(limit).all()
-
-
-def publish_post(session: SASession, post_id: int) -> bool:
-    post = session.query(Post).filter(Post.id == post_id).first()
-    if not post:
-        return False
-    post.is_published = True
-    post.published_at = datetime.utcnow()
-    session.commit()
-    return True
-
-
-def add_comment(session: SASession, post_id: int, content: str, author_name: str, author_email: str) -> Comment:
-    comment = Comment(
-        content=content,
-        author_name=author_name,
-        author_email=author_email,
-        post_id=post_id
-    )
-    session.add(comment)
-    session.commit()
-    return comment
-
-
-def get_post_with_comments(session: SASession, post_id: int) -> Optional[Post]:
-    return session.query(Post).options(
-        joinedload(Post.author),
-        joinedload(Post.category),
-        selectinload(Post.tags),
-        selectinload(Post.comments)
-    ).filter(Post.id == post_id).first()
-
-
-def get_post_count_by_category(session: SASession) -> list:
-    return session.query(
-        Category.name,
-        func.count(Post.id).label("post_count")
-    ).outerjoin(Post).group_by(Category.id).order_by(desc("post_count")).all()
-
-
-def get_popular_posts(session: SASession, min_views: int = 100) -> List[Post]:
-    return session.query(Post).filter(
-        Post.is_published == True,
-        Post.view_count >= min_views
-    ).order_by(Post.view_count.desc()).all()
-
-
-def increment_view_count(session: SASession, post_id: int):
-    session.query(Post).filter(Post.id == post_id).update(
-        {Post.view_count: Post.view_count + 1},
-        synchronize_session="evaluate"
-    )
-    session.commit()
-
-
-def get_users_with_post_counts(session: SASession) -> list:
-    return session.query(
-        User.id,
-        User.username,
-        func.count(Post.id).label("post_count"),
-        func.coalesce(func.sum(Post.view_count), 0).label("total_views")
-    ).outerjoin(Post, Post.author_id == User.id).group_by(User.id).order_by(desc("total_views")).all()
-
-
-def get_average_rating_by_category(session: SASession) -> list:
-    return session.query(
-        Category.name,
-        func.avg(Post.rating).label("avg_rating"),
-        func.count(Post.id).label("post_count")
-    ).join(Post).filter(Post.is_published == True).group_by(Category.id).all()
-
-
-def get_recent_comments(session: SASession, limit: int = 20) -> List[Comment]:
-    return session.query(Comment).options(
-        joinedload(Comment.post)
-    ).order_by(Comment.created_at.desc()).limit(limit).all()
-
-
-def get_top_commenters(session: SASession) -> list:
-    return session.query(
-        Comment.author_name,
-        Comment.author_email,
-        func.count(Comment.id).label("comment_count")
-    ).group_by(Comment.author_email).order_by(desc("comment_count")).limit(10).all()
+# Query with filtering
+with SessionLocal() as session:
+    users = session.query(User).filter(User.name.like("A%")).order_by(User.id).all()
+    for user in users:
+        print(user.name, user.id)
 ```
 
-### Relationships (One-to-Many, Many-to-Many)
+## ORM models
 
+### What It Is
+ORM models are Python classes that map to database tables. Each class attribute mapped to a Column becomes a table column. SQLAlchemy's declarative base system allows you to define models using a concise, class-based syntax. Models can include constraints, indexes, default values, and relationships to other models.
+
+### Syntax
 ```python
-from sqlalchemy.orm import joinedload, selectinload, subqueryload
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy.orm import declarative_base, relationship
+from datetime import datetime
 
-
-def demonstrate_one_to_many(session: SASession):
-    user = session.query(User).filter(User.username == "alice").first()
-    print(f"User: {user.username}")
-    for post in user.posts:
-        print(f"  Post: {post.title}")
-
-    post = session.query(Post).filter(Post.title.ilike("%Python%")).first()
-    if post:
-        print(f"Author of '{post.title}': {post.author.username}")
-
-
-def demonstrate_many_to_many(session: SASession):
-    post = session.query(Post).options(selectinload(Post.tags)).first()
-    if post:
-        print(f"Post: {post.title}")
-        for tag in post.tags:
-            print(f"  Tag: {tag.name}")
-
-    tag = session.query(Tag).filter(Tag.name == "python").first()
-    if tag:
-        print(f"Tag: {tag.name}")
-        for post in tag.posts:
-            print(f"  Post: {post.title}")
-
-
-def eager_loading_demo(session: SASession):
-    posts = session.query(Post).options(
-        joinedload(Post.author),
-        joinedload(Post.category),
-        selectinload(Post.tags)
-    ).limit(10).all()
-
-    for post in posts:
-        print(f"{post.title} by {post.author.username} in {post.category.name}")
-        tag_names = [t.name for t in post.tags]
-        print(f"  Tags: {', '.join(tag_names)}")
-```
-
-## Beginner Examples
-
-```python
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import declarative_base, sessionmaker
-
-engine = create_engine("sqlite:///test.db", echo=True)
 Base = declarative_base()
-Session = sessionmaker(bind=engine)
-session = Session()
 
-class Person(Base):
-    __tablename__ = "persons"
+class Product(Base):
+    __tablename__ = "products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    price = Column(Float, nullable=False)
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    category_id = Column(Integer, ForeignKey("categories.id"))
+
+    category = relationship("Category", back_populates="products")
+```
+
+### Advanced Examples
+```python
+from sqlalchemy import (
+    Column, Integer, String, Float, DateTime, ForeignKey, Text,
+    UniqueConstraint, CheckConstraint, Enum as SAEnum, Index
+)
+from sqlalchemy.orm import declarative_base, relationship, validates
+from datetime import datetime
+import enum
+
+Base = declarative_base()
+
+class OrderStatus(enum.Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+
+class Customer(Base):
+    __tablename__ = "customers"
+
     id = Column(Integer, primary_key=True)
-    name = Column(String(50))
-    age = Column(Integer)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-Base.metadata.create_all(engine)
+    orders = relationship("Order", back_populates="customer")
 
-p1 = Person(name="Alice", age=30)
-p2 = Person(name="Bob", age=25)
-session.add(p1)
-session.add(p2)
-session.commit()
+    @validates("email")
+    def validate_email(self, key, value):
+        assert "@" in value, "Invalid email"
+        return value.lower()
 
-people = session.query(Person).all()
-for p in people:
-    print(p.name, p.age)
-
-alice = session.query(Person).filter(Person.name == "Alice").first()
-alice.age = 31
-session.commit()
-
-session.query(Person).filter(Person.name == "Bob").delete()
-session.commit()
-
-session.close()
-```
-
-## Intermediate Examples
-
-```python
-from datetime import datetime, timedelta
-from sqlalchemy import func, and_, or_
-from sqlalchemy.orm import joinedload
-
-
-def advanced_query_examples(session: SASession):
-    posts_today = session.query(Post).filter(
-        func.date(Post.created_at) == func.current_date()
-    ).all()
-
-    posts_last_week = session.query(Post).filter(
-        Post.created_at >= datetime.utcnow() - timedelta(days=7)
-    ).all()
-
-    high_rated_published = session.query(Post).filter(
-        and_(
-            Post.is_published == True,
-            Post.rating >= 4.0
-        )
-    ).all()
-
-    users_with_posts = session.query(User).outerjoin(Post).filter(
-        Post.id == None
-    ).all()
-
-    stats = session.query(
-        func.date(Post.created_at).label("day"),
-        func.count(Post.id).label("count")
-    ).filter(
-        Post.is_published == True
-    ).group_by(
-        func.date(Post.created_at)
-    ).having(
-        func.count(Post.id) > 1
-    ).all()
-
-    subq = session.query(Post.author_id, func.count(Post.id).label("pc")).group_by(Post.author_id).subquery()
-    prolific = session.query(User).join(subq, User.id == subq.c.author_id).filter(subq.c.pc >= 5).all()
-
-
-def transaction_example(session: SASession):
-    try:
-        user = User(username="test_user", email="test@example.com", hashed_password="secret")
-        session.add(user)
-        session.flush()
-        post = Post(title="Test Post", slug="test-post", content="Content", author_id=user.id, category_id=1)
-        session.add(post)
-        session.commit()
-    except SQLAlchemyError:
-        session.rollback()
-        raise
-```
-
-## Advanced Examples
-
-```python
-from contextlib import contextmanager
-from sqlalchemy.orm import Session, joinedload, selectinload, contains_eager
-from sqlalchemy import event, inspect, text
-from sqlalchemy.pool import QueuePool
-
-
-@contextmanager
-def session_scope():
-    session = SessionLocal()
-    try:
-        yield session
-        session.commit()
-    except SQLAlchemyError:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
-
-class PaginatedQuery:
-    def __init__(self, query, page: int = 1, per_page: int = 20):
-        self.query = query
-        self.page = page
-        self.per_page = per_page
-        self.total = query.count()
-        self.pages = (self.total + per_page - 1) // per_page
-
-    def items(self):
-        return self.query.offset((self.page - 1) * self.per_page).limit(self.per_page).all()
-
-    def has_prev(self) -> bool:
-        return self.page > 1
-
-    def has_next(self) -> bool:
-        return self.page < self.pages
-
-    def iter_pages(self, left_edge=2, left_current=2, right_current=5, right_edge=2):
-        last = self.pages
-        pages = []
-        for num in range(1, last + 1):
-            if num <= left_edge or (num > self.page - left_current - 1 and num < self.page + right_current) or num > last - right_edge:
-                pages.append(num)
-            elif pages and pages[-1] is not None:
-                pages.append(None)
-        return pages
-
-
-def paginate_posts(session: SASession, page: int = 1, per_page: int = 10) -> PaginatedQuery:
-    query = session.query(Post).filter(Post.is_published == True).order_by(Post.published_at.desc())
-    return PaginatedQuery(query, page=page, per_page=per_page)
-
-
-def complex_report(session: SASession) -> dict:
-    total_users = session.query(func.count(User.id)).scalar()
-    total_posts = session.query(func.count(Post.id)).scalar()
-    total_comments = session.query(func.count(Comment.id)).scalar()
-    published_posts = session.query(func.count(Post.id)).filter(Post.is_published == True).scalar()
-    avg_rating = session.query(func.avg(Post.rating)).filter(Post.is_published == True).scalar()
-
-    top_authors = session.query(
-        User.username,
-        func.count(Post.id).label("post_count"),
-        func.coalesce(func.sum(Post.view_count), 0).label("total_views")
-    ).outerjoin(Post).group_by(User.id).order_by(desc("total_views")).limit(5).all()
-
-    return {
-        "total_users": total_users,
-        "total_posts": total_posts,
-        "total_comments": total_comments,
-        "published_posts": published_posts,
-        "avg_rating": float(avg_rating or 0),
-        "top_authors": [
-            {"username": u, "posts": pc, "views": tv}
-            for u, pc, tv in top_authors
-        ]
-    }
-
-
-@event.listens_for(engine, "before_execute")
-def log_statements(conn, clause, multiparams, params):
-    print(f"SQL: {clause}")
-
-
-def raw_sql_example(session: SASession):
-    result = session.execute(text("SELECT COUNT(*) FROM users"))
-    count = result.scalar()
-    print(f"Total users: {count}")
-
-    result = session.execute(
-        text("SELECT id, username FROM users WHERE is_active = :active"),
-        {"active": True}
+    __table_args__ = (
+        UniqueConstraint("name", "email", name="uq_customer_name_email"),
+        CheckConstraint("LENGTH(name) > 0", name="ck_customer_name_not_empty"),
     )
-    for row in result:
-        print(f"Active user: {row.id} - {row.username}")
 
+class Order(Base):
+    __tablename__ = "orders"
 
-def batch_operations(session: SASession):
-    session.bulk_insert_mappings(User, [
-        {"username": f"user{i}", "email": f"user{i}@example.com", "hashed_password": "pw", "role": UserRole.viewer}
-        for i in range(100)
-    ])
-    session.commit()
+    id = Column(Integer, primary_key=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    status = Column(SAEnum(OrderStatus), default=OrderStatus.PENDING, nullable=False)
+    total = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-    session.bulk_update_mappings(User, [
-        {"id": i, "is_active": False}
-        for i in range(1, 11)
-    ])
-    session.commit()
+    customer = relationship("Customer", back_populates="orders")
+    items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
+class OrderItem(Base):
+    __tablename__ = "order_items"
 
-def soft_delete_and_filter(session: SASession):
-    class SoftDeleteMixin:
-        is_deleted = Column(Boolean, default=False)
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+    product_name = Column(String(200), nullable=False)
+    quantity = Column(Integer, nullable=False, default=1)
+    unit_price = Column(Float, nullable=False)
 
-    def filter_deleted(cls):
-        return cls.is_deleted == False
+    order = relationship("Order", back_populates="items")
 
-    @event.listens_for(session, "before_flush")
-    def before_flush(session, flush_context, instances):
-        for instance in session.deleted:
-            if hasattr(instance, "is_deleted"):
-                instance.is_deleted = True
-                session.expunge(instance)
+    __table_args__ = (
+        Index("ix_order_items_order_id", "order_id"),
+    )
 ```
 
-## Real-World Use Cases
+## Relationships
 
-SQLAlchemy powers database layers in major Python web frameworks (Flask-SQLAlchemy, FastAPI with SQLAlchemy), data processing pipelines, ETL systems, content management systems, e-commerce platforms, analytics dashboards, and any Python application requiring robust database interaction with support for multiple database backends.
+### What It Is
+Relationships define how models connect to each other: one-to-many, many-to-one, many-to-many, and one-to-one. SQLAlchemy uses the `relationship()` function to define these associations, with `ForeignKey` columns establishing the database-level constraint.
 
-## Common Mistakes
+### Syntax
+```python
+from sqlalchemy import Table, Column, ForeignKey
+from sqlalchemy.orm import relationship
 
-- Not creating a new session per request/thread (session is not thread-safe).
-- Forgetting to call `session.commit()` after changes.
-- N+1 query problem — accessing relationships without eager loading.
-- Using `all()` on large datasets without pagination.
-- Ignoring `synchronize_session` parameter in bulk updates/deletes.
-- Not handling `IntegrityError` for unique constraint violations.
-- Over-fetching columns when only a subset is needed.
+# One-to-Many / Many-to-One
+class Parent(Base):
+    __tablename__ = "parents"
+    id = Column(Integer, primary_key=True)
+    children = relationship("Child", back_populates="parent")
 
-## Best Practices
+class Child(Base):
+    __tablename__ = "children"
+    id = Column(Integer, primary_key=True)
+    parent_id = Column(Integer, ForeignKey("parents.id"))
+    parent = relationship("Parent", back_populates="children")
 
-- Use dependency injection or context managers for session management.
-- Use eager loading (`joinedload`, `selectinload`) to avoid N+1 queries.
-- Implement pagination for list endpoints.
-- Use `synchronize_session` appropriately in bulk operations.
-- Define `__repr__` on models for debugging.
-- Use Alembic for schema migrations.
-- Set `autocommit=False` and manage transactions explicitly.
-- Use `session.refresh()` after committing new objects to get generated values.
+# Many-to-Many
+association_table = Table(
+    "student_courses",
+    Base.metadata,
+    Column("student_id", Integer, ForeignKey("students.id")),
+    Column("course_id", Integer, ForeignKey("courses.id")),
+)
 
-## Interview Questions
+class Student(Base):
+    __tablename__ = "students"
+    id = Column(Integer, primary_key=True)
+    courses = relationship("Course", secondary=association_table, back_populates="students")
 
-1. What is the difference between SQLAlchemy Core and ORM? — Core is a SQL abstraction toolkit using SQL expression language; ORM builds on Core to map Python classes to database tables with identity maps and unit of work.
-2. Explain the N+1 query problem and how to fix it. — When accessing related objects triggers individual queries per item; fix with eager loading via `joinedload` or `selectinload`.
-3. What is the Unit of Work pattern in SQLAlchemy? — The session tracks changes to objects and flushes them in a single transaction, ensuring consistency and minimizing database round trips.
-4. How do you handle relationships in SQLAlchemy? — Using `relationship()` with `ForeignKey` columns; options include `back_populates`, `cascade`, `lazy` loading strategies, and secondary tables for many-to-many.
-5. What is the difference between `joinedload` and `selectinload`? — `joinedload` uses a JOIN to load related objects in one query; `selectinload` uses a separate SELECT with IN clause; `selectinload` is better for collections.
+class Course(Base):
+    __tablename__ = "courses"
+    id = Column(Integer, primary_key=True)
+    students = relationship("Student", secondary=association_table, back_populates="courses")
+```
 
-## Coding Challenges
+### Advanced Examples
+```python
+from sqlalchemy.orm import relationship, backref
 
-1. **Blog Platform** — Build models for users, posts, categories, tags, and comments with all relationship types. Implement CRUD, pagination, search, and full-text search with PostgreSQL.
-2. **E-Commerce Catalog** — Create models for products, categories, variants, inventory, and pricing. Implement complex filtering, aggregation queries, and reporting.
-3. **Social Network** — Design models for users, friendships, posts, likes, and shares. Implement feed generation with optimized eager loading.
-4. **Task Management** — Build a project management system with projects, tasks, assignments, comments, and time tracking. Use Alembic for schema versioning.
-5. **Multi-Tenant SaaS** — Implement a multi-tenant database schema with shared or isolated databases, tenant-aware queries, and migration strategies.
+# Self-referential relationship (tree structure)
+class Category(Base):
+    __tablename__ = "categories"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    parent_id = Column(Integer, ForeignKey("categories.id"))
 
-## Summary
+    parent = relationship("Category", remote_side=[id], back_populates="children")
+    children = relationship("Category", back_populates="parent")
 
-SQLAlchemy is a powerful and flexible ORM that provides both high-level object-relational mapping and low-level SQL abstraction. Key components include Engine (database connection), Session (unit of work), declarative models, relationship management, and an expressive query API. It supports multiple database backends, relationship patterns (one-to-many, many-to-many), eager/lazy loading, and integrates with Alembic for migrations.
+# Relationship with join conditions
+class Employee(Base):
+    __tablename__ = "employees"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    department_id = Column(Integer, ForeignKey("departments.id"))
+    manager_id = Column(Integer, ForeignKey("employees.id"))
 
-## Related Topics
+    manager = relationship("Employee", remote_side=[id], back_populates="subordinates")
+    subordinates = relationship("Employee", back_populates="manager")
 
-- Alembic (database migration tool for SQLAlchemy)
-- PostgreSQL (production database often paired with SQLAlchemy)
-- FastAPI/Flask (web frameworks with SQLAlchemy integration)
-- Pydantic (data validation, often used with SQLAlchemy models)
-- asyncpg / databases (async database libraries compatible with SQLAlchemy)
+# Eager loading strategies
+with Session(engine) as session:
+    # Lazy loading (default) - loads on access
+    orders = session.query(Order).all()
+    for order in orders:
+        print(order.items)  # Triggers additional query
+
+    # Eager loading with joinedload
+    from sqlalchemy.orm import joinedload
+    orders = session.query(Order).options(joinedload(Order.items)).all()
+    for order in orders:
+        print(order.items)  # No additional query
+
+    # Eager loading with selectinload (for collections)
+    from sqlalchemy.orm import selectinload
+    customers = session.query(Customer).options(selectinload(Customer.orders)).all()
+```
+
+## Alembic migrations
+
+### What It Is
+Alembic is a lightweight database migration tool that works hand-in-hand with SQLAlchemy. It allows you to version-control your database schema, apply incremental changes, and roll back to previous versions when needed. Migrations are Python scripts that describe schema changes (adding tables, columns, indexes, etc.).
+
+### Why It Is Important
+As applications evolve, database schemas must change. Alembic provides a systematic, reproducible way to apply these changes across development, staging, and production environments without manual SQL scripts. It integrates with SQLAlchemy models to auto-generate migration stubs.
+
+### How It Works Internally
+Alembic maintains a migration chain in a directory (usually `alembic/versions/`). Each migration script has a `revision` identifier and a `down_revision` pointing to the previous migration. Alembic tracks which migrations have been applied in the `alembic_version` table. The `upgrade()` function applies changes, while `downgrade()` reverts them.
+
+### Syntax
+```bash
+# Install
+pip install alembic
+
+# Initialize
+alembic init alembic
+
+# Configure alembic.ini with database URL
+# sqlalchemy.url = sqlite:///mydb.db
+
+# Auto-generate migration
+alembic revision --autogenerate -m "add_users_table"
+
+# Apply migration
+alembic upgrade head
+
+# Rollback
+alembic downgrade -1
+
+# View history
+alembic history
+```
+
+### Advanced Examples
+```python
+# alembic/versions/xxxx_add_users_table.py
+"""add users table
+
+Revision ID: xxxx
+Revises:
+Create Date: 2024-01-01
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = "xxxx"
+down_revision = None
+
+def upgrade():
+    op.create_table(
+        "users",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("email", sa.String(length=255), nullable=False),
+        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("email"),
+    )
+    op.create_index("ix_users_email", "users", ["email"])
+
+def downgrade():
+    op.drop_index("ix_users_email", table_name="users")
+    op.drop_table("users")
+```
+
+```python
+# alembic/env.py - Customizing autogenerate
+from alembic import context
+from myapp.models import Base
+
+target_metadata = Base.metadata
+
+def run_migrations_offline():
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(url=url, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+
+def run_migrations_online():
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+```
+
+### Real-World Use Cases
+- **Web applications with evolving schemas**: Adding features that require new tables or columns.
+- **Multi-environment deployments**: Ensuring schema consistency across dev, staging, and production.
+- **Team collaboration**: Multiple developers can work on schema changes without conflicts.
+- **Audit compliance**: Complete history of schema changes for regulatory requirements.
+
+### Common Mistakes
+- Using `session.query().all()` without filtering on large tables.
+- Forgetting to call `session.commit()` after mutations.
+- Creating relationships without corresponding ForeignKey columns.
+- Ignoring N+1 query problems by not using eager loading.
+- Modifying auto-generated migration scripts after they've been applied.
+
+### Best Practices
+- Always use `sessionmaker` instead of creating Session instances directly.
+- Use `joinedload` or `selectinload` to solve N+1 query issues.
+- Define `__repr__` methods on models for debugging.
+- Use `cascade="all, delete-orphan"` for parent-child relationships.
+- Write explicit downgrade functions in Alembic migrations.
+- Run `alembic check` to detect schema/model mismatches before deploying.
+
+### Performance Considerations
+- Use `selectinload` for to-many relationships (avoids Cartesian product of joinedload).
+- Use `contains_eager()` when you've already joined in the query.
+- Batch inserts with `session.add_all()` and commit once.
+- Use `bulk_insert_mappings()` and `bulk_update_mappings()` for thousands of rows.
+- Consider `with_expression()` and column properties for computed fields.
+- Profile queries with `echo=True` or SQLAlchemy's query event system.
+
+### Interview Questions
+1. Explain the difference between `engine.execute()` and `session.execute()`.
+2. What is the N+1 query problem and how does SQLAlchemy solve it?
+3. How does the Identity Map pattern work in SQLAlchemy?
+4. What is the difference between `joinedload` and `selectinload`?
+5. How do you handle concurrent updates with SQLAlchemy (optimistic locking)?
+6. Explain the purpose of Alembic's `autogenerate` feature.
+7. What is the "unit of work" pattern?
+
+### Coding Challenges
+1. **Blog Platform Models**: Create User, Post, Comment, and Tag models with appropriate relationships, then write queries to fetch posts with their comments and tags.
+2. **E-commerce Checkout**: Implement an order placement function that creates orders, validates stock, and handles inventory updates atomically.
+3. **Migration Workflow**: Create an Alembic migration that adds a `last_login` column to a users table, populates it for existing users, and tests the downgrade.
+
+### Related Topics
+- Pydantic (data validation models often paired with SQLAlchemy)
+- FastAPI integration (SQLAlchemy sessions as dependencies)
+- Database indexing strategies
+- SQLAlchemy Core (lower-level API without ORM)
+- AioSQLAlchemy (async SQLAlchemy for asyncio applications)

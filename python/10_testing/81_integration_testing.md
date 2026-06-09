@@ -1,810 +1,699 @@
 ﻿# Integration Testing - Testing databases, APIs, and external services
-
 ## Introduction
-
-Integration testing validates that different modules, services, or components work together correctly. Unlike unit tests, which isolate individual units of code, integration tests exercise real interactions between components — databases, APIs, file systems, message queues, and external services. They bridge the gap between unit tests and end-to-end tests, catching interface mismatches, configuration errors, and data format issues.
-
-## Why It Is Important
-
-- **Interface Validation** – Ensures components communicate correctly (API contracts, database schemas).
-- **Configuration Testing** – Catches environment-specific issues (connection strings, secrets).
-- **Data Integrity** – Validates data flows correctly between systems.
-- **Realistic Feedback** – Tests behavior closer to production than mocks can provide.
-- **Regression Prevention** – Catches breakage when dependencies change (API versions, schema migrations).
-- **CI/CD Confidence** – Provides higher confidence than unit tests alone for deployment decisions.
-
-## Syntax
-
-`python
-# Using pytest with a test database
-def test_user_can_be_created(db_session):
-    user = User(email="test@example.com", name="Test User")
-    db_session.add(user)
-    db_session.commit()
-    assert user.id is not None
-
-# Using httpx with FastAPI TestClient
-from fastapi.testclient import TestClient
-
-def test_api_create_item(client):
-    response = client.post("/items/", json={"name": "Widget", "price": 9.99})
-    assert response.status_code == 201
-    assert response.json()["name"] == "Widget"
-`
-
-## Examples
-
-### Example 1: Database Integration with SQLAlchemy and pytest
-
-`python
-import pytest
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
-
-Base = declarative_base()
-
-class Product(Base):
-    __tablename__ = "products"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False)
-    price = Column(Float, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-class Order(Base):
-    __tablename__ = "orders"
-    id = Column(Integer, primary_key=True)
-    product_id = Column(Integer, nullable=False)
-    quantity = Column(Integer, nullable=False)
-    total = Column(Float, nullable=False)
-    status = Column(String(50), default="pending")
-
-@pytest.fixture(scope="function")
-def db_session():
-    engine = create_engine("sqlite:///:memory:", echo=False)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
-    Base.metadata.drop_all(engine)
-
-@pytest.fixture
-def sample_product(db_session):
-    product = Product(name="Test Widget", price=19.99)
-    db_session.add(product)
-    db_session.commit()
-    return product
-
-class TestDatabaseIntegration:
-
-    def test_create_product(self, db_session):
-        product = Product(name="Laptop", price=999.99)
-        db_session.add(product)
-        db_session.commit()
-        assert product.id is not None
-        saved = db_session.query(Product).filter_by(name="Laptop").first()
-        assert saved.price == 999.99
-
-    def test_create_order(self, db_session, sample_product):
-        order = Order(
-            product_id=sample_product.id,
-            quantity=2,
-            total=sample_product.price * 2,
-            status="pending",
-        )
-        db_session.add(order)
-        db_session.commit()
-        assert order.id is not None
-
-    def test_query_orders_by_status(self, db_session, sample_product):
-        for status in ["pending", "shipped", "delivered"]:
-            order = Order(
-                product_id=sample_product.id,
-                quantity=1,
-                total=sample_product.price,
-                status=status,
-            )
-            db_session.add(order)
-        db_session.commit()
-        pending = db_session.query(Order).filter_by(status="pending").all()
-        assert len(pending) == 1
-
-    def test_update_order_status(self, db_session, sample_product):
-        order = Order(
-            product_id=sample_product.id,
-            quantity=1,
-            total=sample_product.price,
-        )
-        db_session.add(order)
-        db_session.commit()
-        order.status = "shipped"
-        db_session.commit()
-        updated = db_session.query(Order).get(order.id)
-        assert updated.status == "shipped"
-
-    def test_delete_product(self, db_session):
-        product = Product(name="Temporary", price=5.0)
-        db_session.add(product)
-        db_session.commit()
-        product_id = product.id
-        db_session.delete(product)
-        db_session.commit()
-        assert db_session.query(Product).get(product_id) is None
-
-    def test_transaction_rollback(self, db_session):
-        initial_count = db_session.query(Product).count()
-        try:
-            product = Product(name="Will Fail", price=-1.0)
-            db_session.add(product)
-            db_session.commit()
-        except Exception:
-            db_session.rollback()
-        final_count = db_session.query(Product).count()
-        assert final_count == initial_count
-
-    def test_bulk_insert(self, db_session):
-        products = [
-            Product(name=f"Product {i}", price=i * 10.0)
-            for i in range(1, 101)
-        ]
-        db_session.add_all(products)
-        db_session.commit()
-        assert db_session.query(Product).count() == 100
-`
-
-### Example 2: API Integration with FastAPI TestClient
-
-`python
-import pytest
-from fastapi import FastAPI, HTTPException
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from typing import Optional
-
-app = FastAPI()
-
-class ItemCreate(BaseModel):
-    name: str
-    price: float
-    description: Optional[str] = None
-
-class ItemResponse(BaseModel):
-    id: int
-    name: str
-    price: float
-    description: Optional[str] = None
-
-items_db = {}
-next_id = 1
-
-@app.post("/items/", response_model=ItemResponse, status_code=201)
-def create_item(item: ItemCreate):
-    global next_id
-    item_id = next_id
-    next_id += 1
-    items_db[item_id] = {
-        "id": item_id,
-        "name": item.name,
-        "price": item.price,
-        "description": item.description,
-    }
-    return items_db[item_id]
-
-@app.get("/items/{item_id}", response_model=ItemResponse)
-def get_item(item_id: int):
-    if item_id not in items_db:
-        raise HTTPException(status_code=404, detail="Item not found")
-    return items_db[item_id]
-
-@app.get("/items/")
-def list_items(skip: int = 0, limit: int = 10):
-    all_items = list(items_db.values())
-    return all_items[skip : skip + limit]
-
-@app.put("/items/{item_id}", response_model=ItemResponse)
-def update_item(item_id: int, item: ItemCreate):
-    if item_id not in items_db:
-        raise HTTPException(status_code=404, detail="Item not found")
-    items_db[item_id].update(item.dict())
-    return items_db[item_id]
-
-@app.delete("/items/{item_id}", status_code=204)
-def delete_item(item_id: int):
-    if item_id not in items_db:
-        raise HTTPException(status_code=404, detail="Item not found")
-    del items_db[item_id]
-
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-@pytest.fixture(autouse=True)
-def reset_db():
-    items_db.clear()
-    global next_id
-    next_id = 1
-
-class TestAPIIntegration:
-
-    def test_create_item(self, client):
-        response = client.post("/items/", json={
-            "name": "Widget",
-            "price": 9.99,
-            "description": "A useful widget",
-        })
-        assert response.status_code == 201
-        data = response.json()
-        assert data["name"] == "Widget"
-        assert data["price"] == 9.99
-        assert data.get("description") == "A useful widget"
-        assert "id" in data
-
-    def test_get_item(self, client):
-        create_resp = client.post("/items/", json={"name": "Gadget", "price": 14.99})
-        item_id = create_resp.json()["id"]
-        response = client.get(f"/items/{item_id}")
-        assert response.status_code == 200
-        assert response.json()["name"] == "Gadget"
-
-    def test_get_nonexistent_item(self, client):
-        response = client.get("/items/999")
-        assert response.status_code == 404
-        assert response.json()["detail"] == "Item not found"
-
-    def test_list_items(self, client):
-        for i in range(5):
-            client.post("/items/", json={"name": f"Item {i}", "price": float(i)})
-        response = client.get("/items/")
-        assert response.status_code == 200
-        assert len(response.json()) == 5
-
-    def test_list_items_with_pagination(self, client):
-        for i in range(20):
-            client.post("/items/", json={"name": f"Item {i}", "price": float(i)})
-        page = client.get("/items/?skip=5&limit=5")
-        assert len(page.json()) == 5
-        assert page.json()[0]["name"] == "Item 5"
-
-    def test_update_item(self, client):
-        create_resp = client.post("/items/", json={"name": "Old", "price": 1.0})
-        item_id = create_resp.json()["id"]
-        response = client.put(f"/items/{item_id}", json={
-            "name": "Updated",
-            "price": 99.99,
-        })
-        assert response.status_code == 200
-        assert response.json()["name"] == "Updated"
-
-    def test_delete_item(self, client):
-        create_resp = client.post("/items/", json={"name": "Delete Me", "price": 0.0})
-        item_id = create_resp.json()["id"]
-        response = client.delete(f"/items/{item_id}")
-        assert response.status_code == 204
-        get_resp = client.get(f"/items/{item_id}")
-        assert get_resp.status_code == 404
-
-    def test_validation_error(self, client):
-        response = client.post("/items/", json={"name": "Bad", "price": "not_a_number"})
-        assert response.status_code == 422
-`
-
-### Example 3: Testing External Services with HTTPX
-
-`python
-import pytest
-import httpx
-
-class WeatherService:
-    def __init__(self, api_key, base_url="https://api.weather.com"):
-        self.api_key = api_key
-        self.base_url = base_url
-
-    async def get_temperature(self, city):
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/v1/current",
-                params={"city": city, "apikey": self.api_key},
-                timeout=10,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["current"]["temp_c"]
-
-    def get_forecast(self, city, days=3):
-        with httpx.Client() as client:
-            response = client.get(
-                f"{self.base_url}/v1/forecast",
-                params={"city": city, "days": days, "apikey": self.api_key},
-                timeout=10,
-            )
-            response.raise_for_status()
-            return response.json()
-
-class TestWeatherService:
-
-    @pytest.mark.asyncio
-    async def test_get_temperature_success(self, respx_mock):
-        respx_mock.get("https://api.weather.com/v1/current").respond(
-            json={"current": {"temp_c": 22.5}},
-            status_code=200,
-        )
-        service = WeatherService(api_key="test_key")
-        temp = await service.get_temperature("London")
-        assert temp == 22.5
-
-    @pytest.mark.asyncio
-    async def test_get_temperature_api_error(self, respx_mock):
-        respx_mock.get("https://api.weather.com/v1/current").respond(
-            status_code=401,
-        )
-        service = WeatherService(api_key="bad_key")
-        with pytest.raises(httpx.HTTPStatusError):
-            await service.get_temperature("London")
-
-    @pytest.mark.asyncio
-    async def test_get_temperature_timeout(self, respx_mock):
-        respx_mock.get("https://api.weather.com/v1/current").mock(
-            side_effect=httpx.TimeoutException("Request timed out")
-        )
-        service = WeatherService(api_key="test_key")
-        with pytest.raises(httpx.TimeoutException):
-            await service.get_temperature("London")
-
-    def test_get_forecast_success(self, respx_mock):
-        expected = {"forecast": [{"day": "Mon", "high": 25}]}
-        respx_mock.get("https://api.weather.com/v1/forecast").respond(
-            json=expected, status_code=200,
-        )
-        service = WeatherService(api_key="test_key")
-        result = service.get_forecast("Paris", days=1)
-        assert result == expected
-
-    @pytest.mark.asyncio
-    async def test_integration_with_real_api(self):
-        import os
-        api_key = os.getenv("WEATHER_API_KEY")
-        if not api_key:
-            pytest.skip("WEATHER_API_KEY not set")
-        service = WeatherService(api_key=api_key)
-        temp = await service.get_temperature("New York")
-        assert isinstance(temp, (int, float))
-        assert -50 < temp < 60
-`
-
-### Example 4: Testing with Docker Containers (testcontainers)
-
-`python
-import pytest
-import redis
-import psycopg2
-from testcontainers.postgres import PostgresContainer
-from testcontainers.redis import RedisContainer
-
-class TestDockerContainers:
-
-    @pytest.fixture(scope="class")
-    def postgres_container(self):
-        with PostgresContainer("postgres:15-alpine") as pg:
-            yield pg
-
-    def test_postgres_connection(self, postgres_container):
-        conn = psycopg2.connect(
-            host=postgres_container.get_container_host_ip(),
-            port=postgres_container.get_exposed_port(5432),
-            user=postgres_container.USER,
-            password=postgres_container.PASSWORD,
-            dbname=postgres_container.DBNAME,
-        )
-        cur = conn.cursor()
-        cur.execute("SELECT version();")
-        version = cur.fetchone()
-        assert "PostgreSQL" in version[0]
-        cur.close()
-        conn.close()
-
-    def test_postgres_create_table_and_insert(self, postgres_container):
-        conn = psycopg2.connect(
-            host=postgres_container.get_container_host_ip(),
-            port=postgres_container.get_exposed_port(5432),
-            user=postgres_container.USER,
-            password=postgres_container.PASSWORD,
-            dbname=postgres_container.DBNAME,
-        )
-        cur = conn.cursor()
-        cur.execute("CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100))")
-        cur.execute("INSERT INTO users (name) VALUES ('Alice'), ('Bob')")
-        conn.commit()
-        cur.execute("SELECT COUNT(*) FROM users")
-        assert cur.fetchone()[0] == 2
-        cur.close()
-        conn.close()
-
-    @pytest.fixture(scope="function")
-    def redis_client(self):
-        with RedisContainer("redis:7-alpine") as redis_container:
-            client = redis.Redis(
-                host=redis_container.get_container_host_ip(),
-                port=redis_container.get_exposed_port(6379),
-                decode_responses=True,
-            )
-            yield client
-            client.flushall()
-
-    def test_redis_set_and_get(self, redis_client):
-        redis_client.set("key", "value")
-        assert redis_client.get("key") == "value"
-
-    def test_redis_expiry(self, redis_client):
-        import time
-        redis_client.setex("temp", 1, "expires")
-        assert redis_client.get("temp") == "expires"
-        time.sleep(1.5)
-        assert redis_client.get("temp") is None
-
-    def test_redis_list_operations(self, redis_client):
-        redis_client.rpush("queue", "job1", "job2", "job3")
-        assert redis_client.llen("queue") == 3
-        assert redis_client.lpop("queue") == "job1"
-
-    def test_redis_hash_operations(self, redis_client):
-        redis_client.hset("user:1", mapping={"name": "Alice", "age": "30"})
-        assert redis_client.hget("user:1", "name") == "Alice"
-        assert redis_client.hgetall("user:1") == {"name": "Alice", "age": "30"}
-`
-
-### Example 5: CI/CD Integration with GitHub Actions
-
-`python
-# .github/workflows/test.yml
-# name: CI
-# on: [push, pull_request]
-# jobs:
-#   test:
-#     runs-on: ubuntu-latest
-#     services:
-#       postgres:
-#         image: postgres:15
-#         env:
-#           POSTGRES_PASSWORD: testpass
-#           POSTGRES_DB: testdb
-#         ports:
-#           - 5432:5432
-#       redis:
-#         image: redis:7
-#         ports:
-#           - 6379:6379
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: actions/setup-python@v5
-#         with:
-#           python-version: "3.12"
-#       - run: pip install -r requirements.txt
-#       - run: pytest tests/integration/ --cov=app -v
-#         env:
-#           DATABASE_URL: postgresql://postgres:testpass@localhost/testdb
-#           REDIS_URL: redis://localhost:6379
-
-import pytest
-import os
-
-class TestCIEnvironment:
-
-    def test_database_url_is_set(self):
-        url = os.getenv("DATABASE_URL")
-        assert url is not None, "DATABASE_URL must be set in CI"
-
-    def test_redis_url_is_set(self):
-        url = os.getenv("REDIS_URL")
-        assert url is not None, "REDIS_URL must be set in CI"
-
-    def test_can_connect_to_postgres(self):
-        import psycopg2
-        url = os.getenv("DATABASE_URL")
-        conn = psycopg2.connect(url)
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        assert cur.fetchone()[0] == 1
-        cur.close()
-        conn.close()
-
-    def test_can_connect_to_redis(self):
-        import redis
-        url = os.getenv("REDIS_URL")
-        client = redis.Redis.from_url(url, decode_responses=True)
-        client.set("ci_test", "ok")
-        assert client.get("ci_test") == "ok"
-        client.close()
-`
-
-### Example 6: Integration Test with Message Queue (RabbitMQ)
-
-`python
-import pytest
-import pika
-import json
-import threading
-import time
-
-class MessagePublisher:
-    def __init__(self, host="localhost", queue="test_queue"):
-        self.host = host
-        self.queue = queue
-        self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=host)
-        )
-        self.channel = self.connection.channel()
-        self.channel.queue_declare(queue=queue, durable=True)
-
-    def publish(self, message):
-        self.channel.basic_publish(
-            exchange="",
-            routing_key=self.queue,
-            body=json.dumps(message),
-            properties=pika.BasicProperties(delivery_mode=2),
-        )
-
-    def close(self):
-        self.connection.close()
-
-class MessageConsumer:
-    def __init__(self, host="localhost", queue="test_queue"):
-        self.host = host
-        self.queue = queue
-        self.messages = []
-        self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=host)
-        )
-        self.channel = self.connection.channel()
-        self.channel.queue_declare(queue=queue, durable=True)
-        self.channel.basic_consume(
-            queue=queue,
-            on_message_callback=self._callback,
-            auto_ack=True,
-        )
-
-    def _callback(self, ch, method, properties, body):
-        self.messages.append(json.loads(body))
-
-    def consume(self, timeout=2):
-        self.channel.start_consuming()
-
-    def stop(self):
-        self.connection.close()
-
-class TestMessageQueue:
-
-    @pytest.fixture
-    def publisher(self):
-        pub = MessagePublisher()
-        yield pub
-        pub.close()
-
-    def test_publish_and_consume(self, publisher):
-        consumer = MessageConsumer()
-        test_message = {"id": 1, "text": "hello"}
-        publisher.publish(test_message)
-        time.sleep(0.5)
-        consumer.stop()
-        assert len(consumer.messages) > 0
-        assert consumer.messages[0]["text"] == "hello"
-
-    def test_multiple_messages(self, publisher):
-        consumer = MessageConsumer()
-        for i in range(5):
-            publisher.publish({"index": i})
-        time.sleep(0.5)
-        consumer.stop()
-        assert len(consumer.messages) == 5
-
-    def test_message_order(self, publisher):
-        consumer = MessageConsumer()
-        for i in range(3):
-            publisher.publish({"seq": i})
-        time.sleep(0.5)
-        consumer.stop()
-        seqs = [m["seq"] for m in consumer.messages]
-        assert seqs == [0, 1, 2]
-`
-
-## Beginner Examples
-
-`python
+Integration testing verifies that different modules, services, or systems work together correctly. Unlike unit tests that isolate individual components, integration tests validate the interactions between components: database queries, API calls, message queues, file systems, and third-party services. Integration testing is critical for catching issues that unit tests cannot, such as schema mismatches, network protocol errors, authentication failures, and data format inconsistencies. While integration tests are slower and more complex than unit tests, they provide higher confidence that the system works in production-like conditions.
+
+## Database testing
+### What It Is
+Database integration testing validates that code correctly interacts with databases: executing queries, handling transactions, managing connections, and processing results. Tests typically use a test database (often in-memory or containerized) to verify data access logic.
+
+### Why It Is Important
+Database interactions are a common source of bugs: incorrect SQL, schema mismatches, transaction issues, connection leaks, and data integrity problems. Testing with a real database catches issues that mocking cannot.
+
+### How It Works Internally
+Database tests typically:
+1. Set up a clean database schema
+2. Seed test data
+3. Execute the code under test
+4. Assert database state or query results
+5. Clean up test data
+
+```python
 import pytest
 import sqlite3
 
-# Simple database integration test
-def test_sqlite_in_memory():
+# Test with SQLite in-memory database
+@pytest.fixture
+def db_connection():
     conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-    conn.execute("INSERT INTO test VALUES (1, 'hello')")
-    cursor = conn.execute("SELECT value FROM test WHERE id = 1")
-    assert cursor.fetchone()[0] == "hello"
+    conn.execute("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE orders (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id),
+            total REAL NOT NULL
+        )
+    """)
+    yield conn
     conn.close()
 
-# Simple API test with requests
-def test_httpbin_get():
-    import requests
-    response = requests.get("https://httpbin.org/get")
-    assert response.status_code == 200
-    data = response.json()
-    assert "url" in data
-`
+@pytest.fixture
+def sample_data(db_connection):
+    db_connection.execute(
+        "INSERT INTO users (name, email) VALUES (?, ?)",
+        ("Alice", "alice@example.com")
+    )
+    db_connection.execute(
+        "INSERT INTO users (name, email) VALUES (?, ?)",
+        ("Bob", "bob@example.com")
+    )
+    db_connection.commit()
+    return db_connection
 
-## Intermediate Examples
+class UserRepository:
+    def __init__(self, conn):
+        self.conn = conn
 
-`python
+    def find_by_email(self, email):
+        cursor = self.conn.execute(
+            "SELECT id, name, email FROM users WHERE email = ?",
+            (email,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return {"id": row[0], "name": row[1], "email": row[2]}
+        return None
+
+    def create_user(self, name, email):
+        cursor = self.conn.execute(
+            "INSERT INTO users (name, email) VALUES (?, ?)",
+            (name, email)
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+def test_find_user_by_email(sample_data):
+    repo = UserRepository(sample_data)
+    user = repo.find_by_email("alice@example.com")
+    assert user is not None
+    assert user["name"] == "Alice"
+
+def test_create_duplicate_email_raises_error(sample_data):
+    repo = UserRepository(sample_data)
+    with pytest.raises(sqlite3.IntegrityError):
+        repo.create_user("Charlie", "alice@example.com")
+
+def test_transaction_rollback_on_error(db_connection):
+    repo = UserRepository(db_connection)
+    try:
+        repo.create_user("Test", "test@example.com")
+        repo.create_user("Test", "test@example.com")  # Duplicate
+    except sqlite3.IntegrityError:
+        db_connection.rollback()
+
+    user = repo.find_by_email("test@example.com")
+    assert user is None  # Transaction rolled back
+```
+
+### PostgreSQL with Testcontainers
+```python
 import pytest
-import httpx
+from testcontainers.postgres import PostgresContainer
+import psycopg2
+
+@pytest.fixture(scope="module")
+def postgres_container():
+    with PostgresContainer("postgres:15") as postgres:
+        yield postgres
+
+@pytest.fixture
+def db_connection(postgres_container):
+    conn = psycopg2.connect(
+        host=postgres_container.get_container_host_ip(),
+        port=postgres_container.get_exposed_port(5432),
+        user=postgres_container.USER,
+        password=postgres_container.PASSWORD,
+        dbname=postgres_container.DB_NAME
+    )
+    conn.autocommit = True
+    yield conn
+    conn.close()
+
+def test_complex_query(db_connection):
+    db_connection.execute("""
+        CREATE TABLE products (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100),
+            price DECIMAL(10,2),
+            category VARCHAR(50)
+        )
+    """)
+    db_connection.execute("""
+        INSERT INTO products (name, price, category) VALUES
+        ('Laptop', 999.99, 'Electronics'),
+        ('Phone', 599.99, 'Electronics'),
+        ('Book', 19.99, 'Media')
+    """)
+
+    cursor = db_connection.execute("""
+        SELECT category, COUNT(*) as count, AVG(price) as avg_price
+        FROM products
+        GROUP BY category
+    """)
+    results = cursor.fetchall()
+    assert len(results) == 2
+    electronics = [r for r in results if r[0] == 'Electronics'][0]
+    assert electronics[1] == 2  # Count
+```
+
+### Django Database Testing
+```python
+import pytest
+from django.test import TestCase
+
+class TestUserModel(TestCase):
+    def setUp(self):
+        from myapp.models import User
+        self.user = User.objects.create(
+            username="alice",
+            email="alice@example.com",
+            is_active=True
+        )
+
+    def test_user_creation(self):
+        from myapp.models import User
+        user = User.objects.get(username="alice")
+        assert user.email == "alice@example.com"
+        assert user.is_active
+
+    def test_user_deactivation(self):
+        from myapp.models import User
+        self.user.is_active = False
+        self.user.save()
+        
+        user = User.objects.get(pk=self.user.pk)
+        assert not user.is_active
+
+    def test_unique_email(self):
+        from myapp.models import User
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            User.objects.create(
+                username="bob",
+                email="alice@example.com"  # Duplicate email
+            )
+```
+
+## API testing
+### What It Is
+API integration testing validates that HTTP endpoints work correctly: request handling, authentication, validation, response formatting, and error handling. Tests exercise the actual HTTP layer, making real requests to a test server.
+
+### Why It Is Important
+API tests catch issues with routing, serialization, authentication middleware, rate limiting, and protocol-level errors that unit tests miss. They validate the full request-response cycle.
+
+### How It Works Internally
+API tests typically:
+1. Start a test server (or use a test client)
+2. Send HTTP requests with various payloads
+3. Validate response status, headers, and body
+4. Check side effects in the database
+
+```python
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
-# Testing a FastAPI app that connects to a database
 app = FastAPI()
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+class Item(BaseModel):
+    name: str
+    price: float
+    in_stock: bool = True
 
-@app.get("/users/{user_id}")
-def get_user(user_id: int):
-    return {"id": user_id, "name": "Alice"}
+items_db = {}
 
-class TestIntermediateIntegration:
+@app.post("/items/")
+def create_item(item: Item):
+    item_id = len(items_db) + 1
+    items_db[item_id] = item.model_dump()
+    return {"id": item_id, **item.model_dump()}
 
-    def test_health_endpoint(self):
-        client = TestClient(app)
-        response = client.get("/health")
+@app.get("/items/{item_id}")
+def get_item(item_id: int):
+    item = items_db.get(item_id)
+    if not item:
+        return {"error": "Item not found"}, 404
+    return item
+
+@app.get("/items/")
+def list_items():
+    return list(items_db.values())
+
+# Integration tests
+class TestItemAPI:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        items_db.clear()
+        self.client = TestClient(app)
+
+    def test_create_item(self):
+        response = self.client.post("/items/", json={
+            "name": "Laptop",
+            "price": 999.99
+        })
         assert response.status_code == 200
-        assert response.json()["status"] == "ok"
+        data = response.json()
+        assert data["name"] == "Laptop"
+        assert data["id"] == 1
 
-    def test_get_user(self):
-        client = TestClient(app)
-        response = client.get("/users/1")
-        assert response.status_code == 200
-        assert response.json()["name"] == "Alice"
+    def test_get_nonexistent_item(self):
+        response = self.client.get("/items/999")
+        assert response.status_code == 404
 
-    def test_async_http_call(self):
-        import asyncio
-        async def fetch():
-            async with httpx.AsyncClient() as client:
-                resp = await client.get("https://httpbin.org/json")
-                return resp.status_code
-        status = asyncio.run(fetch())
-        assert status == 200
-`
+    def test_create_invalid_item(self):
+        response = self.client.post("/items/", json={
+            "name": "Test",
+            "price": "not_a_number"  # Invalid type
+        })
+        assert response.status_code == 422  # Validation error
 
-## Advanced Examples
+    def test_list_items(self):
+        self.client.post("/items/", json={"name": "A", "price": 1.0})
+        self.client.post("/items/", json={"name": "B", "price": 2.0})
+        
+        response = self.client.get("/items/")
+        assert len(response.json()) == 2
+```
 
-`python
+### Flask API Testing
+```python
+import pytest
+from flask import Flask, jsonify, request
+
+app = Flask(__name__)
+
+@app.route('/api/users', methods=['POST'])
+def create_user():
+    data = request.get_json()
+    if not data or 'email' not in data:
+        return jsonify({"error": "Email required"}), 400
+    return jsonify({"id": 1, "email": data['email']}), 201
+
+@pytest.fixture
+def client():
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client
+
+def test_create_user_success(client):
+    response = client.post('/api/users', json={
+        "email": "user@example.com",
+        "name": "Alice"
+    })
+    assert response.status_code == 201
+    assert response.json['email'] == "user@example.com"
+
+def test_create_user_missing_email(client):
+    response = client.post('/api/users', json={"name": "Alice"})
+    assert response.status_code == 400
+
+def test_create_user_invalid_json(client):
+    response = client.post('/api/users', data="not json",
+                          content_type='application/json')
+    assert response.status_code == 400
+```
+
+## External services testing
+### What It Is
+External service integration testing validates interactions with third-party services: payment gateways, email providers, cloud services, message queues, and external APIs. These tests often use sandbox environments, test accounts, or containerized dependencies.
+
+### Why It Is Important
+External services introduce failure modes not present in internal code: network latency, rate limits, authentication expiry, API version changes, and service outages. Testing these interactions ensures proper error handling and resilience.
+
+### How It Works Internally
+Three main strategies for testing external services:
+
+1. **Sandbox/Test Environment**: Using the service's test mode
+2. **Service Virtualization**: Running a local mock server
+3. **Contract Testing**: Verifying API contracts independently
+
+```python
+import pytest
+import responses
+import requests
+
+# External payment service
+class PaymentGateway:
+    def __init__(self, api_key, base_url="https://api.payments.com"):
+        self.api_key = api_key
+        self.base_url = base_url
+
+    def charge(self, amount, currency="USD", source="tok_visa"):
+        response = requests.post(
+            f"{self.base_url}/charges",
+            json={
+                "amount": amount,
+                "currency": currency,
+                "source": source
+            },
+            headers={"Authorization": f"Bearer {self.api_key}"}
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def refund(self, charge_id):
+        response = requests.post(
+            f"{self.base_url}/charges/{charge_id}/refund"
+        )
+        response.raise_for_status()
+        return response.json()
+
+class PaymentService:
+    def __init__(self, gateway):
+        self.gateway = gateway
+
+    def process_payment(self, order_id, amount, card_token):
+        try:
+            result = self.gateway.charge(amount, source=card_token)
+            return {
+                "status": "success",
+                "charge_id": result["id"],
+                "amount": result["amount"]
+            }
+        except requests.RequestException as e:
+            return {
+                "status": "failed",
+                "error": str(e)
+            }
+
+# Integration test with responses library
+@responses.activate
+def test_successful_payment():
+    responses.add(
+        responses.POST,
+        "https://api.payments.com/charges",
+        json={
+            "id": "ch_123456",
+            "amount": 5000,
+            "currency": "usd",
+            "status": "succeeded"
+        },
+        status=200
+    )
+
+    gateway = PaymentGateway("sk_test_key")
+    service = PaymentService(gateway)
+    result = service.process_payment(1, 50.00, "tok_visa")
+    
+    assert result["status"] == "success"
+    assert result["charge_id"] == "ch_123456"
+
+@responses.activate
+def test_payment_declined():
+    responses.add(
+        responses.POST,
+        "https://api.payments.com/charges",
+        json={"error": {"message": "Card declined"}},
+        status=402
+    )
+
+    gateway = PaymentGateway("sk_test_key")
+    service = PaymentService(gateway)
+    result = service.process_payment(1, 50.00, "tok_decline")
+    
+    assert result["status"] == "failed"
+
+@responses.activate
+def test_payment_network_timeout():
+    responses.add(
+        responses.POST,
+        "https://api.payments.com/charges",
+        body=requests.ConnectionError("Connection timeout")
+    )
+
+    gateway = PaymentGateway("sk_test_key")
+    service = PaymentService(gateway)
+    result = service.process_payment(1, 50.00, "tok_visa")
+    
+    assert result["status"] == "failed"
+    assert "timeout" in result["error"].lower()
+```
+
+### Email Service Testing
+```python
+import pytest
+import smtplib
+from unittest.mock import patch
+import socket
+
+class EmailService:
+    def __init__(self, smtp_host, smtp_port, username, password):
+        self.smtp_host = smtp_host
+        self.smtp_port = smtp_port
+        self.username = username
+        self.password = password
+
+    def send_email(self, to_addr, subject, body):
+        try:
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
+                server.starttls()
+                server.login(self.username, self.password)
+                message = f"Subject: {subject}\n\n{body}"
+                server.sendmail(self.username, [to_addr], message)
+            return {"status": "sent"}
+        except smtplib.SMTPException as e:
+            return {"status": "failed", "error": str(e)}
+        except socket.timeout:
+            return {"status": "failed", "error": "timeout"}
+
+# Integration test with local SMTP server (e.g., MailHog)
+class TestEmailService:
+    @pytest.fixture
+    def email_service(self):
+        return EmailService(
+            smtp_host="localhost",
+            smtp_port=1025,  # MailHog default
+            username="test@example.com",
+            password="testpass"
+        )
+
+    @pytest.mark.integration
+    def test_send_email_success(self, email_service):
+        result = email_service.send_email(
+            to_addr="recipient@example.com",
+            subject="Test",
+            body="Hello, this is a test email."
+        )
+        assert result["status"] == "sent"
+```
+
+### Redis Cache Testing
+```python
+import pytest
+import redis
+
+class CacheService:
+    def __init__(self, host="localhost", port=6379, db=0):
+        self.client = redis.Redis(host=host, port=port, db=db, decode_responses=True)
+
+    def get(self, key):
+        return self.client.get(key)
+
+    def set(self, key, value, ttl=None):
+        if ttl:
+            self.client.setex(key, ttl, value)
+        else:
+            self.client.set(key, value)
+
+    def delete(self, key):
+        self.client.delete(key)
+
+    def exists(self, key):
+        return self.client.exists(key) > 0
+
+class TestCacheService:
+    @pytest.fixture
+    def cache(self):
+        service = CacheService(db=1)  # Use separate database
+        service.client.flushdb()       # Clean slate
+        yield service
+        service.client.flushdb()       # Cleanup
+
+    def test_set_and_get(self, cache):
+        cache.set("name", "Alice")
+        assert cache.get("name") == "Alice"
+
+    def test_set_with_ttl(self, cache):
+        cache.set("temp", "value", ttl=1)
+        assert cache.get("temp") == "value"
+        import time
+        time.sleep(1.1)
+        assert cache.get("temp") is None
+
+    def test_nonexistent_key(self, cache):
+        assert cache.get("nonexistent") is None
+
+    def test_exists(self, cache):
+        cache.set("key", "value")
+        assert cache.exists("key")
+        cache.delete("key")
+        assert not cache.exists("key")
+```
+
+### Message Queue Testing (RabbitMQ)
+```python
+import pytest
+import pika
+
+class MessagePublisher:
+    def __init__(self, host="localhost"):
+        self.host = host
+
+    def publish(self, queue, message):
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host=self.host)
+        )
+        channel = connection.channel()
+        channel.queue_declare(queue=queue, durable=True)
+        channel.basic_publish(
+            exchange='',
+            routing_key=queue,
+            body=message,
+            properties=pika.BasicProperties(
+                delivery_mode=2  # Persistent
+            )
+        )
+        connection.close()
+
+class TestMessageQueue:
+    @pytest.fixture
+    def publisher(self):
+        return MessagePublisher()
+
+    @pytest.mark.integration
+    def test_publish_message(self, publisher):
+        publisher.publish("test_queue", "hello world")
+        
+        # Verify by consuming the message
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host="localhost")
+        )
+        channel = connection.channel()
+        method, properties, body = channel.basic_get(
+            queue="test_queue", auto_ack=True
+        )
+        assert body == b"hello world"
+        connection.close()
+```
+
+### Beginner Examples
+```python
+import pytest
+import json
+from pathlib import Path
+
+# Simple file-based integration test
+class FileProcessor:
+    def process_file(self, filepath):
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+        return [item['name'] for item in data['items']]
+
+class TestFileProcessor:
+    @pytest.fixture
+    def temp_file(self, tmp_path):
+        filepath = tmp_path / "data.json"
+        filepath.write_text(json.dumps({
+            "items": [
+                {"name": "Alice", "age": 30},
+                {"name": "Bob", "age": 25}
+            ]
+        }))
+        return filepath
+
+    def test_process_file(self, temp_file):
+        processor = FileProcessor()
+        result = processor.process_file(str(temp_file))
+        assert result == ["Alice", "Bob"]
+```
+
+### Advanced Examples
+```python
 import pytest
 import asyncio
-import asyncpg
-from contextlib import asynccontextmanager
+import aiohttp
 
-class DatabaseManager:
-    def __init__(self, dsn):
-        self.dsn = dsn
-        self.pool = None
+class AsyncAPIClient:
+    def __init__(self, base_url):
+        self.base_url = base_url
 
-    async def connect(self):
-        self.pool = await asyncpg.create_pool(self.dsn, min_size=2, max_size=10)
+    async def get_user(self, user_id):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{self.base_url}/users/{user_id}") as resp:
+                resp.raise_for_status()
+                return await resp.json()
 
-    async def close(self):
-        if self.pool:
-            await self.pool.close()
-
-    async def fetch_user(self, user_id):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id, name, email FROM users WHERE id = ", user_id
-            )
-            if row:
-                return dict(row)
-            return None
-
-    async def create_user(self, name, email):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "INSERT INTO users (name, email) VALUES (, ) RETURNING id",
-                name, email,
-            )
-            return row["id"]
+    async def create_user(self, data):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{self.base_url}/users", json=data) as resp:
+                return await resp.json()
 
 @pytest.mark.asyncio
-async def test_database_manager(postgres_dsn):
-    mgr = DatabaseManager(postgres_dsn)
-    await mgr.connect()
-    try:
-        user_id = await mgr.create_user("Test User", "test@example.com")
-        assert user_id is not None
-        user = await mgr.fetch_user(user_id)
-        assert user["name"] == "Test User"
-        assert user["email"] == "test@example.com"
-    finally:
-        await mgr.close()
+class TestAsyncAPI:
+    @pytest.fixture
+    def client(self):
+        # Use testcontainers or a real test server
+        return AsyncAPIClient("http://localhost:8000")
 
-@pytest.mark.asyncio
-async def test_transaction_rollback_integration(postgres_dsn):
-    mgr = DatabaseManager(postgres_dsn)
-    await mgr.connect()
-    try:
-        user_id = await mgr.create_user("Rollback", "rollback@test.com")
-        assert user_id is not None
-        # Simulate a failure scenario
-        with pytest.raises(Exception):
-            async with mgr.pool.acquire() as conn:
-                async with conn.transaction():
-                    await conn.execute("INSERT INTO users (name) VALUES ('bad')")
-                    raise ValueError("Simulated failure")
-        # User from before should still exist
-        user = await mgr.fetch_user(user_id)
-        assert user is not None
-    finally:
-        await mgr.close()
-`
+    async def test_get_user(self, client):
+        user = await client.get_user(1)
+        assert user["id"] == 1
+        assert "name" in user
 
-## Real-World Use Cases
+    async def test_create_user(self, client):
+        data = {"name": "Alice", "email": "alice@example.com"}
+        result = await client.create_user(data)
+        assert result["id"] is not None
+```
 
-- **E-commerce Platform** – Test checkout flow: cart -> payment -> inventory -> shipping -> notification.
-- **SaaS Application** – Test user registration -> email verification -> subscription activation -> feature access.
-- **Data Pipeline** – Test: ingest from Kafka -> transform in Spark -> load to Redshift -> verify BI reports.
-- **Microservices** – Test service A calls service B with correct payload and handles responses/errors.
-- **Mobile Backend** – Test: mobile client -> API gateway -> auth service -> data service -> push notification.
-- **IoT System** – Test: device sends telemetry -> MQTT broker -> stream processor -> time-series DB -> dashboard.
+### Real-World Use Cases
+- Testing database migrations and schema changes
+- Validating REST API contracts
+- Verifying payment gateway integration
+- Testing email delivery pipeline
+- Cache invalidation strategies
+- Message queue reliability
+- Third-party API error handling
 
-## Common Mistakes
+### Common Mistakes
+- Not cleaning up test data between runs
+- Using production-like data that causes false positives
+- Tests that depend on execution order
+- Not testing error conditions and timeouts
+- Tests that are not repeatable (depend on external state)
+- Mixing integration and unit tests in the same suite
 
-1. **Testing too much at once** – Integration tests should focus on specific interactions, not entire workflows.
-2. **Not cleaning up test data** – Leftover data causes flaky tests and环境污染.
-3. **Using production-like data** – Test data should be minimal and controlled.
-4. **Slow tests** – Integration tests are slower; keep them focused and use parallel execution.
-5. **Testing with real external services** without mock fallback in CI.
-6. **Hardcoding connection strings** – Use environment variables and fixtures instead.
-7. **Not testing error paths** – Network failures, timeouts, and invalid responses.
-8. **Over-relying on integration tests** – Balance with unit tests for fast feedback.
+### Best Practices
+- Use dedicated test databases/containers
+- Clean up data between tests
+- Test error scenarios, not just happy paths
+- Use retry mechanisms for flaky tests
+- Separate integration tests from unit tests
+- Use docker/containers for reproducible environments
+- Implement circuit breakers for external service tests
 
-## Best Practices
+### Performance Considerations
+- Integration tests are 10-100x slower than unit tests
+- Use test grouping to run fast tests first
+- Reuse expensive fixtures (e.g., database connections)
+- Parallelize independent integration tests
+- Use database transactions for rollback instead of cleanup
+- Consider snapshot testing for complex responses
 
-1. **Use test containers** (Docker) for reproducible dependency environments.
-2. **Isolate test data** – Each test gets its own database/collection/queue.
-3. **Use fixtures for setup/teardown** – Ensure clean state before each test.
-4. **Tag integration tests** – Separate from unit tests with @pytest.mark.integration.
-5. **Run integration tests in CI** but separately from fast unit tests.
-6. **Use service virtualization** – WireMock, LocalStack, or Testcontainers for external services.
-7. **Implement health checks** in tests to fail fast if dependencies aren't available.
-8. **Use transactions for DB tests** – Roll back after each test to avoid cleanup code.
-9. **Add timeouts** to prevent hung tests from blocking CI.
+### Interview Questions
+1. How do you test database interactions without corrupting test data?
+2. What strategies exist for testing third-party API integrations?
+3. How do you handle flaky integration tests?
+4. Explain the difference between unit, integration, and end-to-end tests.
+5. How do you test async operations in integration tests?
 
-## Interview Questions
+### Coding Challenges
+1. Write integration tests for a user registration flow (DB + email)
+2. Test a payment processing pipeline with mocked gateway
+3. Create integration tests for a caching layer with Redis
+4. Test a message queue publish-consume cycle
 
-1. **What is the difference between unit and integration testing?** – Unit tests isolate single components; integration tests verify real interactions between components.
-2. **How do you handle external API dependencies in integration tests?** – Use a combination of mocked responses (via respx/requests-mock) and a real test service for contract verification.
-3. **What is Testcontainers and why use it?** – A library that provides disposable Docker containers for testing, ensuring consistent, reproducible dependency environments.
-4. **How do you test database interactions without affecting production data?** – Use in-memory databases (SQLite), testcontainers with Docker, or transactional rollback patterns.
-5. **What is the FastAPI TestClient and how does it work?** – A Starlette TestClient that makes HTTP requests to your FastAPI application without running a real server.
-6. **How would you structure integration tests in a CI/CD pipeline?** – Use separate CI job stages: unit tests first (fast), then integration tests (slower, with service containers).
-7. **What is the difference between respx and requests-mock?** – respx works with httpx (sync/async); requests-mock works with the requests library.
-
-## Coding Challenges
-
-1. Write integration tests for a REST API that manages a library (books, authors, members, borrowing). Use FastAPI TestClient and SQLite.
-2. Create a test suite for a file upload service that validates file types, scans for malware (ClamAV via Docker), stores to S3 (MinIO), and records metadata in PostgreSQL.
-3. Implement integration tests for a notification system that sends emails (MailHog Docker), push notifications (Firebase mock), and SMS (Twilio mock).
-4. Build a test harness for a gRPC service: start the server in a Docker container, make RPC calls using grpcio, and assert responses.
-5. Write integration tests for a Redis-backed rate limiter that resets counters, checks TTLs, and handles concurrent requests.
-
-## Summary
-
-Integration testing validates that components work together correctly by testing real interactions with databases, APIs, message queues, and external services. It provides higher confidence than unit testing alone by catching interface mismatches, configuration errors, and integration bugs. Tools like FastAPI TestClient, httpx, testcontainers, and Docker service containers make integration testing practical and reproducible. A balanced test suite includes both unit tests (fast, isolated) and integration tests (realistic, comprehensive).
-
-## Related Topics
-
-- [unittest](./77_unittest.md) – Foundation for writing structured tests.
-- [pytest](./78_pytest.md) – Test runner and fixture system used in integration tests.
-- [Mocking](./79_mocking.md) – When to mock vs. when to use real dependencies.
-- [TDD](./80_tdd.md) – TDD principles applied to integration-level tests.
-- [Docker](https://docs.docker.com/) – Containers for reproducible test environments.
-- [httpx](https://www.python-httpx.org/) – HTTP client for async API testing.
-- [testcontainers-python](https://testcontainers-python.readthedocs.io/) – Docker-based test dependencies.
+### Related Topics
+- pytest fixtures and conftest.py
+- Testcontainers library
+- Docker for test environments
+- WireMock for API mocking
+- LocalStack for AWS service testing
+- Contract testing with Pact
+- End-to-end testing with Selenium/Playwright

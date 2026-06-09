@@ -1,22 +1,19 @@
 # Singleton - __new__ override, metaclass singleton, Borg pattern
-
 ## Introduction
+The Singleton pattern ensures a class has only one instance and provides a global point of access to it. In Python, Singleton can be implemented in multiple ways: overriding `__new__`, using metaclasses, or using module-level singletons (which are inherently singleton in Python due to module caching). The Borg pattern (also called Monostate) offers an alternative where instances share state rather than enforcing identity.
 
-The Singleton pattern ensures a class has only one instance and provides a global point of access to it. It is one of the most well-known creational design patterns from the Gang of Four. In Python, singletons can be implemented in multiple ways due to the language's dynamic nature and flexible object model.
+## __new__ override singleton
+### What It Is
+The `__new__` method in Python is responsible for creating a new instance of a class. By overriding `__new__`, we can control instance creation and ensure only one instance exists.
 
-## Why It Is Important
+### Why It Is Important
+This is the simplest and most common Singleton implementation in Python. It leverages the language's object creation mechanism directly without additional constructs.
 
-The Singleton pattern is critical when exactly one object must coordinate actions across a system. Common use cases include configuration managers, logging services, thread pools, database connection pools, and caching layers. Without a singleton, multiple instances could lead to inconsistent state, wasted resources, or conflicting operations. However, singletons are often overused and can introduce hidden dependencies and testability problems.
-
-## Syntax
-
-There is no dedicated syntax for singletons in Python. Instead, developers use language features like the `__new__` method, class decorators, metaclasses, or module-level imports to enforce single-instance behavior.
-
-## Examples
+### How It Works Internally
+`__new__` is called before `__init__`. By checking if an instance exists in a class variable and creating one only if it doesn't, we ensure a single instance. The lock prevents race conditions in multithreaded environments.
 
 ```python
-# Singleton using __new__ override
-class SingletonNew:
+class Singleton:
     _instance = None
 
     def __new__(cls, *args, **kwargs):
@@ -24,109 +21,20 @@ class SingletonNew:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, value=None):
-        if not hasattr(self, '_initialized'):
-            self.value = value
-            self._initialized = True
+    def __init__(self):
+        self.value = 0
 
-
-s1 = SingletonNew("first")
-s2 = SingletonNew("second")
-print(s1 is s2)       # True
-print(s1.value)       # first — __init__ only runs once
-print(s2.value)       # first
+# Usage
+s1 = Singleton()
+s2 = Singleton()
+assert s1 is s2  # Same instance
+s1.value = 42
+assert s2.value == 42  # Shared state
 ```
 
+### Thread-Safe Singleton
 ```python
-# Borg / Monostate pattern — share state, not identity
-class Borg:
-    _shared_state = {}
-
-    def __new__(cls, *args, **kwargs):
-        obj = super().__new__(cls, *args, **kwargs)
-        obj.__dict__ = cls._shared_state
-        return obj
-
-
-class ConfigManager(Borg):
-    def __init__(self):
-        if not hasattr(self, 'initialized'):
-            self.settings = {}
-            self.initialized = True
-
-    def set(self, key, value):
-        self.settings[key] = value
-
-    def get(self, key, default=None):
-        return self.settings.get(key, default)
-
-
-c1 = ConfigManager()
-c2 = ConfigManager()
-c1.set("theme", "dark")
-print(c2.get("theme"))  # dark — shared state
-print(c1 is c2)         # False — different objects
-```
-
-```python
-# Module-level singleton (most Pythonic)
-# singleton_module.py
-class _DatabaseConnectionPool:
-    def __init__(self):
-        self.connections = []
-        self.max_size = 10
-
-    def acquire(self):
-        if self.connections:
-            return self.connections.pop()
-        return f"Connection-{id(self)}-new"
-
-    def release(self, conn):
-        if len(self.connections) < self.max_size:
-            self.connections.append(conn)
-
-
-# At module level — one instance per import
-db_pool = _DatabaseConnectionPool()
-
-# In any other file:
-# from singleton_module import db_pool
-```
-
-```python
-# Metaclass singleton
-class SingletonMeta(type):
-    _instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class Logger(metaclass=SingletonMeta):
-    def __init__(self):
-        self.log_file = "app.log"
-
-    def log(self, level, message):
-        print(f"[{level}] {message}")
-
-
-class AppConfig(metaclass=SingletonMeta):
-    def __init__(self):
-        self.config = {}
-
-
-log1 = Logger()
-log2 = Logger()
-print(log1 is log2)  # True
-```
-
-```python
-# Thread-safe singleton with locking
 import threading
-import time
-
 
 class ThreadSafeSingleton:
     _instance = None
@@ -136,727 +44,277 @@ class ThreadSafeSingleton:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super().__new__(cls, *args, **kwargs)
+                    cls._instance = super().__new__(cls)
         return cls._instance
-
-    def __init__(self):
-        if not hasattr(self, '_initialized'):
-            self.counter = 0
-            self._initialized = True
-
-
-results = []
-
-
-def worker():
-    obj = ThreadSafeSingleton()
-    obj.counter += 1
-    results.append(id(obj))
-
-
-threads = [threading.Thread(target=worker) for _ in range(10)]
-for t in threads:
-    t.start()
-for t in threads:
-    t.join()
-
-print(all(r == results[0] for r in results))  # True — all same instance
 ```
 
+### Lazy Initialization Singleton
 ```python
-# Singleton decorator
-def singleton(cls):
-    instances = {}
+class DatabaseConnection:
+    _instance = None
 
-    def get_instance(*args, **kwargs):
-        if cls not in instances:
-            instances[cls] = cls(*args, **kwargs)
-        return instances[cls]
+    def __new__(cls):
+        if cls._instance is None:
+            print("Creating database connection...")
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
 
-    return get_instance
+    def connect(self, host, port):
+        if not self._initialized:
+            self.host = host
+            self.port = port
+            self._initialized = True
+            print(f"Connected to {host}:{port}")
+        return self
 
+    def query(self, sql):
+        if self._initialized:
+            return f"Result of: {sql}"
+        raise RuntimeError("Not connected")
 
-@singleton
+# Usage
+db1 = DatabaseConnection().connect("localhost", 5432)
+db2 = DatabaseConnection().connect("localhost", 5432)
+assert db1 is db2
+assert db1.query("SELECT 1") == db2.query("SELECT 1")
+print(f"Same connection: {db1 is db2}")  # True
+```
+
+## Metaclass singleton
+### What It Is
+A metaclass Singleton uses the metaclass mechanism to control class instantiation. The metaclass overrides `__call__` to control what happens when the class is called (i.e., instantiated).
+
+### Why It Is Important
+Metaclass-based singletons are cleaner because they encapsulate the singleton logic in the metaclass, leaving the actual class free of singleton code. This separation of concerns is more Pythonic and reusable.
+
+### How It Works Internally
+When a class with a metaclass is instantiated with `ClassName()`, Python calls the metaclass's `__call__` method. This method creates the instance (via `__new__`) and initializes it (via `__init__`). By caching the instance, we return the same object each time.
+
+```python
+class SingletonMeta(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            instance = super().__call__(*args, **kwargs)
+            cls._instances[cls] = instance
+        return cls._instances[cls]
+
+class Logger(metaclass=SingletonMeta):
+    def __init__(self):
+        self.logs = []
+
+    def log(self, message):
+        self.logs.append(message)
+        print(f"Log: {message}")
+
+# Usage
+logger1 = Logger()
+logger2 = Logger()
+assert logger1 is logger2
+logger1.log("First message")
+assert len(logger2.logs) == 1  # Shared state
+```
+
+### Multiple Singleton Classes
+```python
+class SingletonMeta(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            instance = super().__call__(*args, **kwargs)
+            cls._instances[cls] = instance
+        return cls._instances[cls]
+
+class Config(metaclass=SingletonMeta):
+    def __init__(self):
+        self.settings = {}
+
+class Cache(metaclass=SingletonMeta):
+    def __init__(self):
+        self.data = {}
+
+# Each class has its own singleton instance
+config1 = Config()
+config2 = Config()
+cache1 = Cache()
+cache2 = Cache()
+
+assert config1 is config2
+assert cache1 is cache2
+assert config1 is not cache1  # Different classes, different instances
+```
+
+## Borg pattern
+### What It Is
+The Borg pattern (also called Monostate) allows multiple instances of a class to share the same state. Unlike traditional Singleton where there's one instance, Borg instances are separate objects that share `__dict__`.
+
+### Why It Is Important
+Borg provides more flexibility than Singleton. Subclassing works more naturally, and the pattern is more transparent to clients. It also allows different instances to temporarily diverge if needed.
+
+### How It Works Internally
+Borg works by making all instances share the same `__dict__` (instance attribute dictionary). When any instance modifies an attribute, all instances see the change. This is achieved by overriding `__new__` to set the instance's `__dict__` to a shared class-level dictionary.
+
+```python
+class Borg:
+    _shared_state = {}
+
+    def __new__(cls, *args, **kwargs):
+        instance = super().__new__(cls, *args, **kwargs)
+        instance.__dict__ = cls._shared_state
+        return instance
+
+class ConfigManager(Borg):
+    def __init__(self):
+        if not hasattr(self, 'initialized'):
+            self.config = {}
+            self.initialized = True
+
+    def set(self, key, value):
+        self.config[key] = value
+
+    def get(self, key, default=None):
+        return self.config.get(key, default)
+
+# Usage
+c1 = ConfigManager()
+c2 = ConfigManager()
+c1.set("database_url", "postgres://localhost/db")
+assert c2.get("database_url") == "postgres://localhost/db"
+assert c1 is not c2  # Different instances
+assert c1.__dict__ is c2.__dict__  # But shared state
+```
+
+### Borg with Subclassing
+```python
+class BaseBorg:
+    _shared_state = {}
+
+    def __new__(cls, *args, **kwargs):
+        instance = super().__new__(cls, *args, **kwargs)
+        instance.__dict__ = cls._shared_state
+        return instance
+
+class DatabaseConfig(BaseBorg):
+    def __init__(self):
+        if not hasattr(self, 'host'):
+            self.host = "localhost"
+            self.port = 5432
+
+class APIConfig(BaseBorg):
+    def __init__(self):
+        if not hasattr(self, 'api_key'):
+            self.api_key = "default_key"
+
+# Note: All Borg subclasses share the SAME state
+# This can be a feature or a bug depending on intent
+db_config = DatabaseConfig()
+api_config = APIConfig()
+
+print(db_config.host)      # "localhost"
+print(api_config.host)     # "localhost" - shared!
+print(db_config is api_config)  # False (different instances)
+print(db_config.__dict__ is api_config.__dict__)  # True (shared state)
+```
+
+### Per-Child-Class Borg
+```python
+class PerClassBorg:
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls._shared_state = {}
+
+    def __new__(cls, *args, **kwargs):
+        instance = super().__new__(cls, *args, **kwargs)
+        instance.__dict__ = cls._shared_state
+        return instance
+
+class DBConfig(PerClassBorg):
+    def __init__(self):
+        if not hasattr(self, 'db_host'):
+            self.db_host = "localhost"
+
+class CacheConfig(PerClassBorg):
+    def __init__(self):
+        if not hasattr(self, 'cache_host'):
+            self.cache_host = "localhost"
+
+db1 = DBConfig()
+cache1 = CacheConfig()
+db2 = DBConfig()
+
+assert db1 is not db2  # Different instances
+assert db1.__dict__ is db2.__dict__  # Same class, shared state
+assert db1.__dict__ is not cache1.__dict__  # Different classes, different state
+```
+
+### Module-Level Singleton
+```python
+# singletons.py
 class Database:
     def __init__(self):
         self.connected = False
 
     def connect(self):
+        print("Connecting...")
         self.connected = True
-        return "Connected"
 
+# Module-level instance (imported once, cached by Python)
+db = Database()
 
-db1 = Database()
-db2 = Database()
-print(db1 is db2)  # True
+# In other files:
+# from singletons import db
+# db.connect()  # Always the same instance
 ```
 
-```python
-# Lazy singleton with descriptor
-class LazySingleton:
-    _instance = None
-
-    def __getattr__(self, name):
-        return getattr(self._instance, name)
-
-    @classmethod
-    def instance(cls):
-        if cls._instance is None:
-            cls._instance = cls.__new__(cls)
-            cls._instance.__init__()
-        return cls._instance
-```
-
-## Beginner Examples
-
-```python
-# Simplest singleton — module-level object
-
-# config.py
-class Configuration:
-    def __init__(self):
-        self.data = {
-            "app_name": "MyApp",
-            "version": "1.0.0",
-            "debug": True,
-            "database_url": "sqlite:///app.db",
-        }
-
-    def get(self, key):
-        return self.data.get(key)
-
-    def set(self, key, value):
-        self.data[key] = value
-
-
-config = Configuration()
-
-
-# main.py
-# from config import config
-
-def start_app():
-    print(f"Starting {config.get('app_name')} v{config.get('version')}")
-    if config.get("debug"):
-        print("Debug mode enabled")
-
-
-start_app()
-# Starting MyApp v1.0.0
-# Debug mode enabled
-```
-
-```python
-# Simple __new__ singleton
-class Printer:
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.jobs = []
-        return cls._instance
-
-    def add_job(self, document):
-        self.jobs.append(document)
-        print(f"Added: {document}")
-
-    def print_all(self):
-        for job in self.jobs:
-            print(f"Printing: {job}")
-        self.jobs.clear()
-
-
-p1 = Printer()
-p2 = Printer()
-p1.add_job("Report.pdf")
-p2.add_job("Invoice.pdf")
-print(len(p1.jobs))  # 2
-```
-
-## Intermediate Examples
-
-```python
-# Thread-safe database connection pool as singleton
-import threading
-import time
-import random
-from typing import Optional
-
-
-class ConnectionPool:
-    _instance = None
-    _lock = threading.Lock()
-    _pool_lock = threading.Lock()
-
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialize()
-        return cls._instance
-
-    def _initialize(self):
-        self._pool = []
-        self._max_size = 5
-        self._in_use = {}
-        self._total_created = 0
-        self._create_connections(2)
-
-    def _create_connections(self, count):
-        for _ in range(count):
-            conn_id = f"conn-{self._total_created}"
-            self._pool.append(conn_id)
-            self._total_created += 1
-
-    def acquire(self, timeout: float = 5.0) -> Optional[str]:
-        start = time.time()
-        while time.time() - start < timeout:
-            with self._pool_lock:
-                if self._pool:
-                    conn = self._pool.pop()
-                    self._in_use[conn] = threading.current_thread().name
-                    return conn
-                if self._total_created < self._max_size:
-                    conn = f"conn-{self._total_created}"
-                    self._total_created += 1
-                    self._in_use[conn] = threading.current_thread().name
-                    return conn
-            time.sleep(0.01)
-        return None
-
-    def release(self, conn: str):
-        with self._pool_lock:
-            if conn in self._in_use:
-                del self._in_use[conn]
-                self._pool.append(conn)
-
-    @property
-    def available(self) -> int:
-        return len(self._pool)
-
-    @property
-    def active(self) -> int:
-        return len(self._in_use)
-
-
-def worker_task(pool, tasks):
-    for task in tasks:
-        conn = pool.acquire()
-        if conn:
-            print(f"{threading.current_thread().name} got {conn} for task {task}")
-            time.sleep(random.uniform(0.1, 0.3))
-            pool.release(conn)
-        else:
-            print(f"{threading.current_thread().name} TIMEOUT on task {task}")
-
-
-pool = ConnectionPool()
-threads = [
-    threading.Thread(target=worker_task, args=(pool, range(3)), name=f"Worker-{i}")
-    for i in range(4)
-]
-for t in threads:
-    t.start()
-for t in threads:
-    t.join()
-
-print(f"Pool available: {pool.available}, active: {pool.active}")
-```
-
-```python
-# Singleton with dependency injection support
-class ServiceRegistry:
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._services = {}
-            cls._instance._singletons = {}
-        return cls._instance
-
-    def register(self, name, factory, singleton=False):
-        self._services[name] = {"factory": factory, "singleton": singleton}
-
-    def resolve(self, name, *args, **kwargs):
-        service = self._services.get(name)
-        if not service:
-            raise KeyError(f"Service '{name}' not registered")
-        if service["singleton"]:
-            if name not in self._singletons:
-                self._singletons[name] = service["factory"](*args, **kwargs)
-            return self._singletons[name]
-        return service["factory"](*args, **kwargs)
-
-
-registry = ServiceRegistry()
-
-class EmailService:
-    def send(self, to, subject):
-        print(f"Sending '{subject}' to {to}")
-
-class UserRepository:
-    def get_user(self, user_id):
-        return {"id": user_id, "name": "Alice"}
-
-registry.register("email", lambda: EmailService(), singleton=True)
-registry.register("user_repo", lambda: UserRepository(), singleton=True)
-
-email = registry.resolve("email")
-email.send("alice@example.com", "Welcome!")
-```
-
-## Advanced Examples
-
-```python
-# Metaclass-based singleton registry for multiple subclasses
-class SingletonRegistry(type):
-    _instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class DatabaseEngine(metaclass=SingletonRegistry):
-    def __init__(self):
-        self.connection = None
-
-    def connect(self, url):
-        raise NotImplementedError
-
-
-class PostgreSQL(DatabaseEngine):
-    def connect(self, url):
-        self.connection = f"PostgreSQL connected to {url}"
-        return self.connection
-
-
-class MySQL(DatabaseEngine):
-    def connect(self, url):
-        self.connection = f"MySQL connected to {url}"
-        return self.connection
-
-
-class SQLite(DatabaseEngine):
-    def connect(self, url):
-        self.connection = f"SQLite connected to {url}"
-        return self.connection
-
-
-pg1 = PostgreSQL()
-pg2 = PostgreSQL()
-mysql1 = MySQL()
-
-print(pg1 is pg2)                     # True
-print(pg1.connect("pg://localhost"))  # PostgreSQL connected to pg://localhost
-print(pg2.connect("pg://remote"))     # PostgreSQL connected to pg://localhost
-print(mysql1.connect("mysql://localhost"))  # MySQL connected to mysql://localhost
-```
-
-```python
-# Thread-safe singleton with async initialization
-import asyncio
-import threading
-from typing import Optional, Any
-
-
-class AsyncSingleton:
-    _instance = None
-    _lock = asyncio.Lock()
-    _init_lock = threading.Lock()
-    _initialized = False
-
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._init_lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._async_data = None
-        return cls._instance
-
-    async def initialize(self):
-        if not self._initialized:
-            async with self._lock:
-                if not self._initialized:
-                    print("Initializing singleton asynchronously...")
-                    await asyncio.sleep(0.5)
-                    self._async_data = {
-                        "models": ["gpt-4", "claude-3"],
-                        "api_key": "sk-xxx",
-                        "rate_limit": 100,
-                    }
-                    self._initialized = True
-
-    async def get_data(self, key: str) -> Optional[Any]:
-        await self.initialize()
-        return self._async_data.get(key) if self._async_data else None
-
-
-async def worker(name):
-    singleton = AsyncSingleton()
-    data = await singleton.get_data("models")
-    print(f"{name}: {data}")
-    print(f"{name}: same instance? {singleton is AsyncSingleton()}")
-
-
-async def main():
-    await asyncio.gather(worker("A"), worker("B"), worker("C"))
-
-
-asyncio.run(main())
-```
-
-```python
-# Singleton with cleanup / lifecycle management
-import weakref
-
-
-class LifecycleSingleton:
-    _instance = None
-    _cleanup_handlers = []
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._resources = []
-            cls._instance._active = True
-        return cls._instance
-
-    def register_resource(self, resource):
-        self._resources.append(resource)
-
-    def add_cleanup_handler(self, handler):
-        self._cleanup_handlers.append(handler)
-
-    def shutdown(self):
-        if self._active:
-            print("Shutting down singleton...")
-            for handler in self._cleanup_handlers:
-                handler()
-            for resource in self._resources:
-                print(f"  Closing {resource}")
-            self._resources.clear()
-            self._active = False
-            type(self)._instance = None
-
-    @classmethod
-    def reset(cls):
-        if cls._instance is not None:
-            cls._instance.shutdown()
-        cls._instance = None
-
-
-singleton = LifecycleSingleton()
-singleton.register_resource("db-connection-1")
-singleton.register_resource("cache-redis")
-singleton.add_cleanup_handler(lambda: print("  Flushing logs..."))
-singleton.shutdown()
-print(singleton is LifecycleSingleton())  # False — new instance
-```
-
-```python
-# Abstract singleton base class
-class Singleton(type):
-    _instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class Config(metaclass=Singleton):
-    def __init__(self):
-        self._data = {
-            "host": "localhost",
-            "port": 8080,
-            "debug": False,
-        }
-
-    def __getitem__(self, key):
-        return self._data[key]
-
-    def __setitem__(self, key, value):
-        self._data[key] = value
-
-    def __contains__(self, key):
-        return key in self._data
-
-
-cfg = Config()
-cfg["host"] = "0.0.0.0"
-print(cfg["host"])  # 0.0.0.0
-print("port" in cfg)  # True
-```
-
-## Real-World Use Cases
-
-```python
-# Application-wide logging service
-import logging
-import sys
-from datetime import datetime
-
-
-class AppLogger(metaclass=SingletonMeta):
-    def __init__(self):
-        self.logger = logging.getLogger("App")
-        self.logger.setLevel(logging.DEBUG)
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-        )
-        self.logger.addHandler(handler)
-        self._activity_log = []
-
-    def info(self, message):
-        self.logger.info(message)
-        self._activity_log.append((datetime.now(), "INFO", message))
-
-    def error(self, message):
-        self.logger.error(message)
-        self._activity_log.append((datetime.now(), "ERROR", message))
-
-    def warn(self, message):
-        self.logger.warning(message)
-        self._activity_log.append((datetime.now(), "WARN", message))
-
-    def get_activity(self):
-        return list(self._activity_log)
-```
-
-```python
-# Global configuration manager loading from YAML/env
-import os
-import json
-from pathlib import Path
-
-
-class Settings(metaclass=SingletonMeta):
-    def __init__(self):
-        self._config = {}
-        self._load_defaults()
-        self._load_from_env()
-
-    def _load_defaults(self):
-        self._config = {
-            "database": {
-                "host": "localhost",
-                "port": 5432,
-                "name": "app_db",
-                "user": "app",
-                "password": "",
-            },
-            "redis": {"host": "localhost", "port": 6379, "db": 0},
-            "logging": {"level": "INFO", "file": "app.log"},
-            "api": {"host": "0.0.0.0", "port": 8000, "workers": 4},
-        }
-
-    def _load_from_env(self):
-        for key in ["DATABASE_URL", "REDIS_URL", "LOG_LEVEL", "API_PORT"]:
-            value = os.environ.get(key)
-            if value:
-                if key == "DATABASE_URL":
-                    self._config["database"]["host"] = value
-                elif key == "LOG_LEVEL":
-                    self._config["logging"]["level"] = value
-                elif key == "API_PORT":
-                    self._config["api"]["port"] = int(value)
-
-    def get(self, *keys):
-        value = self._config
-        for key in keys:
-            value = value[key]
-        return value
-
-    def to_dict(self):
-        return dict(self._config)
-```
-
-## Common Mistakes
-
-```python
-# MISTAKE 1: __init__ running every time
-class BadSingleton:
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        self.counter = 0  # Reset every time!
-
-
-b1 = BadSingleton()
-b1.counter = 42
-b2 = BadSingleton()
-print(b2.counter)  # 0 — __init__ reset it!
-```
-
-```python
-# MISTAKE 2: Not thread-safe
-class UnsafeSingleton:
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            import time
-            time.sleep(0.001)
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-
-# Multiple threads may both see _instance is None
-```
-
-```python
-# MISTAKE 3: Singleton as global state in tests
-# Tests become order-dependent and hard to isolate
-```
-
-```python
-# MISTAKE 4: Using singleton for everything
-class UserManager(metaclass=SingletonMeta):
-    pass  # What if you need multiple user contexts?
-```
-
-```python
-# MISTAKE 5: Pickling breaks singletons
-import pickle
-s = SingletonNew("test")
-data = pickle.dumps(s)
-s2 = pickle.loads(data)
-print(s is s2)  # False — new instance created!
-```
-
-## Best Practices
-
-```python
-# 1. Use module-level singletons (most Pythonic)
-# myapp/config.py
-class _Config:
-    pass
-
-config = _Config()
-
-# 2. Use metaclass for framework-level singletons
-# 3. Always guard __init__ with _initialized flag
-# 4. Use locks for thread safety
-# 5. Provide a reset method for testing
-# 6. Consider dependency injection instead
-# 7. Document why a singleton is needed
-```
-
-```python
-# Testable singleton with reset capability
-class TestableSingleton:
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
-    def __init__(self):
-        if not self._initialized:
-            self._initialized = True
-            self.state = {}
-
-    @classmethod
-    def reset(cls):
-        cls._instance = None
-
-
-import unittest
-
-class TestSingleton(unittest.TestCase):
-    def setUp(self):
-        TestableSingleton.reset()
-
-    def test_singleton(self):
-        s1 = TestableSingleton()
-        s2 = TestableSingleton()
-        self.assertIs(s1, s2)
-
-    def tearDown(self):
-        TestableSingleton.reset()
-```
-
-## Interview Questions
-
-```python
-# Q1: How does __new__ differ from __init__ in singleton implementation?
-# __new__ creates the object (class method, returns instance)
-# __init__ initializes the object (instance method, returns None)
-```
-
-```python
-# Q2: How would you make a singleton thread-safe?
-# Answer: Use double-checked locking with a threading.Lock
-```
-
-```python
-# Q3: What is the Borg pattern?
-# Answer: Multiple objects sharing the same state via __dict__
-# vs Singleton — same identity AND state
-```
-
-```python
-# Q4: When should you NOT use a singleton?
-# - When you need multiple independent instances
-# - When it makes testing difficult
-# - When it introduces hidden global state
-# - When dependency injection would be cleaner
-```
-
-```python
-# Q5: Implement a singleton that supports inheritance
-# Use metaclass SingletonRegistry — each subclass gets its own instance
-```
-
-## Coding Challenges
-
-```python
-# Challenge 1: Implement a thread-safe singleton cache
-# with TTL (time-to-live) for cached items
-```
-
-```python
-# Challenge 2: Create a singleton event bus
-# that allows publish/subscribe across modules
-```
-
-```python
-# Challenge 3: Implement a singleton database connection
-# pool that handles connection failures and retries
-```
-
-```python
-# Challenge 4: Create a singleton configuration that
-# auto-reloads when the config file changes on disk
-```
-
-```python
-# Challenge 5: Implement a singleton logger that
-# supports multiple output handlers with different levels
-```
-
-## Summary
-
-The Singleton pattern restricts a class to a single instance and provides global access. Python offers several implementation strategies: `__new__` override, Borg/Monostate pattern, metaclasses, module-level imports, and decorators. Each approach has trade-offs regarding inheritance, thread safety, and testability. The module-level singleton is the most Pythonic, while the metaclass approach offers the best inheritance support. Thread safety requires careful locking, and singletons should be used sparingly as they introduce global state that can complicate testing and maintainability.
-
-## Related Topics
-
-- Factory Pattern: Can provide singleton-scoped objects
-- Proxy Pattern: Can control access to singleton objects
-- Dependency Injection: Alternative to singletons for shared services
-- Metaclasses: Python mechanism enabling singleton metaclass
-- Thread Safety: Essential for concurrent singleton access
-- Module System: Python modules are natural singletons
+### Real-World Use Cases
+- Database connection pools
+- Configuration managers
+- Logging services
+- Cache managers
+- Thread pools
+- Window managers in GUI applications
+- Print spoolers
+
+### Common Mistakes
+- Not handling thread safety in `__new__` Singleton
+- Forgetting that Borg shares state across all instances, including subclasses
+- Overusing Singleton (often unnecessary complexity)
+- Making Singletons that are hard to test (global state)
+- Not considering module-level singletons as simpler alternative
+
+### Best Practices
+- Use module-level singletons for simple cases (most Pythonic)
+- Prefer Borg pattern when you need inheritance
+- Use metaclass Singleton for framework-level patterns
+- Consider dependency injection as an alternative
+- Make Singletons testable by allowing instance reset
+
+### Performance Considerations
+- Singleton overhead is negligible (one extra pointer dereference)
+- Thread-safe Singleton with double-checked locking has minimal contention
+- Borg pattern has slightly more overhead due to `__dict__` indirection
+- Singleton can become a bottleneck if heavily contended
+
+### Interview Questions
+1. What are the different ways to implement Singleton in Python?
+2. How does Borg pattern differ from Singleton?
+3. When would you choose Borg over Singleton?
+4. How do you make a Singleton thread-safe?
+5. What are the criticisms of Singleton pattern?
+
+### Coding Challenges
+1. Implement a thread-safe configuration manager as Singleton
+2. Create a database connection pool using Borg pattern
+3. Implement a cache that uses Singleton with TTL expiration
+4. Write a Logger class that works as a metaclass Singleton
+
+### Related Topics
+- Factory pattern
+- Dependency injection
+- Global state management
+- Metaclasses in Python
+- Module caching system
+- Thread safety patterns

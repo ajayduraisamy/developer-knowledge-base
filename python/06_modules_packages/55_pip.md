@@ -1,529 +1,484 @@
 # pip - Package installer, requirements.txt, PyPI
-
 ## Introduction
+pip (Pip Installs Packages) is the standard package manager for Python. It downloads and installs packages from PyPI (Python Package Index) and other indexes, manages dependencies, and handles package versions. Since Python 3.4, pip is bundled with Python itself. This file covers pip as a package installer, the `requirements.txt` standard, and the process of publishing packages to PyPI.
 
-pip is the standard package manager for Python, used to install, update, and manage third-party packages from the Python Package Index (PyPI) and other package indexes. It is included by default with Python 3.4+ and is essential for managing project dependencies.
+## Package installer
+### What It Is
+pip is a command-line tool for installing, upgrading, and removing Python packages. It resolves dependencies, downloads wheels or source distributions, and places them into the appropriate site-packages directory.
 
-## Why It Is Important
+### Why It Is Important
+pip is the backbone of Python's ecosystem. It enables developers to reuse millions of open-source packages with a single command. Without pip, every project would need to bundle its dependencies manually.
 
-pip enables code reuse by providing access to over 500,000 packages on PyPI. It automates dependency resolution, handles version conflicts, and integrates with virtual environments to keep projects isolated. Pip is the foundation of the Python packaging ecosystem.
+### How It Works Internally
+pip parses package metadata from PyPI (a JSON API at `https://pypi.org/pypi/<package>/json`). It fetches PEP 508 requirement specifiers, builds a dependency graph, and uses a SAT solver (or the simpler backtracking resolver in pip 20.3+) to select compatible versions. It then downloads wheels (`.whl`, pre-built archives) or source distributions (`.tar.gz`/`.zip`) and extracts them into `site-packages`. Installation is logged in `pip`s cache (`~/.cache/pip`).
 
-## Syntax
+### Syntax
+```bash
+pip install <package>
+pip install <package>==<version>
+pip install <package>>=<version>,<<version>
+pip install -r requirements.txt
+pip uninstall <package>
+pip list                     # installed packages
+pip show <package>           # package details
+pip freeze                   # list installed with versions
+pip check                    # verify dependencies
+pip search <query>           # search PyPI (limited)
+pip cache list               # show cached downloads
+```
+
+### Beginner Examples
+```bash
+# Install a package
+pip install requests
+
+# Install specific version
+pip install django==4.2.10
+
+# Install with version range
+pip install "numpy>=1.24,<2.0"
+
+# Install multiple packages
+pip install flask gunicorn psycopg2-binary
+
+# Upgrade a package
+pip install --upgrade pip
+pip install --upgrade requests
+
+# Uninstall
+pip uninstall requests -y
+
+# List installed packages
+pip list
+
+# Show package info
+pip show requests
+```
+
+### Intermediate Examples
+```bash
+# Install from requirements
+pip install -r requirements.txt
+
+# Install from a different index
+pip install --index-url https://private-pypi.example.com/simple/ my-private-pkg
+
+# Install with extras
+pip install "fastapi[all]"
+pip install "click[testing]"
+
+# Install editable (development) mode
+pip install -e ./my-package
+
+# Constraints file
+pip install -c constraints.txt
+
+# Dry run
+pip install --dry-run requests
+
+# Install with platform specifier
+pip install --platform win_amd64 --only-binary=:all: numpy
+
+# User install (no sudo)
+pip install --user jupyter
+
+# Download without installing
+pip download --dest ./wheels requests
+```
+
+### Advanced Examples
+```bash
+# Build wheels from source
+pip wheel --no-deps -w ./dist my-package
+
+# Install from VCS
+pip install git+https://github.com/psf/requests.git
+pip install git+https://github.com/psf/requests.git@v2.31.0
+pip install git+https://github.com/psf/requests.git@main#egg=requests
+
+# Install from local wheel
+pip install ./dist/my_package-1.0.0-py3-none-any.whl
+
+# Install with hash checking (Hashin mode)
+pip install --require-hashes -r requirements.txt
+
+# Package from a subdirectory
+pip install "https://github.com/org/repo/archive/main.zip#subdirectory=packages/foo"
+
+# Use pip as a Python module (when pip itself is broken)
+python -m pip install --upgrade pip
+
+# Install with no index (offline)
+pip install --no-index --find-links=./wheels requests
+
+# Reliable freeze with normalized names
+pip freeze --exclude-editable --all
+```
+
+### Real-World Use Cases
+- **Project setup** — `pip install -r requirements.txt` in CI/CD
+- **Environment bootstrap** — installing pip itself in Docker images
+- **Offline deployment** — downloading wheels on a build machine, transferring to air-gapped servers
+- **CI/CD optimization** — caching `pip` cache to speed up builds
+- **Private packages** — hosting internal packages on private PyPI servers (DevPI, Gemfury, AWS CodeArtifact)
+
+### Common Mistakes
+- Forgetting to activate a virtual environment before installing
+- Using `pip install` with `sudo` instead of `--user` or a virtualenv
+- Committing `pip freeze` output without filtering editable packages
+- Not pinning transitive dependencies in requirements.txt
+- Using `pip install -e .` without `setup.py` or `pyproject.toml`
+
+### Best Practices
+- Always use virtual environments (venv) per project
+- Pin exact versions in requirements.txt for reproducible builds
+- Use `pip freeze > requirements.txt` after verifying compatibility
+- Separate dev and production dependencies (`requirements-dev.txt`)
+- Use `pip install --upgrade pip` regularly
+- Prefer `python -m pip` over bare `pip` in scripts
+- Use hashes for supply-chain security (`--require-hashes`)
+- Use pip-compile (pip-tools) for dependency resolution
+
+### Performance Considerations
+- `--only-binary=:all:` avoids building from source (faster, but may miss platform wheels)
+- Using a wheel mirror (like `--find-links=./wheels`) avoids network
+- `pip install` with no cache is slower; use `--no-cache-dir` only for space
+- Using `Pipfile`/`Pipfile.lock` with pipenv can be slower than plain `requirements.txt`
+
+### Interview Questions
+1. What is the difference between `install` and `download` in pip?
+2. How does pip resolve dependency conflicts?
+3. What is a wheel and how is it different from a source distribution?
+4. How would you install a package from a private Git repository?
+5. What does `--editable` do in `pip install -e .`?
+
+### Coding Challenges
+- Write a script that compares two `requirements.txt` files and reports version differences
+- Implement a minimal dependency resolver that handles version conflicts
+- Build a tool that audits installed packages for known vulnerabilities (like `pip-audit`)
+
+### Related Topics
+- venv, pyproject.toml, setuptools, twine, conda, pip-tools
+
+## requirements.txt
+### What It Is
+`requirements.txt` is a plain-text file listing all Python packages (with optional version specifiers) needed for a project. It is the standard way to declare dependencies for pip-based projects.
+
+### Why It Is Important
+`requirements.txt` enables reproducible environments — anyone can run `pip install -r requirements.txt` and get the exact same dependencies. It serves as documentation of the project's dependencies and simplifies CI/CD and deployment workflows.
+
+### How It Works Internally
+pip reads each line of `requirements.txt`, parses PEP 508 requirement specifiers, resolves dependencies against the configured index, and installs matching packages. Lines starting with `#` are comments. Option lines starting with `--` set pip flags. `-r` includes other requirements files. `-c` references constraints files.
+
+### Syntax
+```txt
+package_name
+package_name==1.2.3
+package_name>=1.0,<2.0
+package_name~=1.2      # compatible release (>=1.2,<2.0)
+package_name>=1.0       # minimum version
+-r base.txt             # include another file
+-c constraints.txt      # constraints file
+--index-url https://...
+--extra-index-url https://...
+-e ./local-package      # editable install
+package_name[extra]     # extras
+git+https://...#egg=package_name  # VCS
+```
+
+### Beginner Examples
+```txt
+# requirements.txt
+flask==3.0.0
+requests==2.31.0
+gunicorn==21.2.0
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+```
 
 ```bash
-pip install package_name
-pip install package_name==1.2.3
-pip install package_name>=1.0,<2.0
-pip uninstall package_name
-pip freeze
-pip list
-pip show package_name
 pip install -r requirements.txt
 ```
 
-## Examples
+### Intermediate Examples
+```txt
+# requirements.in (source for pip-compile)
+flask
+requests
+pandas>=2.0,<3.0
 
-### Basic Installation and Uninstallation
+# requirements-dev.txt
+-r requirements.txt
+pytest==7.4.3
+pytest-cov==4.1.0
+black==23.12.1
+flake8==6.1.0
+pre-commit==3.5.0
 
-```python
-import subprocess
-import sys
-
-def run_pip(args):
-    cmd = [sys.executable, "-m", "pip"] + args
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return result
-
-# Install a package
-result = run_pip(["install", "requests"])
-print(f"Install success: {result.returncode == 0}")
-
-# Show package info
-result = run_pip(["show", "requests"])
-print(result.stdout[:500] if result.stdout else "Package not found")
-
-# Uninstall
-result = run_pip(["uninstall", "requests", "-y"])
-print(f"Uninstall success: {result.returncode == 0}")
+# constraints.txt (pins transitive deps)
+urllib3<2.0
+certifi>=2023.0.0
 ```
 
-### Working with requirements.txt
+### Advanced Examples
+```txt
+# Full pinned requirements.txt with hashes
+flask==3.0.0 \
+    --hash=sha256:abc123... \
+    --hash=sha256:def456...
+requests==2.31.0 \
+    --hash=sha256:789abc...
 
-```python
-import subprocess
-import sys
+# Multi-platform conditional
+platform_system=="Windows"  # comment
+pywin32==306; sys_platform == "win32"
 
-def pip_freeze():
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "freeze"],
-        capture_output=True, text=True
-    )
-    return result.stdout.strip().splitlines()
+# VCS and local deps
+-e git+https://github.com/myorg/my-lib.git@v1.0#egg=my-lib
+./packages/local-helper
 
-# Generate requirements.txt content
-deps = pip_freeze()
-sample_reqs = """requests==2.31.0
-flask==3.0.0
-numpy>=1.24.0,<2.0.0
-pandas~=2.1.0
-click>=8.0
-"""
-
-# Write requirements.txt
-with open("requirements.txt", "w") as f:
-    f.write(sample_reqs)
-print("Created requirements.txt")
-
-# Read back
-with open("requirements.txt") as f:
-    content = f.read()
-print(f"Requirements file:\n{content}")
-
-import os
-os.remove("requirements.txt")
+# Extras
+celery[redis,gevent]==5.3.4
 ```
 
-### Version Specifiers
+### Real-World Use Cases
+- **Docker builds** — `COPY requirements.txt . && pip install -r requirements.txt`
+- **CI pipelines** — caching based on requirements.txt hash
+- **Deployments** — reproducible installations across environments
+- **Onboarding** — new developers run a single command to set up
 
-```python
-from packaging.specifiers import SpecifierSet
-from packaging.version import Version
+### Common Mistakes
+- Using `>=` in requirements.txt (pulls latest on each install)
+- Committing editable (`-e .`) installs in final requirements.txt
+- Mixing `requirements.txt` with `Pipfile`/`Pipfile.lock` conventions
+- Forgetting to regenerate after adding/removing dependencies
+- Using `pip freeze > requirements.txt` in a global (non-virtual) environment
 
-spec = SpecifierSet(">=1.0,<3.0")
-versions = ["0.9", "1.0", "1.5", "2.0", "2.9", "3.0", "3.1"]
+### Best Practices
+- Pin exact versions for all dependencies including transitive ones
+- Separate production vs. development dependencies
+- Use pip-compile (pip-tools) to generate locked requirements from loose specs
+- Regenerate requirements.txt when adding/updating dependencies
+- Use `--require-hashes` for supply-chain integrity
+- Include a `requirements.in` (source) and `requirements.txt` (locked)
+- Keep comments explaining why specific pins/versions are used
+- Run `pip check` after installation to verify dependency consistency
 
-print(f"Versions matching {spec}:")
-for v_str in versions:
-    v = Version(v_str)
-    matches = v in spec
-    print(f"  {v_str}: {'✓' if matches else '✗'}")
+### Performance Considerations
+- A large requirements.txt with many transitive deps increases resolution time
+- Using constraints files can speed up resolution by narrowing the search space
+- Frozen (`==`) requirements resolve faster than ranged (`>=`) specifiers
+- Hash verification adds overhead but is negligible for normal use
 
-# Compatible release (~=)
-spec_tilde = SpecifierSet("~=1.2.3")
-print(f"\nVersions matching ~=1.2.3:")
-for v in ["1.2.3", "1.2.4", "1.3.0", "1.3.1", "2.0.0"]:
-    print(f"  {v}: {Version(v) in spec_tilde}")
+### Interview Questions
+1. What is the difference between a requirements file and a constraints file?
+2. How would you manage dev-only dependencies with requirements.txt?
+3. What are the security implications of hash-locked requirements?
+4. How do environment markers work in requirements.txt?
 
-# Arbitrary equality
-spec_arb = SpecifierSet("===1.2.3")
-print(f"\n===1.2.3 matches 1.2.3: {Version('1.2.3') in spec_arb}")
+### Coding Challenges
+- Write a script that validates a requirements.txt file (syntax, resolvability)
+- Build a diff tool that shows dependency changes between two requirements.txt files
+- Create a generator that converts `pyproject.toml` dependencies to requirements.txt
+
+### Related Topics
+- pip-tools, pip-compile, pip-sync, constraints files, Pipfile
+
+## PyPI publishing
+### What It Is
+PyPI (Python Package Index) is the official third-party software repository for Python. Publishing to PyPI means uploading a Python package so that anyone can install it with `pip install <package>`.
+
+### Why It Is Important
+Publishing to PyPI makes your package accessible to the entire Python community. It is the standard distribution channel for open-source Python libraries, tools, and frameworks.
+
+### How It Works Internally
+Publishing involves three steps: building (creating a distribution format — wheel and/or source distribution), registering (creating the package on PyPI), and uploading (sending files via HTTP to PyPI's API at `https://upload.pypi.org/legacy/`). PyPI validates metadata, checks for duplicates, and archives the files. The package then becomes available on the PyPI web interface and the JSON API.
+
+### Syntax
+```bash
+# Build
+python -m build
+
+# Upload to Test PyPI
+twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+
+# Upload to PyPI
+twine upload dist/*
+
+# With API token
+twine upload --username __token__ --password pypi-XXXXXXXX dist/*
 ```
 
-### pip list and pip show
-
+### Beginner Examples
 ```python
-import subprocess
-import sys
-import json
+# pyproject.toml (Python 3.12+)
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
 
-def pip_list():
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "list", "--format=json"],
-        capture_output=True, text=True
-    )
-    return json.loads(result.stdout)
+[project]
+name = "my-package"
+version = "0.1.0"
+authors = [
+    {name = "Your Name", email = "you@example.com"}
+]
+description = "A short description of my package"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "requests>=2.28",
+]
 
-def pip_show(package):
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "show", package],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        info = {}
-        for line in result.stdout.strip().splitlines():
-            if ": " in line:
-                key, value = line.split(": ", 1)
-                info[key.lower()] = value
-        return info
-    return None
-
-packages = pip_list()
-print(f"Installed packages: {len(packages)}")
-for pkg in packages[:5]:
-    print(f"  {pkg['name']} == {pkg['version']}")
-
-pip_info = pip_show("pip")
-if pip_info:
-    print(f"\npip version: {pip_info.get('version', 'N/A')}")
-    print(f"Requires: {pip_info.get('requires', 'N/A')}")
+[project.urls]
+Homepage = "https://github.com/you/my-package"
 ```
 
-### Installing from different sources
+```bash
+# Step 1: Install build tools
+pip install build twine
 
-```python
-import subprocess
-import sys
+# Step 2: Build distributions
+python -m build
 
-def pip_install(args):
-    cmd = [sys.executable, "-m", "pip", "install"] + args
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return result
+# Step 3: Upload to Test PyPI first
+twine upload --repository-url https://test.pypi.org/legacy/ dist/*
 
-# From a requirements file
-result = pip_install(["-r", "requirements.txt"])
-print(f"Requirements install: {result.returncode == 0}")
+# Step 4: Install from Test PyPI to verify
+pip install --index-url https://test.pypi.org/simple/ my-package
 
-# From a URL (VCS)
-result = pip_install([
-    "git+https://github.com/psf/requests.git@v2.31.0"
-])
-print(f"VCS install: {result.returncode == 0}")
-
-# From a local wheel
-result = pip_install(["--no-index", "package.whl"])
-print(f"Local wheel install: {result.returncode == 0}")
-
-# With constraints file
-result = pip_install(["-c", "constraints.txt", "requests"])
-print(f"Constrained install: {result.returncode == 0}")
-
-# Editable mode for development
-result = pip_install(["-e", "."])
-print(f"Editable install: {result.returncode == 0}")
+# Step 5: Upload to real PyPI
+twine upload dist/*
 ```
 
-## Beginner Examples
-
+### Intermediate Examples
 ```python
-# Creating and using a requirements file
-import subprocess
-import sys
-import os
+# pyproject.toml with optional dependencies
+[project]
+name = "my-lib"
+version = "0.2.0"
+dependencies = ["click>=8.0"]
+optional-dependencies = {dev = ["pytest", "black"], web = ["fastapi"]}
 
-def create_requirements():
-    """Generate a requirements.txt from currently installed packages."""
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "freeze"],
-        capture_output=True, text=True
-    )
-    packages = result.stdout.strip().splitlines()
+[project.scripts]
+my-cli = "my_lib.cli:main"
 
-    with open("requirements.txt", "w") as f:
-        for pkg in packages:
-            if "@" not in pkg:  # Skip editable packages
-                f.write(pkg + "\n")
-    print(f"Created requirements.txt with {len(packages)} packages")
+[project.entry-points."myplugin"]
+my_plugin = "my_lib.plugin"
 
-def install_from_requirements():
-    """Install packages from requirements.txt."""
-    if not os.path.exists("requirements.txt"):
-        print("No requirements.txt found")
-        return
-
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        print("All packages installed successfully")
-    else:
-        print(f"Installation failed:\n{result.stderr}")
-
-create_requirements()
-install_from_requirements()
-os.remove("requirements.txt")
-
-# Check if a package is installed
-def is_package_installed(package_name):
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "show", package_name],
-        capture_output=True, text=True
-    )
-    return result.returncode == 0
-
-for pkg in ["pip", "nonexistent_package_xyz"]:
-    print(f"{pkg} installed: {is_package_installed(pkg)}")
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["tests.*"]
 ```
 
-## Intermediate Examples
-
-```python
-# Dependency tree analyzer
-import subprocess
-import sys
-import json
-from collections import defaultdict
-
-def get_package_dependencies(package_name, depth=0, max_depth=3, visited=None):
-    if visited is None:
-        visited = set()
-
-    if depth > max_depth or package_name in visited:
-        return {}
-
-    visited.add(package_name)
-    info = pip_show(package_name)
-
-    if not info:
-        return {}
-
-    requires = info.get("requires", "")
-    dependencies = {}
-    if requires:
-        for dep in requires.split(", "):
-            dep_name = dep.split(">")[0].split("<")[0].split("=")[0].split("[")[0].strip()
-            if dep_name:
-                dependencies[dep_name] = get_package_dependencies(
-                    dep_name, depth + 1, max_depth, visited
-                )
-
-    return dependencies
-
-def pip_show(package):
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "show", package],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        info = {}
-        for line in result.stdout.strip().splitlines():
-            if ": " in line:
-                key, value = line.split(": ", 1)
-                info[key.lower()] = value
-        return info
-    return None
-
-def print_tree(deps, indent=0):
-    for pkg, subdeps in deps.items():
-        print("  " * indent + f"├── {pkg}")
-        if subdeps:
-            print_tree(subdeps, indent + 1)
-
-# Find outdated packages
-def find_outdated():
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "list", "--outdated", "--format=json"],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        outdated = json.loads(result.stdout)
-        print(f"Outdated packages: {len(outdated)}")
-        for pkg in outdated:
-            print(f"  {pkg['name']}: {pkg['version']} -> {pkg['latest_version']}")
-        return outdated
-    return []
-
-outdated = find_outdated()
-
-# Generate dependency graph for pip itself
-deps = get_package_dependencies("pip", max_depth=2)
-print("\nDependency tree for pip:")
-print_tree(deps)
+```yaml
+# .github/workflows/publish.yml
+name: Publish to PyPI
+on:
+  release:
+    types: [published]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 ```
 
-## Advanced Examples
-
+### Advanced Examples
 ```python
-# Custom pip mirror/registry management tool
-import subprocess
-import sys
-import json
-import os
-from pathlib import Path
-import hashlib
-import urllib.request
-import urllib.error
-import time
+# Configuration in ~/.pypirc
+[distutils]
+index-servers =
+    pypi
+    testpypi
 
-class PipManager:
-    def __init__(self, python_executable=None):
-        self.python = python_executable or sys.executable
+[pypi]
+username = __token__
+password = pypi-XXXXXXXX
 
-    def _run_pip(self, args):
-        cmd = [self.python, "-m", "pip"] + args
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        return result
-
-    def install(self, package, version=None, extra_args=None):
-        args = ["install"]
-        if version:
-            package = f"{package}=={version}"
-        args.append(package)
-        if extra_args:
-            args.extend(extra_args)
-        return self._run_pip(args)
-
-    def install_from_index(self, package, index_url):
-        return self.install(package, extra_args=["-i", index_url])
-
-    def freeze(self):
-        result = self._run_pip(["freeze"])
-        if result.returncode == 0:
-            return result.stdout.strip().splitlines()
-        return []
-
-    def list_packages(self, format="json"):
-        result = self._run_pip(["list", f"--format={format}"])
-        return result
-
-    def download_wheels(self, packages, dest_dir="wheels"):
-        dest = Path(dest_dir)
-        dest.mkdir(exist_ok=True)
-        args = ["download", "-d", str(dest)] + packages
-        result = self._run_pip(args)
-        downloaded = list(dest.iterdir()) if result.returncode == 0 else []
-        return downloaded
-
-    def install_from_wheels(self, wheel_dir="wheels"):
-        wheel_path = Path(wheel_dir)
-        if not wheel_path.exists():
-            return None
-        wheels = list(wheel_path.glob("*.whl"))
-        if not wheels:
-            return None
-        args = ["install", "--no-index", f"--find-links={wheel_path}"] + [str(w) for w in wheels]
-        return self._run_pip(args)
-
-    def verify_integrity(self, package):
-        result = self._run_pip(["download", "--no-deps", package, "--no-binary", ":all:"])
-        return result.returncode == 0
-
-    def batch_upgrade(self, packages=None):
-        if packages is None:
-            result = self._run_pip(["list", "--outdated", "--format=json"])
-            if result.returncode != 0:
-                return []
-            outdated = json.loads(result.stdout)
-            packages = [p["name"] for p in outdated]
-
-        results = {}
-        for pkg in packages:
-            r = self._run_pip(["install", "--upgrade", pkg])
-            results[pkg] = r.returncode == 0
-        return results
-
-    def get_package_hash(self, package, version=None):
-        spec = f"{package}=={version}" if version else package
-        result = self._run_pip(["hash", spec])
-        if result.returncode == 0:
-            return result.stdout.strip()
-        return None
-
-    def create_constraints_file(self, packages, filename="constraints.txt"):
-        constraints = []
-        for pkg in packages:
-            result = self._run_pip(["show", pkg])
-            if result.returncode == 0:
-                for line in result.stdout.splitlines():
-                    if line.startswith("Version:"):
-                        ver = line.split(":")[1].strip()
-                        constraints.append(f"{pkg}=={ver}")
-                        break
-        with open(filename, "w") as f:
-            f.write("\n".join(constraints))
-        return filename
-
-    def install_with_constraints(self, package, constraints_file="constraints.txt"):
-        return self._run_pip(["install", "-c", constraints_file, package])
-
-    def export_environment(self, output="environment.yml", include_editable=False):
-        packages = self.freeze()
-        filtered = []
-        for pkg in packages:
-            if not include_editable and "-e " in pkg:
-                continue
-            filtered.append(pkg)
-        with open(output, "w") as f:
-            f.write("\n".join(filtered) + "\n")
-        return output
-
-manager = PipManager()
-print(f"Python: {manager.python}")
-
-frozen = manager.freeze()
-print(f"Frozen packages: {len(frozen)}")
-
-result = manager.list_packages()
-if result.returncode == 0:
-    packages = json.loads(result.stdout)
-    print(f"Installed: {len(packages)} packages")
-
-exported = manager.export_environment("test_export.txt")
-print(f"Environment exported to {exported}")
-os.remove("test_export.txt")
-
-# Resolve conflict simulation
-print("\nSimulating dependency resolution...")
-deps_to_check = ["requests", "flask", "numpy"]
-for dep in deps_to_check:
-    result = manager._run_pip(["show", dep])
-    if result.returncode == 0:
-        for line in result.stdout.splitlines():
-            if "Requires:" in line:
-                requires = line.split(":", 1)[1].strip()
-                if requires:
-                    print(f"  {dep} requires: {requires}")
-                else:
-                    print(f"  {dep} requires: nothing")
+[testpypi]
+repository = https://test.pypi.org/legacy/
+username = __token__
+password = pypi-XXXXXXXX
 ```
 
-## Real-World Use Cases
+```python
+# setup.py (traditional, still supported)
+from setuptools import setup, find_packages
 
-- **CI/CD pipelines**: Using `pip install -r requirements.txt` and `pip install -e .` in Docker builds
-- **Microservices**: Pinning exact versions with `pip freeze > requirements.txt` for reproducible deployments
-- **Monorepos**: Using `pip install -e ./packages/*` for local package development
-- **Air-gapped environments**: Downloading wheels with `pip download` and transferring offline
-- **Security audits**: Using `pip audit` or `pip list --outdated` to find vulnerable dependencies
-- **Platform-specific builds**: Using `--platform` and `--python-version` flags for cross-compilation
+setup(
+    name="my-package",
+    version="0.1.0",
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
+    install_requires=["requests>=2.28"],
+    extras_require={
+        "dev": ["pytest>=7.0", "black"],
+        "web": ["flask>=2.0"],
+    },
+    entry_points={
+        "console_scripts": [
+            "my-cmd=my_package.cli:main",
+        ],
+    },
+    python_requires=">=3.9",
+)
+```
 
-## Common Mistakes
+### Real-World Use Cases
+- **Open-source libraries** — publishing reusable libraries to the community
+- **Internal tools** — hosting on private PyPI for company-internal packages
+- **CLI tools** — distributing command-line applications via pip
+- **Plugins** — publishing plugin packages for frameworks (e.g., pytest plugins)
 
-- Forgetting to activate a virtual environment before running pip install
-- Using `pip freeze` without first activating the correct virtual environment
-- Pinning dependencies too loosely (`>=`) causing unexpected breakage on upgrades
-- Pinning dependencies too tightly (`==`) preventing security updates
-- Committing `.pyc` files and `__pycache__` to version control
-- Installing packages system-wide with `sudo pip install` instead of using a venv
-- Omitting `-r` when installing from a requirements file
-- Using `pip` instead of `python -m pip` in environments with multiple Python versions
-- Not using `--no-deps` when you want precise control over dependency versions
-- Confusing `constraints.txt` (optional version limits) with `requirements.txt` (required installs)
+### Common Mistakes
+- Uploading without building (uploading source instead of wheel)
+- Forgetting to bump version before publishing (PyPI rejects duplicate versions)
+- Including `__pycache__` or `.pyc` files in distributions
+- Not testing on Test PyPI before publishing to production PyPI
+- Exposing API tokens in code or committing to version control
+- Publishing with an overly broad license or missing license file
 
-## Best Practices
+### Best Practices
+- Always publish to Test PyPI first (`test.pypi.org`)
+- Use Trusted Publishing (OIDC) for CI/CD instead of API tokens
+- Use `twine check dist/*` to validate distributions before uploading
+- Follow semantic versioning (semver) for release numbering
+- Include a `README.md`, `LICENSE`, `CHANGELOG.md`
+- Add classifiers for Python versions, license, and topic
+- Use `python -m build` (not `setup.py sdist bdist_wheel` directly)
+- Configure `.gitignore` to exclude `dist/`, `*.egg-info/`, `__pycache__/`
+- Enable 2FA on your PyPI account
+- Use Trusted Publishing with GitHub Actions for secure automated releases
 
-- Always use a virtual environment; never install packages system-wide
-- Pin exact versions in requirements files for reproducible builds
-- Use `python -m pip` instead of bare `pip` to ensure the correct interpreter
-- Separate dev/test dependencies from production: `requirements-dev.txt` alongside `requirements.txt`
-- Use `pip-compile` (pip-tools) or `poetry` for robust dependency resolution
-- Regularly run `pip list --outdated` and plan upgrades
-- Use hashes for security: `pip install --require-hashes -r requirements.txt`
-- Prefer wheels (`.whl`) over source distributions for faster, more reliable installs
-- Use `pip cache purge` periodically to reclaim disk space in CI
+### Performance Considerations
+- Wheels are faster to install than source distributions (no compilation step)
+- Universal wheels (`py3-none-any`) work everywhere — worth the effort
+- Platform-specific wheels (for C extensions) require CI for each platform
+- Binary wheels reduce user installation time significantly
 
-## Interview Questions
+### Interview Questions
+1. What is the difference between `sdist` and `bdist_wheel`?
+2. How do you specify package dependencies in pyproject.toml?
+3. What is a "universal wheel" and when should you use it?
+4. How does Trusted Publishing (OIDC) improve security for PyPI uploads?
+5. What steps would you take to publish a package that contains C extensions?
 
-1. **Q**: What is the difference between `requirements.txt` and `constraints.txt`?
-   **A**: `requirements.txt` lists packages to install (with `pip install -r`), while `constraints.txt` only restricts versions without forcing installation, applied via `pip install -c`.
+### Coding Challenges
+- Write a CI script that auto-increments version and publishes on tag push
+- Build a tool that checks a package's metadata for common issues before release
+- Create a minimal PyPI index server for internal package hosting
 
-2. **Q**: How does pip resolve dependency conflicts?
-   **A**: pip uses a backtracking resolver (introduced in pip 20.3) that explores dependency trees and backtracks on conflicts to find a compatible set of versions.
-
-3. **Q**: What is the difference between `pip install` and `pip download`?
-   **A**: `pip install` downloads and installs packages. `pip download` only downloads the distribution files (wheels/sdists) without installing them, useful for offline transfers.
-
-4. **Q**: Explain the wheel format and its advantages over sdists.
-   **A**: Wheels (`.whl`) are pre-built distribution packages that install faster because they skip the build step. They also include metadata for faster dependency resolution.
-
-5. **Q**: How does `pip install -e .` work?
-   **A**: The `-e` (editable) flag creates a symlink-like link to the source directory, so changes to the source code are immediately reflected without reinstalling.
-
-## Coding Challenges
-
-1. **Dependency Inspector**: Write a script that takes a package name and prints its complete dependency tree (transitive dependencies) using `pip show` and recursion.
-
-2. **Version Conflict Detector**: Given multiple requirements.txt files, write a tool that identifies version conflicts across them and suggests compatible ranges.
-
-3. **Offline Package Bundler**: Create a tool that takes a list of packages and their dependencies, downloads all wheels, and generates an install script for air-gapped environments.
-
-4. **Outdated Package Reporter**: Build a CLI tool that lists all outdated packages, groups them by major/minor/patch, and estimates the risk level of each upgrade.
-
-5. **Custom Package Index Mirror**: Implement a simple PyPI mirror that proxies requests, caches packages locally, and provides a fallback index URL.
-
-## Summary
-
-pip is the cornerstone of Python's package management ecosystem. It enables access to hundreds of thousands of community packages, handles complex dependency resolution, and integrates seamlessly with virtual environments. Mastering pip—including requirements files, version specifiers, constraints, and wheel management—is essential for professional Python development.
-
-## Related Topics
-
-Virtual Environments (56.x), Creating Packages (58.x), Standard Library (54.x), Import System (57.x)
+### Related Topics
+- pyproject.toml, setuptools, twine, build, hatchling, flit, poetry

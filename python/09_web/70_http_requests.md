@@ -1,638 +1,214 @@
 # HTTP Requests - requests.get/post, sessions, timeouts, auth
 
-## Introduction
+## requests.get() and requests.post()
 
-Hypertext Transfer Protocol (HTTP) requests are the foundation of data communication on the World Wide Web. In Python, developers can send HTTP requests to interact with web servers, APIs, and web services using built-in libraries like `urllib.request` or third-party libraries like `requests`. The `requests` library is the most popular choice due to its simpler, more intuitive API. HTTP requests enable fetching web pages, consuming REST APIs, submitting form data, uploading files, and much more.
+### What It Is
+`requests.get()` and `requests.post()` are the primary functions in the `requests` library for making HTTP requests. `get()` retrieves data from a URL (HTTP GET method) and is used for read-only operations. `post()` submits data to a URL (HTTP POST method) and is used for creating or modifying resources. Both return a `Response` object encapsulating the server's status code, headers, and body.
 
-## Why It Is Important
+### Why It Is Important
+These two functions cover the vast majority of HTTP interactions in Python development — from consuming REST APIs and scraping web pages to submitting forms and uploading files. Their ergonomic API reduces the boilerplate that comes with Python's built-in `urllib` library, making HTTP code concise, readable, and maintainable. Understanding when and how to use each method is fundamental to building web clients.
 
-Understanding HTTP requests is fundamental for modern Python development. Almost every application communicates over the web — whether it's a data science script pulling from an API, a web application making backend calls, or a microservice architecture. Mastery of HTTP requests allows developers to integrate third-party services, automate web interactions, scrape data, build API clients, and create robust networked applications. Proper handling of headers, timeouts, retries, and authentication ensures reliability, security, and performance.
+### How It Works Internally
+When `requests.get(url, **kwargs)` is called, the library creates an internal `Request` object from the parameters, then prepares it into a `PreparedRequest` containing the final URL, headers, query parameters, and body. This prepared request is dispatched through a transport adapter (defaulting to `urllib3`'s `HTTPAdapter`) which opens a TCP connection to the host, sends the HTTP request, and reads the response. The raw HTTP response is parsed and wrapped in a `Response` object with properties like `status_code`, `headers`, `text`, `content`, and convenience methods like `json()`. For POST requests, the data payload is encoded according to the `data`, `json`, `files`, or `params` arguments before being sent.
 
-## Syntax
-
-### Using `urllib.request` (built-in)
-
-```python
-import urllib.request
-import urllib.parse
-
-# GET request
-response = urllib.request.urlopen("https://api.example.com/data")
-data = response.read().decode("utf-8")
-
-# POST request with data
-data = urllib.parse.urlencode({"key": "value"}).encode("utf-8")
-req = urllib.request.Request("https://api.example.com/submit", data=data, method="POST")
-response = urllib.request.urlopen(req)
-```
-
-### Using `requests` library (third-party)
-
+### Syntax
 ```python
 import requests
 
 # GET request
-response = requests.get("https://api.example.com/data")
+response = requests.get("https://api.github.com/users/octocat")
+response = requests.get("https://api.example.com/search", params={"q": "python", "page": 1})
 
-# POST request
-response = requests.post("https://api.example.com/submit", json={"key": "value"})
+# POST request with JSON
+response = requests.post("https://api.example.com/users", json={"name": "Alice", "role": "admin"})
 
-# PUT request
-response = requests.put("https://api.example.com/update/1", json={"key": "new_value"})
+# POST with form data
+response = requests.post("https://httpbin.org/post", data={"username": "alice", "password": "s3cret"})
 
-# DELETE request
-response = requests.delete("https://api.example.com/delete/1")
+# POST with files
+response = requests.post("https://httpbin.org/post", files={"file": open("report.pdf", "rb")})
 ```
 
-## Examples
-
-### Basic GET Request
-
+### Beginner Examples
 ```python
 import requests
 
-response = requests.get("https://jsonplaceholder.typicode.com/posts/1")
-print(response.status_code)
-print(response.json())
-```
+response = requests.get("https://api.github.com")
+print(response.status_code)        # 200
+print(response.headers["content-type"])
+data = response.json()
+print(data["current_user_url"])
 
-### GET with Query Parameters
-
-```python
-import requests
-
-params = {"userId": 1, "completed": True}
-response = requests.get("https://jsonplaceholder.typicode.com/todos", params=params)
-print(response.url)
-print(response.json())
-```
-
-### POST with JSON Data
-
-```python
-import requests
-
-payload = {"title": "foo", "body": "bar", "userId": 1}
-response = requests.post("https://jsonplaceholder.typicode.com/posts", json=payload)
-print(response.status_code)
-print(response.json())
-```
-
-### PUT Request
-
-```python
-import requests
-
-payload = {"id": 1, "title": "updated", "body": "updated body", "userId": 1}
-response = requests.put("https://jsonplaceholder.typicode.com/posts/1", json=payload)
-print(response.status_code)
-print(response.json())
-```
-
-### DELETE Request
-
-```python
-import requests
-
-response = requests.delete("https://jsonplaceholder.typicode.com/posts/1")
-print(response.status_code)
-```
-
-## Beginner Examples
-
-### 1. Fetch a Web Page
-
-```python
-import requests
-
-url = "https://example.com"
-response = requests.get(url)
-
-if response.status_code == 200:
-    print("Page fetched successfully!")
-    print(response.text[:500])
-else:
-    print(f"Failed with status code: {response.status_code}")
-```
-
-### 2. Check Response Status
-
-```python
-import requests
-
-response = requests.get("https://httpbin.org/status/200")
-print(f"Status: {response.status_code}")
-print(f"OK: {response.ok}")
-
-response = requests.get("https://httpbin.org/status/404")
-print(f"Status: {response.status_code}")
-print(f"OK: {response.ok}")
-```
-
-### 3. Send Custom Headers
-
-```python
-import requests
-
-headers = {
-    "User-Agent": "MyApp/1.0",
-    "Accept": "application/json",
-    "Authorization": "Bearer my_token_123"
-}
-
-response = requests.get("https://httpbin.org/headers", headers=headers)
-print(response.json())
-```
-
-### 4. Download and Save a File
-
-```python
-import requests
-
-url = "https://httpbin.org/image/png"
-response = requests.get(url)
-
-if response.status_code == 200:
-    with open("image.png", "wb") as f:
-        f.write(response.content)
-    print("Image downloaded successfully!")
-else:
-    print("Download failed")
-```
-
-### 5. Handle Query Strings
-
-```python
-import requests
-
-base_url = "https://api.example.com/search"
-params = {
-    "q": "python requests",
-    "page": 1,
-    "limit": 10,
-    "sort": "relevance"
-}
-
-response = requests.get(base_url, params=params)
-print(f"Request URL: {response.url}")
-print(f"Response: {response.status_code}")
-```
-
-## Intermediate Examples
-
-### 1. Session with Persistent Headers
-
-```python
-import requests
-
-session = requests.Session()
-session.headers.update({"User-Agent": "MyApp/1.0", "Accept": "application/json"})
-
-# First request
-response1 = session.get("https://httpbin.org/headers")
-print("First request:", response1.json())
-
-# Second request (same session, same headers)
-response2 = session.get("https://httpbin.org/anything")
-print("Second request:", response2.json())
-
-session.close()
-```
-
-### 2. Timeout Handling
-
-```python
-import requests
-from requests.exceptions import Timeout, ConnectionError
-
-try:
-    response = requests.get(
-        "https://httpbin.org/delay/5",
-        timeout=3
-    )
-    print(response.json())
-except Timeout:
-    print("Request timed out!")
-except ConnectionError:
-    print("Connection error occurred!")
-```
-
-### 3. Retry on Failure
-
-```python
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
-session = requests.Session()
-
-retry_strategy = Retry(
-    total=3,
-    backoff_factor=1,
-    status_forcelist=[500, 502, 503, 504],
-    allowed_methods=["GET", "POST"]
+response = requests.post(
+    "https://jsonplaceholder.typicode.com/posts",
+    json={"title": "Hello", "body": "World", "userId": 1}
 )
-
-adapter = HTTPAdapter(max_retries=retry_strategy)
-session.mount("https://", adapter)
-session.mount("http://", adapter)
-
-try:
-    response = session.get("https://httpbin.org/status/503", timeout=10)
-    print(f"Status: {response.status_code}")
-except Exception as e:
-    print(f"Failed after retries: {e}")
-finally:
-    session.close()
+print(response.status_code)        # 201
+print(response.json()["id"])       # 101
 ```
 
-### 4. Authentication (Basic Auth)
-
+### Intermediate Examples
 ```python
 import requests
-from requests.auth import HTTPBasicAuth
 
 response = requests.get(
-    "https://httpbin.org/basic-auth/user/pass",
-    auth=HTTPBasicAuth("user", "pass")
+    "https://api.github.com/search/repositories",
+    params={"q": "requests library", "sort": "stars"},
+    headers={"Accept": "application/vnd.github.v3+json"}
 )
-print(f"Status: {response.status_code}")
-print(f"Authenticated: {response.json().get('authenticated')}")
+for repo in response.json()["items"][:5]:
+    print(f"{repo['name']}: {repo['stargazers_count']} stars")
+
+response = requests.post(
+    "https://api.example.com/login",
+    data={"username": "admin", "password": "pass123"},
+    headers={"X-CSRF-Token": "abc123"},
+    cookies={"session": "prev_session_id"}
+)
+print(response.history)  # Redirect chain if any
+print(response.elapsed)  # Total request duration
 ```
 
-### 5. Proxy Configuration
-
-```python
-import requests
-
-proxies = {
-    "http": "http://10.10.1.10:3128",
-    "https": "http://10.10.1.10:1080"
-}
-
-try:
-    response = requests.get(
-        "https://httpbin.org/ip",
-        proxies=proxies,
-        timeout=10
-    )
-    print(response.json())
-except Exception as e:
-    print(f"Proxy error: {e}")
-```
-
-### 6. Upload Files
-
-```python
-import requests
-
-url = "https://httpbin.org/post"
-files = {
-    "file": ("report.txt", b"Hello, this is file content!", "text/plain")
-}
-
-response = requests.post(url, files=files)
-print(response.json())
-```
-
-### 7. Cookies Handling
-
-```python
-import requests
-
-# Get cookies
-response = requests.get("https://httpbin.org/cookies/set?name=value")
-print("Cookies:", dict(response.cookies))
-
-# Send cookies
-cookies = {"session_id": "abc123"}
-response = requests.get("https://httpbin.org/cookies", cookies=cookies)
-print(response.json())
-```
-
-### 8. Streaming Response
-
-```python
-import requests
-
-url = "https://httpbin.org/stream/10"
-response = requests.get(url, stream=True)
-
-for line in response.iter_lines():
-    if line:
-        print(line.decode("utf-8"))
-```
-
-### 9. Handle Redirects
-
-```python
-import requests
-
-# Follow redirects (default)
-response = requests.get("https://httpbin.org/redirect/3", allow_redirects=True)
-print(f"Final URL: {response.url}")
-print(f"Redirect history: {[r.url for r in response.history]}")
-
-# Don't follow redirects
-response = requests.get("https://httpbin.org/redirect/3", allow_redirects=False)
-print(f"Status: {response.status_code} (Location: {response.headers.get('Location')})")
-```
-
-### 10. Send Form Data
-
-```python
-import requests
-
-form_data = {
-    "username": "john_doe",
-    "password": "secret123",
-    "remember_me": True
-}
-
-response = requests.post("https://httpbin.org/post", data=form_data)
-print(response.json())
-```
-
-## Advanced Examples
-
-### 1. Custom Retry with Exponential Backoff
-
+### Advanced Examples
 ```python
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-import time
 
-class RetrySession:
-    def __init__(self, retries=3, backoff_factor=0.5, status_forcelist=None):
-        self.session = requests.Session()
-        if status_forcelist is None:
-            status_forcelist = [429, 500, 502, 503, 504]
+session = requests.Session()
+retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[502, 503, 504])
+session.mount("https://", HTTPAdapter(max_retries=retries))
 
-        retry_strategy = Retry(
-            total=retries,
-            backoff_factor=backoff_factor,
-            status_forcelist=status_forcelist,
-            allowed_methods=["GET", "POST", "PUT", "DELETE"],
-            raise_on_status=False
-        )
-
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
-
-    def get(self, url, **kwargs):
-        return self.session.get(url, **kwargs)
-
-    def post(self, url, **kwargs):
-        return self.session.post(url, **kwargs)
-
-    def put(self, url, **kwargs):
-        return self.session.put(url, **kwargs)
-
-    def delete(self, url, **kwargs):
-        return self.session.delete(url, **kwargs)
-
-    def close(self):
-        self.session.close()
-
-
-client = RetrySession(retries=5, backoff_factor=1)
-response = client.get("https://httpbin.org/delay/2", timeout=10)
-print(f"Status: {response.status_code}")
-client.close()
-```
-
-### 2. OAuth2 Token Management
-
-```python
-import requests
-import time
-
-class OAuth2Client:
-    def __init__(self, client_id, client_secret, token_url):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.token_url = token_url
-        self.access_token = None
-        self.token_expiry = 0
-        self.session = requests.Session()
-
-    def _is_token_expired(self):
-        return time.time() >= self.token_expiry
-
-    def _fetch_new_token(self):
-        response = requests.post(
-            self.token_url,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": self.client_id,
-                "client_secret": self.client_secret
-            },
-            headers={"Accept": "application/json"}
-        )
-        response.raise_for_status()
-        token_data = response.json()
-        self.access_token = token_data["access_token"]
-        self.token_expiry = time.time() + token_data.get("expires_in", 3600) - 60
-        self.session.headers.update({"Authorization": f"Bearer {self.access_token}"})
-
-    def request(self, method, url, **kwargs):
-        if self._is_token_expired():
-            self._fetch_new_token()
-        response = self.session.request(method, url, **kwargs)
-        if response.status_code == 401:
-            self._fetch_new_token()
-            response = self.session.request(method, url, **kwargs)
-        return response
-
-    def get(self, url, **kwargs):
-        return self.request("GET", url, **kwargs)
-
-    def post(self, url, **kwargs):
-        return self.request("POST", url, **kwargs)
-
-
-client = OAuth2Client(
-    client_id="my_client",
-    client_secret="my_secret",
-    token_url="https://httpbin.org/post"
-)
-response = client.get("https://httpbin.org/headers")
-print(response.json())
-```
-
-### 3. Async HTTP Requests with `httpx`
-
-```python
-import httpx
-import asyncio
-
-async def fetch_url(client, url):
-    response = await client.get(url)
+def fetch_with_retry(url):
+    response = session.get(url, timeout=10)
+    response.raise_for_status()
     return response.json()
 
-async def main():
-    urls = [
-        "https://jsonplaceholder.typicode.com/posts/1",
-        "https://jsonplaceholder.typicode.com/posts/2",
-        "https://jsonplaceholder.typicode.com/posts/3",
-        "https://jsonplaceholder.typicode.com/posts/4",
-        "https://jsonplaceholder.typicode.com/posts/5",
-    ]
-
-    async with httpx.AsyncClient() as client:
-        tasks = [fetch_url(client, url) for url in urls]
-        results = await asyncio.gather(*tasks)
-
-    for result in results:
-        print(f"Post {result['id']}: {result['title']}")
-
-asyncio.run(main())
+import concurrent.futures
+urls = [f"https://jsonplaceholder.typicode.com/posts/{i}" for i in range(1, 51)]
+with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+    results = list(pool.map(fetch_with_retry, urls))
+print(f"Fetched {len(results)} posts")
 ```
 
-### 4. Request Hooks and Events
+### Real-World Use Cases
+- Consuming REST APIs (GitHub, Stripe, OpenAI, Twilio).
+- Submitting HTML forms in web scraping workflows.
+- Uploading files to cloud storage (S3 presigned URLs, file hosting services).
+- Triggering CI/CD pipelines via webhooks.
+- Health-check polling for monitoring systems.
 
+### Common Mistakes
+```python
+# Not checking status code
+response = requests.get("https://api.example.com/users/99999")
+# response body is "Not Found", but code proceeds
+
+# Forgetting to close file handles in uploads
+with open("data.txt", "rb") as f:
+    requests.post("https://httpbin.org/post", files={"file": f})
+# File auto-closes via context manager; using bare open() leaks handles
+
+# Using data= instead of json= for dict payloads
+# data= sends form-encoded; json= sends JSON with correct Content-Type
+
+# Calling .json() on non-JSON response
+response = requests.get("https://example.com")
+data = response.json()  # raises ValueError
+```
+
+### Best Practices
+- Always check `response.ok` or call `response.raise_for_status()`.
+- Use the `json=` parameter instead of manually serializing with `json.dumps()`.
+- Set a `User-Agent` header to identify your client.
+- Close response content for large responses with `response.close()`.
+- Use context managers (`with requests.get(...) as response`) when possible.
+
+### Performance Considerations
+- `json=` parameter is faster than `data=json.dumps()` because it sets the correct `Content-Type` header automatically.
+- Streaming large responses with `stream=True` and `iter_content()` avoids loading the entire response into memory.
+- Connection overhead dominates single requests; use Sessions for multiple requests.
+- Thread pool parallelism greatly increases throughput for IO-bound workloads.
+
+### Interview Questions
+1. What is the difference between GET and POST in terms of idempotency and safety?
+2. How does the `params` argument differ from including query string directly in the URL?
+3. What happens when you pass both `data` and `json` to `requests.post()`?
+4. How do you handle redirects with `requests`?
+5. What does `raise_for_status()` do?
+
+### Coding Challenges
+```python
+# Challenge: Build a paginated API client that handles cursor-based pagination
+def fetch_all_pages(base_url, params=None):
+    results = []
+    params = params or {}
+    while base_url:
+        response = requests.get(base_url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        results.extend(data["items"])
+        base_url = data.get("next_url")
+    return results
+```
+
+### Related Topics
+- HTTP Methods and Status Codes
+- Sessions
+- Timeouts
+- Authentication
+
+---
+
+## Sessions
+
+### What It Is
+A `requests.Session()` object provides persistent settings across multiple HTTP requests. It maintains a pool of TCP connections (via `urllib3`), stores cookies, and holds default headers and authentication credentials. Sessions are the recommended way to make multiple requests to the same host.
+
+### Why It Is Important
+Without sessions, each request opens and closes a new TCP connection. For sequential requests to the same server, session reuse reduces latency by 2-10x through connection pooling. Sessions also automatically persist cookies set by the server, which is essential for login workflows, session-based auth, and CSRF token handling. They provide a single point to configure defaults (headers, auth, timeouts) for all outgoing requests.
+
+### How It Works Internally
+When a `Session` is created, it initializes an internal `urllib3.PoolManager` with configurable connection pools per host. Each `mount()` call associates a URL prefix with an adapter (default `HTTPAdapter`). When `session.get()` is called, the Session merges its own headers/cookies/auth with per-request overrides, prepares the request, selects the matching adapter based on the URL prefix, and dispatches through the adapter's connection pool. Responses pass back through the Session, which extracts and stores `Set-Cookie` headers for subsequent requests. The Session object maintains a `cookies` dict and a `headers` dict that persist across all requests made through it.
+
+### Syntax
 ```python
 import requests
-
-def log_request(response, *args, **kwargs):
-    print(f"Request: {response.request.method} {response.request.url}")
-    print(f"Response: {response.status_code}")
-
-def log_error(response, *args, **kwargs):
-    if response.status_code >= 400:
-        print(f"ERROR: {response.status_code} for {response.url}")
 
 session = requests.Session()
-session.hooks["response"] = [log_request, log_error]
 
-session.get("https://httpbin.org/status/200")
-session.get("https://httpbin.org/status/404")
-session.get("https://httpbin.org/status/500")
+# Set defaults
+session.headers.update({"User-Agent": "MyApp/1.0"})
+session.auth = ("user", "pass")
+
+# All requests share these defaults
+response1 = session.get("https://api.example.com/users")
+response2 = session.post("https://api.example.com/users", json={"name": "Bob"})
+
+# Cookies persist automatically
+session.get("https://httpbin.org/cookies/set/name/alice")
+response = session.get("https://httpbin.org/cookies")
+print(response.json())  # {"cookies": {"name": "alice"}}
 ```
 
-### 5. Rate Limiting with Token Bucket
-
+### Beginner Examples
 ```python
 import requests
-import time
-import threading
 
-class RateLimiter:
-    def __init__(self, max_requests, time_window):
-        self.max_requests = max_requests
-        self.time_window = time_window
-        self.tokens = max_requests
-        self.last_refill = time.time()
-        self.lock = threading.Lock()
-
-    def _refill(self):
-        now = time.time()
-        elapsed = now - self.last_refill
-        new_tokens = elapsed * (self.max_requests / self.time_window)
-        self.tokens = min(self.max_requests, self.tokens + new_tokens)
-        self.last_refill = now
-
-    def acquire(self):
-        while True:
-            with self.lock:
-                self._refill()
-                if self.tokens >= 1:
-                    self.tokens -= 1
-                    return
-            time.sleep(0.01)
-
-    def __call__(self, func):
-        def wrapper(*args, **kwargs):
-            self.acquire()
-            return func(*args, **kwargs)
-        return wrapper
-
-
-limiter = RateLimiter(max_requests=10, time_window=1)
-
-@limiter
-def rate_limited_request(url):
-    return requests.get(url)
-
-for i in range(20):
-    response = rate_limited_request("https://httpbin.org/get")
-    print(f"Request {i+1}: Status {response.status_code}")
-    time.sleep(0.05)
-```
-
-### 6. Circuit Breaker Pattern
-
-```python
-import requests
-import time
-
-class CircuitBreaker:
-    def __init__(self, failure_threshold=5, reset_timeout=30):
-        self.failure_threshold = failure_threshold
-        self.reset_timeout = reset_timeout
-        self.failure_count = 0
-        self.last_failure_time = 0
-        self.state = "CLOSED"
-
-    def call(self, func, *args, **kwargs):
-        if self.state == "OPEN":
-            if time.time() - self.last_failure_time > self.reset_timeout:
-                self.state = "HALF_OPEN"
-            else:
-                raise Exception("Circuit breaker is OPEN")
-
-        try:
-            result = func(*args, **kwargs)
-            if self.state == "HALF_OPEN":
-                self.state = "CLOSED"
-                self.failure_count = 0
-            self.failure_count = 0
-            return result
-        except Exception as e:
-            self.failure_count += 1
-            self.last_failure_time = time.time()
-            if self.failure_count >= self.failure_threshold:
-                self.state = "OPEN"
-            raise e
-
-
-cb = CircuitBreaker(failure_threshold=3, reset_timeout=10)
 session = requests.Session()
+session.headers["Accept"] = "application/json"
 
-for i in range(10):
-    try:
-        response = cb.call(session.get, "https://httpbin.org/status/500")
-        print(f"Request {i+1}: Success")
-    except Exception as e:
-        print(f"Request {i+1}: {e}")
-    time.sleep(1)
+login_data = {"username": "alice", "password": "hunter2"}
+session.post("https://example.com/login", data=login_data)
+
+profile = session.get("https://example.com/profile")
+dashboard = session.get("https://example.com/dashboard")
+
+print(f"Profile status: {profile.status_code}")
+print(f"Dashboard status: {dashboard.status_code}")
 ```
 
-### 7. Multipart Form Upload with Metadata
-
-```python
-import requests
-import json
-
-url = "https://httpbin.org/post"
-
-multipart_data = {
-    "metadata": (None, json.dumps({"user_id": 123, "type": "document"}), "application/json"),
-    "document": ("report.pdf", b"%PDF-1.4 fake pdf content", "application/pdf"),
-    "thumbnail": ("thumb.png", b"PNG fake content", "image/png"),
-    "tags": (None, "python,http,upload")
-}
-
-response = requests.post(url, files=multipart_data)
-result = response.json()
-print(f"Uploaded files: {list(result.get('files', {}).keys())}")
-print(f"Form data: {result.get('form', {})}")
-```
-
-### 8. Connection Pool Tuning
-
+### Intermediate Examples
 ```python
 import requests
 from requests.adapters import HTTPAdapter
@@ -640,253 +216,607 @@ from requests.adapters import HTTPAdapter
 session = requests.Session()
 
 adapter = HTTPAdapter(
-    pool_connections=20,
+    pool_connections=10,
     pool_maxsize=100,
     max_retries=3
 )
-
 session.mount("https://", adapter)
 session.mount("http://", adapter)
 
-urls = [f"https://jsonplaceholder.typicode.com/posts/{i}" for i in range(1, 21)]
+class BaseURLSession(requests.Session):
+    def __init__(self, base_url=None):
+        super().__init__()
+        self.base_url = base_url
 
-responses = []
-for url in urls:
-    resp = session.get(url)
-    responses.append(resp)
+    def request(self, method, url, *args, **kwargs):
+        if self.base_url and not url.startswith("http"):
+            url = self.base_url.rstrip("/") + "/" + url.lstrip("/")
+        return super().request(method, url, *args, **kwargs)
 
-print(f"Fetched {len(responses)} posts")
-print(f"Status codes: {[r.status_code for r in responses][:5]}...")
-session.close()
+api = BaseURLSession("https://api.github.com")
+api.headers.update({"Accept": "application/vnd.github.v3+json"})
+user = api.get("/users/octocat").json()
+print(user["login"])
 ```
 
-### 9. Asynchronous Batch Processing
-
-```python
-import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
-
-def fetch_post(post_id):
-    url = f"https://jsonplaceholder.typicode.com/posts/{post_id}"
-    response = requests.get(url, timeout=10)
-    return response.json()
-
-def batch_fetch(post_ids, max_workers=10):
-    results = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_id = {executor.submit(fetch_post, pid): pid for pid in post_ids}
-        for future in as_completed(future_to_id):
-            post_id = future_to_id[future]
-            try:
-                results[post_id] = future.result()
-            except Exception as e:
-                print(f"Post {post_id} failed: {e}")
-    return results
-
-
-start = time.time()
-results = batch_fetch(range(1, 51), max_workers=20)
-elapsed = time.time() - start
-
-print(f"Fetched {len(results)} posts in {elapsed:.2f}s")
-for pid, post in list(results.items())[:3]:
-    print(f"Post {pid}: {post['title'][:50]}")
-```
-
-### 10. Full-Featured HTTP Client Class
-
+### Advanced Examples
 ```python
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-import logging
 import time
 
-logging.basicConfig(level=logging.INFO)
+session = requests.Session()
 
-class HTTPClient:
-    def __init__(self, base_url="", default_timeout=30, retries=3):
-        self.base_url = base_url.rstrip("/")
-        self.default_timeout = default_timeout
+session.mount(
+    "https://api.github.com",
+    HTTPAdapter(pool_connections=5, pool_maxsize=20)
+)
+session.mount(
+    "https://httpbin.org",
+    HTTPAdapter(pool_connections=2, pool_maxsize=10)
+)
+
+# Rate-limited session wrapper
+class RateLimitedSession:
+    def __init__(self, requests_per_second=10):
         self.session = requests.Session()
+        self.min_interval = 1.0 / requests_per_second
+        self._last_request = 0.0
 
-        retry_strategy = Retry(
-            total=retries,
-            backoff_factor=0.5,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "PUT", "POST", "DELETE", "OPTIONS", "TRACE"]
-        )
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy,
-            pool_connections=20,
-            pool_maxsize=100
-        )
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
-        self.logger = logging.getLogger(self.__class__.__name__)
+    def request(self, method, url, **kwargs):
+        elapsed = time.time() - self._last_request
+        if elapsed < self.min_interval:
+            time.sleep(self.min_interval - elapsed)
+        self._last_request = time.time()
+        return self.session.request(method, url, **kwargs)
 
-    def _build_url(self, endpoint):
-        if self.base_url:
-            return f"{self.base_url}/{endpoint.lstrip('/')}"
-        return endpoint
+    def get(self, url, **kwargs):
+        return self.request("GET", url, **kwargs)
 
-    def _log_request(self, method, url, kwargs):
-        self.logger.info(f"{method} {url}")
-        if "headers" in kwargs:
-            self.logger.debug(f"Headers: {kwargs['headers']}")
-        if "json" in kwargs:
-            self.logger.debug(f"JSON Body: {kwargs['json']}")
-        if "params" in kwargs:
-            self.logger.debug(f"Params: {kwargs['params']}")
-
-    def request(self, method, endpoint, **kwargs):
-        url = self._build_url(endpoint)
-        kwargs.setdefault("timeout", self.default_timeout)
-        self._log_request(method, url, kwargs)
-
-        try:
-            response = self.session.request(method, url, **kwargs)
-            response.raise_for_status()
-            return response
-        except requests.exceptions.HTTPError as e:
-            self.logger.error(f"HTTP Error: {e}")
-            raise
-        except requests.exceptions.ConnectionError as e:
-            self.logger.error(f"Connection Error: {e}")
-            raise
-        except requests.exceptions.Timeout as e:
-            self.logger.error(f"Timeout: {e}")
-            raise
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Request Error: {e}")
-            raise
-
-    def get(self, endpoint, **kwargs):
-        return self.request("GET", endpoint, **kwargs)
-
-    def post(self, endpoint, **kwargs):
-        return self.request("POST", endpoint, **kwargs)
-
-    def put(self, endpoint, **kwargs):
-        return self.request("PUT", endpoint, **kwargs)
-
-    def patch(self, endpoint, **kwargs):
-        return self.request("PATCH", endpoint, **kwargs)
-
-    def delete(self, endpoint, **kwargs):
-        return self.request("DELETE", endpoint, **kwargs)
-
-    def head(self, endpoint, **kwargs):
-        return self.request("HEAD", endpoint, **kwargs)
-
-    def options(self, endpoint, **kwargs):
-        return self.request("OPTIONS", endpoint, **kwargs)
-
-    def close(self):
-        self.session.close()
-
-
-client = HTTPClient(base_url="https://jsonplaceholder.typicode.com", retries=2)
-
-try:
-    resp = client.get("/posts/1")
-    print(f"GET: {resp.status_code} - {resp.json()['title'][:40]}")
-
-    resp = client.post("/posts", json={"title": "Test", "body": "Body", "userId": 1})
-    print(f"POST: {resp.status_code} - ID {resp.json()['id']}")
-
-    resp = client.put("/posts/1", json={"title": "Updated", "body": "Updated", "userId": 1})
-    print(f"PUT: {resp.status_code}")
-
-    resp = client.delete("/posts/1")
-    print(f"DELETE: {resp.status_code}")
-finally:
-    client.close()
+rate_limited = RateLimitedSession(requests_per_second=5)
+for i in range(20):
+    resp = rate_limited.get(f"https://jsonplaceholder.typicode.com/posts/{i + 1}")
+    print(f"Post {i + 1}: {resp.status_code}")
 ```
 
-## Real-World Use Cases
+### Real-World Use Cases
+- **API clients**: SDKs for GitHub, Stripe, Twilio use sessions internally to maintain auth and connection pools.
+- **Web scraping login flows**: Login once, reuse authenticated session for subsequent pages.
+- **Microservice gateways**: Internal services use sessions with mutual TLS and custom headers.
+- **Batch processing jobs**: Thousands of requests to the same API benefit from connection reuse.
 
-- **API Clients**: Wrapping third-party APIs (Stripe, GitHub, Slack, Twitter) with Python SDKs
-- **Web Scraping**: Fetching HTML content for parsing and data extraction
-- **CI/CD Pipelines**: Triggering builds, fetching artifacts, reporting to services
-- **Monitoring Tools**: Health-checking endpoints, collecting metrics
-- **Data Pipelines**: Pulling data from REST APIs into databases or data lakes
-- **Chat Bots**: Sending messages to webhook endpoints (Slack, Discord, Telegram)
-- **Payment Processing**: Communicating with payment gateway APIs
-- **Cloud Automation**: Managing cloud resources through provider APIs (AWS, Azure, GCP)
-- **Microservices Communication**: Service-to-service HTTP calls in distributed systems
-- **Authentication Services**: Token exchange, OAuth flows, session management
+### Common Mistakes
+```python
+# Mistake: Creating a new session per request
+for i in range(100):
+    session = requests.Session()  # Wrong: defeats pooling
+    session.get(f"https://api.example.com/item/{i}")
 
-## Common Mistakes
+# Mistake: Not closing a session
+session = requests.Session()
+# ... use it
+# session.close()  # Frees connection pool resources
 
-- **Not handling timeouts** — requests hang indefinitely, blocking threads
-- **Ignoring status codes** — assuming every 200 response succeeds without checking
-- **Hardcoding tokens** — exposing secrets in code instead of environment variables
-- **Not using sessions** — creating new connections for every request (slow)
-- **Forgetting to close sessions** — causing resource leaks
-- **Not setting User-Agent** — some APIs block clients without proper headers
-- **Overlooking redirects** — not handling 3xx responses appropriately
-- **Ignoring rate limits** — getting blocked for sending too many requests
-- **Not validating SSL** — disabling certificate verification in production
-- **Swallowing exceptions** — bare `except:` catching all errors silently
+# Mistake: Modifying session.headers after requests (race conditions in threads)
+# Use a lock or create per-thread sessions
 
-## Best Practices
+# Mistake: Sharing a session between unrelated API hosts
+# Mount different adapters for different hosts
+```
 
-- Always use `timeout` to prevent hanging requests
-- Use `requests.Session()` for multiple calls to the same host
-- Implement retry logic with exponential backoff for transient failures
-- Store secrets in environment variables, never in code
-- Validate response status codes and raise meaningful exceptions
-- Use connection pooling for high-throughput applications
-- Set appropriate `User-Agent` headers for identification
-- Handle all exception types (`Timeout`, `ConnectionError`, `HTTPError`)
-- Use context managers (`with`) for session and response objects
-- Log request/response details for debugging without sensitive data
+### Best Practices
+- Reuse a single session for all requests to the same host.
+- Close sessions when done (`session.close()` or use context manager `with requests.Session() as s:`).
+- Configure adapters per host for fine-grained pooling control.
+- Do not mutate session state (headers, cookies) concurrently.
+- Use separate sessions for different API credentials.
 
-## Interview Questions
+### Performance Considerations
+- Connection pooling eliminates TCP handshake and TLS negotiation overhead.
+- Default pool size is 10 connections per host; increase with `HTTPAdapter(pool_maxsize=100)` for high throughput.
+- Sessions are not thread-safe for mutation; use one session per thread or use locks.
+- For very high throughput, consider `urllib3.PoolManager` directly or async clients like `httpx`.
 
-**Q1: What is the difference between `urllib.request` and `requests`?**
-A: `urllib.request` is built-in but verbose and requires manual encoding/decoding. `requests` is third-party with a cleaner API, automatic JSON handling, session support, and better error handling.
+### Interview Questions
+1. How does a `Session` improve performance over individual requests?
+2. Are `requests.Session` objects thread-safe?
+3. How do you mount different adapters for different hosts?
+4. What happens to cookies set by the server in a session?
+5. How do you override a session-level default header for a single request?
 
-**Q2: How do you handle request timeouts in Python?**
-A: Pass the `timeout` parameter to requests methods. The timeout applies to connect and read phases. Use `timeout=(connect_timeout, read_timeout)` to set both separately.
+### Coding Challenges
+```python
+# Challenge: Build a session pool manager
+from queue import Queue
+import threading
 
-**Q3: How does `requests.Session()` improve performance?**
-A: Sessions persist cookies, reuse underlying TCP connections (connection pooling), and maintain default headers across requests, reducing latency and resource usage.
+class SessionPool:
+    def __init__(self, size=5):
+        self._pool = Queue(maxsize=size)
+        for _ in range(size):
+            session = requests.Session()
+            session.headers.update({"User-Agent": "PooledClient/1.0"})
+            self._pool.put(session)
 
-**Q4: What is the difference between `data` and `json` parameters in `requests.post()`?**
-A: `data` sends form-encoded data (application/x-www-form-urlencoded). `json` serializes the dict to JSON and sets Content-Type to application/json.
+    def get_session(self):
+        return self._pool.get()
 
-**Q5: How do you implement retry logic with exponential backoff?**
-A: Use `urllib3.util.retry.Retry` with `HTTPAdapter` mounted on a `Session`. Configure total retries, backoff_factor, and status_forcelist for automatic retries.
+    def return_session(self, session):
+        session.cookies.clear()
+        self._pool.put(session)
 
-## Coding Challenges
+# pool = SessionPool(10)
+# sess = pool.get_session()
+# try:
+#     resp = sess.get("https://api.example.com")
+# finally:
+#     pool.return_session(sess)
+```
 
-**Challenge 1: Simple URL Shortener Client**
-Write a function `shorten_url(long_url)` that sends a POST request to https://api.example.com/shorten with the long URL and returns the shortened URL. Handle errors and timeouts.
+### Related Topics
+- Connection Pooling
+- HTTPAdapter
+- Cookie Persistence
+- requests.get() and requests.post()
 
-**Challenge 2: Rate-Limited API Fetcher**
-Create a class that fetches data from a public API (e.g., JSONPlaceholder) while respecting a rate limit of 5 requests per second. Use a token bucket algorithm.
+---
 
-**Challenge 3: Multi-Threaded Web Checker**
-Write a script that checks HTTP status codes for a list of 100 URLs concurrently using ThreadPoolExecutor. Report which URLs are down (non-200).
+## Timeouts
 
-**Challenge 4: HTTP Client with Circuit Breaker**
-Extend the `HTTPClient` class to include a circuit breaker that opens after 5 consecutive failures and resets after 30 seconds.
+### What It Is
+Timeouts are limits on how long `requests` will wait for a server response before raising an exception. `requests` supports two separate timeout values: the connection timeout (time to establish the TCP connection) and the read timeout (time to receive data once connected). Timeouts can be set as a single float (applied to both phases) or a tuple of two floats.
 
-**Challenge 5: File Downloader with Resume**
-Build a downloader that supports resuming interrupted downloads using the `Range` header and checking `Content-Range` in responses.
+### Why It Is Important
+Without timeouts, a request can block indefinitely if the server is unreachable, overloaded, or suffering from network issues. In production, hung requests consume threads, file descriptors, and memory, leading to cascading failures and resource exhaustion. Timeouts are an essential guardrail for building robust, resilient distributed systems.
 
-## Summary
+### How It Works Internally
+When `timeout=(3.05, 10)` is passed, `requests` splits this into two values. The connection timeout (3.05s) is passed to `urllib3`, which sets `socket.settimeout()` on the underlying socket during the TCP connect phase. If the connect call does not complete within this window, `urllib3` raises `ConnectTimeoutError`, which `requests` wraps as `ConnectTimeout`. After connection, the read timeout (10s) is set on the socket for each `recv()` call. If the server sends no data within this window, `urllib3` raises `ReadTimeoutError`, wrapped as `ReadTimeout`. With a single float `timeout=5`, both connect and read share the same value.
 
-HTTP requests are a cornerstone of networked Python applications. The `requests` library provides a powerful, user-friendly API for sending HTTP requests, handling sessions, authentication, timeouts, retries, and more. Understanding how to properly configure and manage HTTP interactions is essential for building robust, production-ready applications that communicate over the web. From simple API calls to complex asynchronous batch processing, mastering HTTP requests unlocks the ability to integrate with virtually any web service.
+### Syntax
+```python
+import requests
 
-## Related Topics
+# Same timeout for connect and read
+response = requests.get("https://api.example.com", timeout=5)
 
-- [71. APIs](./71_apis.md)
-- [75. REST API Design](./75_rest_api_design.md)
-- [76. Authentication](./76_authentication.md)
-- [72. Flask](./72_flask.md)
-- [73. FastAPI](./73_fastapi.md)
-- [74. Web Scraping](./74_web_scraping.md)
+# Separate connect and read timeouts (recommended)
+response = requests.get("https://api.example.com", timeout=(3.05, 10))
+
+# No timeout (block indefinitely — avoid in production)
+response = requests.get("https://api.example.com", timeout=None)
+```
+
+### Beginner Examples
+```python
+import requests
+
+try:
+    response = requests.get("https://httpbin.org/delay/5", timeout=3)
+except requests.exceptions.Timeout:
+    print("Request timed out after 3 seconds")
+
+try:
+    response = requests.get(
+        "https://httpbin.org/delay/2",
+        timeout=(1, 3)  # 1s connect, 3s read
+    )
+except requests.exceptions.ConnectTimeout:
+    print("Connection timed out")
+except requests.exceptions.ReadTimeout:
+    print("Read timed out")
+```
+
+### Intermediate Examples
+```python
+import requests
+from requests.adapters import HTTPAdapter
+
+session = requests.Session()
+
+adapter = HTTPAdapter(max_retries=2)
+session.mount("https://", adapter)
+session.mount("http://", adapter)
+
+urls = [
+    "https://httpbin.org/delay/1",
+    "https://httpbin.org/delay/5",
+    "https://httpbin.org/delay/2",
+]
+
+for url in urls:
+    try:
+        response = session.get(url, timeout=(2, 4))
+        print(f"OK: {url} -> {response.elapsed.total_seconds():.2f}s")
+    except requests.exceptions.Timeout:
+        print(f"TIMEOUT: {url}")
+
+# Retry with backoff on timeout
+from time import sleep
+
+def request_with_retry(url, timeout, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.Timeout:
+            if attempt == max_retries - 1:
+                raise
+            sleep(2 ** attempt)  # exponential backoff
+```
+
+### Advanced Examples
+```python
+import requests
+import socket
+from requests.adapters import HTTPAdapter
+
+# Custom adapter with per-host timeouts
+class TimeoutHTTPAdapter(HTTPAdapter):
+    def __init__(self, default_timeout=None, *args, **kwargs):
+        self.default_timeout = default_timeout
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        kwargs.setdefault("timeout", self.default_timeout)
+        return super().send(request, **kwargs)
+
+session = requests.Session()
+adapter = TimeoutHTTPAdapter(default_timeout=(3, 15))
+session.mount("https://", adapter)
+session.mount("http://", adapter)
+
+response = session.get("https://api.example.com")
+# Uses default timeout (3, 15) unless overridden
+response = session.get("https://api.example.com", timeout=30)
+# Per-request timeout overrides the adapter default
+
+# Global timeout via session property override
+class TimedSession(requests.Session):
+    def __init__(self, connect_timeout=3, read_timeout=10):
+        super().__init__()
+        self.connect_timeout = connect_timeout
+        self.read_timeout = read_timeout
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", (self.connect_timeout, self.read_timeout))
+        return super().request(method, url, **kwargs)
+
+timed = TimedSession(connect_timeout=2, read_timeout=5)
+timed.get("https://httpbin.org/delay/3")  # Uses (2, 5)
+```
+
+### Real-World Use Cases
+- **Microservice health checks**: Short timeouts (1s connect, 2s read) to detect unhealthy services.
+- **External API calls**: Moderate timeouts (5s connect, 30s read) for third-party SaaS APIs.
+- **File upload/download**: Longer read timeouts (60-300s) for large payloads.
+- **Batch processing pipelines**: Configurable timeouts per task to prevent single slow request from blocking the batch.
+
+### Common Mistakes
+```python
+# Mistake: No timeout at all
+requests.get("https://example.com")  # Could hang forever
+
+# Mistake: Too short a timeout for realistic conditions
+requests.get("https://slow-api.example.com", timeout=0.5)
+# Times out even when server is working fine
+
+# Mistake: Forgetting that the tuple order is (connect, read), not (read, connect)
+
+# Mistake: Assuming timeout covers the entire request (DNS + connect + read + SSL handshake)
+# Timeout only covers connect and read phases, not DNS resolution
+```
+
+### Best Practices
+- Always set timeouts; never use `timeout=None` in production.
+- Use separate connect and read timeouts: short connect (2-5s) detects unreachable hosts quickly; longer read (10-30s) accommodates slow processing.
+- Set higher timeouts for uploads/large downloads.
+- Combine timeouts with retry logic for transient failures.
+- Monitor timeout exception rates to detect upstream service degradation.
+- Adjust timeouts based on the service's documented SLA.
+
+### Performance Considerations
+- Shorter timeouts free up threads and connections faster during outages.
+- Connection timeout should account for worst-case network latency (including TLS handshake overhead).
+- Read timeout should account for the slowest legitimate response time plus network latency.
+- Aggressive timeouts (too short) cause false positives and unnecessary retries.
+- Each timed-out request still consumed resources (connection attempt, partial response).
+
+### Interview Questions
+1. What is the difference between connect timeout and read timeout?
+2. How does `requests` handle timeouts at the socket level?
+3. Why is it important to set timeouts even for localhost requests?
+4. How would you implement a per-host default timeout?
+5. What happens to the underlying socket when a timeout occurs?
+
+### Coding Challenges
+```python
+# Challenge: Adaptive timeout system
+import time
+import statistics
+
+class AdaptiveTimeout:
+    def __init__(self, initial=5, min_timeout=1, max_timeout=30, multiplier=1.5):
+        self.current = initial
+        self.min_timeout = min_timeout
+        self.max_timeout = max_timeout
+        self.multiplier = multiplier
+        self._history = []
+
+    def measure(self, url):
+        start = time.time()
+        try:
+            response = requests.get(url, timeout=self.current)
+            elapsed = time.time() - start
+            self._history.append(elapsed)
+            if len(self._history) > 20:
+                self._history.pop(0)
+            avg = statistics.mean(self._history)
+            std = statistics.stdev(self._history) if len(self._history) > 1 else 1
+            self.current = min(max(avg + 3 * std, self.min_timeout), self.max_timeout)
+            return response
+        except requests.exceptions.Timeout:
+            self.current = min(self.current * self.multiplier, self.max_timeout)
+            raise
+
+# adaptive = AdaptiveTimeout()
+# try:
+#     resp = adaptive.measure("https://httpbin.org/delay/3")
+# except requests.exceptions.Timeout:
+#     print(f"Timed out at {adaptive.current}s")
+```
+
+### Related Topics
+- Retry Strategies
+- Exponential Backoff
+- Connection Pooling
+- Error Handling
+
+---
+
+## Authentication
+
+### What It Is
+Authentication verifies the identity of the client making an HTTP request. The `requests` library supports multiple authentication mechanisms out of the box: HTTP Basic Auth, Digest Auth, Bearer tokens, and custom authentication via pluggable `AuthBase` subclasses. Authentication can be set per-request via the `auth` parameter or configured globally on a `Session`.
+
+### Why It Is Important
+Most production APIs require authentication to control access, enforce rate limits, and track usage. Without proper auth handling, requests to protected endpoints return `401 Unauthorized` or `403 Forbidden`. The `requests` library abstracts away the complexities of different auth schemes behind a unified `auth` parameter, making it straightforward to switch between methods or implement custom flows like HMAC signing or OAuth2.
+
+### How It Works Internally
+The `auth` parameter accepts a callable (like `HTTPBasicAuth`) or a tuple `(username, password)`. When a request is made, `requests` invokes `auth(request)` on the `PreparedRequest` before sending it. For `HTTPBasicAuth`, this callable base64-encodes `username:password` and sets an `Authorization: Basic <encoded>` header. For `HTTPDigestAuth`, it performs the MD5-based challenge-response handshake: it sends an unauthenticated request first, reads the `WWW-Authenticate` header for nonce/realm details, then resends with the computed digest. Custom `AuthBase` subclasses can implement arbitrary auth logic by overriding `__call__(self, request)` and modifying request headers, body, or URL.
+
+### Syntax
+```python
+import requests
+from requests.auth import HTTPBasicAuth, HTTPDigestAuth
+
+# Basic auth (tuple form)
+response = requests.get("https://api.example.com/secure", auth=("admin", "secret"))
+
+# Basic auth (explicit class)
+response = requests.get("https://api.example.com/secure", auth=HTTPBasicAuth("admin", "secret"))
+
+# Digest auth
+response = requests.get("https://api.example.com/digest", auth=HTTPDigestAuth("admin", "secret"))
+
+# Bearer token via headers
+response = requests.get(
+    "https://api.example.com/protected",
+    headers={"Authorization": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"}
+)
+
+# Bearer token via auth (using requests >= 2.27.0)
+from requests.auth import HTTPBasicAuth  # Note: no built-in Bearer class; use headers or custom
+
+# Custom auth class
+from requests.auth import AuthBase
+
+class BearerAuth(AuthBase):
+    def __init__(self, token):
+        self.token = token
+
+    def __call__(self, request):
+        request.headers["Authorization"] = f"Bearer {self.token}"
+        return request
+
+response = requests.get("https://api.example.com/protected", auth=BearerAuth("mytoken"))
+```
+
+### Beginner Examples
+```python
+import requests
+
+response = requests.get(
+    "https://api.github.com/user",
+    auth=("your_username", "your_token")
+)
+print(response.status_code)
+if response.ok:
+    print(response.json()["login"])
+
+response = requests.get(
+    "https://httpbin.org/basic-auth/user/pass",
+    auth=("user", "pass")
+)
+print(response.json())  # {"authenticated": true, "user": "user"}
+```
+
+### Intermediate Examples
+```python
+import requests
+
+session = requests.Session()
+session.auth = ("admin", "s3cret")
+
+response1 = session.get("https://httpbin.org/basic-auth/admin/s3cret")
+print(response1.json())
+
+response2 = session.get("https://httpbin.org/basic-auth/admin/s3cret")
+# Auth is reused; no need to pass auth again
+
+# Per-request override
+response3 = session.get(
+    "https://httpbin.org/basic-auth/other/different",
+    auth=("other", "different")
+)
+
+# Digest authentication
+from requests.auth import HTTPDigestAuth
+
+response = requests.get(
+    "https://httpbin.org/digest-auth/auth/user/pass",
+    auth=HTTPDigestAuth("user", "pass")
+)
+print(response.status_code)  # 200
+```
+
+### Advanced Examples
+```python
+import requests
+from requests.auth import AuthBase
+import hashlib
+import hmac
+import time
+import base64
+
+class HMACAuth(AuthBase):
+    def __init__(self, api_key, api_secret):
+        self.api_key = api_key
+        self.api_secret = api_secret
+
+    def __call__(self, request):
+        timestamp = str(int(time.time()))
+        method = request.method
+        path = request.path_url
+        body = request.body or b""
+        if isinstance(body, str):
+            body = body.encode()
+        body_hash = hashlib.sha256(body).hexdigest()
+
+        message = f"{method}\n{path}\n{timestamp}\n{body_hash}"
+        signature = hmac.new(
+            self.api_secret.encode(),
+            message.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        request.headers["X-API-Key"] = self.api_key
+        request.headers["X-Timestamp"] = timestamp
+        request.headers["X-Signature"] = signature
+        return request
+
+session = requests.Session()
+session.auth = HMACAuth("ak_12345", "sk_abcdef")
+response = session.post(
+    "https://api.example.com/orders",
+    json={"product": "widget", "quantity": 5}
+)
+print(response.status_code)
+
+# OAuth2 client credentials flow with requests-oauthlib
+from requests_oauthlib import OAuth2Session
+
+client_id = "your_client_id"
+client_secret = "your_client_secret"
+token_url = "https://provider.com/oauth/token"
+
+oauth = OAuth2Session(client_id)
+token = oauth.fetch_token(
+    token_url=token_url,
+    client_secret=client_secret,
+    grant_type="client_credentials"
+)
+
+response = oauth.get("https://api.provider.com/v1/users")
+print(response.json())
+```
+
+### Real-World Use Cases
+- **REST API clients**: GitHub (Basic or Bearer), Stripe (Bearer with secret key), OpenAI (Bearer).
+- **Microservice mesh**: Service-to-service auth using JWT Bearer tokens with mutual TLS.
+- **Legacy enterprise systems**: Still use HTTP Basic Auth or Digest Auth.
+- **Financial APIs**: Often require HMAC-signed requests for non-repudiation.
+- **OAuth2 flows**: Social login, delegated authorization (Google, Facebook, GitHub OAuth).
+
+### Common Mistakes
+```python
+# Mistake: Hardcoding credentials in source code
+auth = ("admin", "p@ssw0rd")  # Don't! Use env vars
+
+# Mistake: Storing tokens insecurely
+token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # Leaked if committed
+
+# Mistake: Passing auth as a tuple to Digest auth
+# HTTPDigestAuth needs the explicit class, not a tuple
+
+# Mistake: Using Basic Auth over plain HTTP (no TLS)
+# Credentials are base64-encoded, not encrypted
+
+# Mistake: Forgetting to refresh expired tokens
+# OAuth2 access tokens expire; handle 401 by re-authenticating
+```
+
+### Best Practices
+- Never hardcode credentials; use environment variables or a secrets manager.
+- Always use HTTPS with authentication to prevent credential sniffing.
+- Prefer Bearer tokens over Basic Auth for API authentication.
+- Implement token refresh logic with automatic retry on 401.
+- Use sessions to reuse auth across multiple requests.
+- Log authentication failures but never log the credentials themselves.
+- Rotate API keys and tokens regularly.
+
+### Performance Considerations
+- Basic Auth adds minimal overhead (one base64 encoding per request).
+- Digest Auth requires two round trips per request (challenge + response).
+- HMAC signing adds CPU overhead proportional to body size.
+- Token-based auth (Bearer) is faster than challenge-response schemes.
+- OAuth2 token refresh adds latency; batch refresh before expiry.
+- Pre-compute signatures when possible to reduce per-request CPU cost.
+
+### Interview Questions
+1. What is the difference between Basic Auth and Digest Auth?
+2. How would you implement Bearer token authentication with auto-refresh?
+3. How does the `auth` parameter work internally — what does it expect?
+4. What security considerations apply when using Basic Auth over HTTP?
+5. How would you implement HMAC-based request signing?
+
+### Coding Challenges
+```python
+# Challenge: Auto-refreshing auth for OAuth2 tokens
+import time
+
+class AutoRefreshAuth(AuthBase):
+    def __init__(self, get_token_func, refresh_threshold=60):
+        self.get_token = get_token_func
+        self.refresh_threshold = refresh_threshold
+        self._token = None
+        self._expires_at = 0
+
+    def _ensure_token(self):
+        if time.time() > self._expires_at - self.refresh_threshold:
+            self._token = self.get_token()
+            self._expires_at = time.time() + 3600
+        return self._token
+
+    def __call__(self, request):
+        token = self._ensure_token()
+        request.headers["Authorization"] = f"Bearer {token}"
+        return request
+
+# Mock token provider
+def fetch_token():
+    print("Fetching new token...")
+    return "new_access_token_xyz"
+
+session = requests.Session()
+session.auth = AutoRefreshAuth(fetch_token, refresh_threshold=120)
+session.get("https://api.example.com/data")
+# Token fetched on first request; re-fetched when within 120s of expiry
+```
+
+### Related Topics
+- OAuth2
+- JWT
+- HMAC Signing
+- Environment Variables and Secrets Management
+- HTTPS and TLS

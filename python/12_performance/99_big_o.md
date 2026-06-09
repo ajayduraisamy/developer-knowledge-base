@@ -1,669 +1,756 @@
 ﻿# Big O Notation - Time complexity, space complexity, algorithm analysis
 
 ## Introduction
+Big O notation is the language we use to describe the efficiency of algorithms. It expresses how the runtime or memory requirements of an algorithm grow as the input size increases, ignoring constants and lower-order terms. Mastery of Big O is essential for choosing the right data structures, designing scalable systems, and performing well in technical interviews.
 
-Big O notation describes the upper bound of an algorithm's time or space complexity as the input size grows. It provides a standardized way to analyze and compare algorithm efficiency, independent of hardware or implementation details.
+## Time Complexity
 
-## Why It Is Important
+### What It Is
+Time complexity measures the amount of time an algorithm takes as a function of the input size `n`. It is expressed as an asymptotic upper bound — the worst-case scenario. Common time complexities, from fastest to slowest:
 
-Big O notation helps developers predict how algorithms scale with input size, choose the most efficient approach, and communicate about performance with other developers. Understanding Big O is essential for technical interviews and building scalable systems.
+- **O(1)**: constant — array index, dict/set lookup
+- **O(log n)**: logarithmic — binary search, balanced tree operations
+- **O(n)**: linear — single loop, linear search
+- **O(n log n)**: linearithmic — sorting (Timsort), divide-and-conquer
+- **O(n^2)**: quadratic — nested loops, bubble sort
+- **O(2^n)**: exponential — naive recursion (Fibonacci)
+- **O(n!)**: factorial — generating all permutations
 
-## Syntax
+### Why It Is Important
+Time complexity predicts how an algorithm will scale. An O(n^2) algorithm that runs in 1 ms for 100 items will take ~100 seconds for 10,000 items. An O(n log n) algorithm for the same data takes ~0.1 seconds. Understanding complexity prevents performance disasters in production.
 
-`python
-# O(1) - Constant time
-def get_first(arr):
-    return arr[0] if arr else None
+### How It Works Internally
+Big O analysis counts the number of primitive operations (comparisons, arithmetic, assignments) as a function of `n`. The dominant term determines the complexity:
+- `3n^2 + 5n + 2` → O(n^2) (drops constants and lower-order terms)
+- `1000n + 50000` → O(n) (constant factor doesn't matter asymptotically)
+- `2^n + n^5` → O(2^n) (exponential dominates polynomial)
 
-# O(log n) - Logarithmic time
+### Syntax
+```python
+# O(1) — constant time
+def get_first(lst):
+    return lst[0]
+
+# O(n) — linear time
+def linear_sum(lst):
+    total = 0
+    for x in lst:       # n iterations
+        total += x
+    return total
+
+# O(n^2) — quadratic time
+def pairwise_sum(lst):
+    result = []
+    for i in range(len(lst)):      # n
+        for j in range(len(lst)):  # n
+            result.append(lst[i] + lst[j])
+    return result
+
+# O(log n) — logarithmic time
 def binary_search(arr, target):
-    left, right = 0, len(arr) - 1
-    while left <= right:
-        mid = (left + right) // 2
+    lo, hi = 0, len(arr) - 1
+    while lo <= hi:                # log2(n) iterations
+        mid = (lo + hi) // 2
         if arr[mid] == target:
             return mid
-        elif arr[mid] < target:
-            left = mid + 1
+        if arr[mid] < target:
+            lo = mid + 1
         else:
-            right = mid - 1
+            hi = mid - 1
     return -1
+```
 
-# O(n) - Linear time
-def linear_search(arr, target):
-    for i, val in enumerate(arr):
-        if val == target:
-            return i
-    return -1
-
-# O(n log n) - Log-linear time
-def sort_and_search(arr):
-    arr.sort()  # O(n log n)
-    return arr
-
-# O(n^2) - Quadratic time
-def bubble_sort(arr):
-    n = len(arr)
-    for i in range(n):
-        for j in range(n - i - 1):
-            if arr[j] > arr[j + 1]:
-                arr[j], arr[j + 1] = arr[j + 1], arr[j]
-
-# O(2^n) - Exponential time
-def fibonacci_recursive(n):
-    if n < 2:
-        return n
-    return fibonacci_recursive(n - 1) + fibonacci_recursive(n - 2)
-`
-
-## Examples
-
-`python
+### Beginner Examples
+```python
 import time
-import random
-from typing import List
 
-
-def demonstrate_constant_time():
-    print("O(1) - Constant Time:")
-    data = [1, 2, 3, 4, 5]
-    print(f"  Get first: {data[0]}")
-    print(f"  Get last: {data[-1]}")
-    print(f"  Length: {len(data)}")
-    print("  These operations take the same time regardless of size")
-
-
-demonstrate_constant_time()
-
-
-def demonstrate_linear_time():
-    print("\nO(n) - Linear Time:")
-    for n in [1000, 10000, 100000]:
-        data = list(range(n))
-        start = time.perf_counter()
-        total = sum(data)
-        t = time.perf_counter() - start
-        print(f"  n={n:6d}: {t:.6f}s (expect 10x increase)")
-
-
-demonstrate_linear_time()
-
-
-def demonstrate_quadratic_time():
-    print("\nO(n^2) - Quadratic Time:")
-
-    def bubble_sort(arr):
-        n = len(arr)
-        for i in range(n):
-            for j in range(n - i - 1):
-                if arr[j] > arr[j + 1]:
-                    arr[j], arr[j + 1] = arr[j + 1], arr[j]
-
-    for n in [100, 200, 400]:
-        data = [random.randint(0, 1000) for _ in range(n)]
-        start = time.perf_counter()
-        bubble_sort(data)
-        t = time.perf_counter() - start
-        print(f"  n={n:4d}: {t:.6f}s (expect 4x increase for 2x n)")
-
-
-demonstrate_quadratic_time()
-`
-
-## Beginner Examples
-
-`python
-import time
-from typing import List
-
-
-def big_o_basics():
-    print("Big O Notation Basics:")
-    print("  O(1): Constant - array index, dict lookup")
-    print("  O(log n): Logarithmic - binary search")
-    print("  O(n): Linear - simple loop, linear search")
-    print("  O(n log n): Log-linear - sorting (Timsort)")
-    print("  O(n^2): Quadratic - nested loops")
-    print("  O(2^n): Exponential - recursive Fibonacci")
-    print("  O(n!): Factorial - traveling salesman (brute force)")
-
-
-big_o_basics()
-
-
-def analyze_loop_complexity():
-    print("\nAnalyzing Loop Complexity:")
-
-    def example1(n):
-        for i in range(n):
-            print(i, end=' ')
-        print("  -> O(n)")
-
-    def example2(n):
-        for i in range(n):
-            for j in range(n):
-                print(i, j, end=' ')
-        print("  -> O(n^2)")
-
-    def example3(n):
-        i = 1
-        while i < n:
-            print(i, end=' ')
-            i *= 2
-        print("  -> O(log n)")
-
-
-analyze_loop_complexity()
-
-
-def common_misconceptions():
-    print("\nCommon Misconceptions:")
-    print("  1. O(n) doesn't mean 'slower than O(1)' for small n")
-    print("  2. Constants are dropped: O(2n) = O(n)")
-    print("  3. Only the fastest-growing term matters")
-    print("  4. Best case is rarely as important as worst case")
-    print("  5. Space complexity matters too")
-
-
-common_misconceptions()
-`
-
-## Intermediate Examples
-
-`python
-import time
-import random
-from typing import List, Dict, Any
-
-
-def analyze_nlogn_vs_n_squared():
-    print("O(n log n) vs O(n^2) Comparison:")
-
-    for n in [100, 1000, 5000]:
-        data = [random.randint(0, 10000) for _ in range(n)]
-
-        start = time.perf_counter()
-        sorted_data = sorted(data)
-        t_nlogn = time.perf_counter() - start
-
-        def bubble_sort(arr):
-            n = len(arr)
-            for i in range(n):
-                for j in range(n - i - 1):
-                    if arr[j] > arr[j + 1]:
-                        arr[j], arr[j + 1] = arr[j + 1], arr[j]
-
-        data_copy = data[:]
-        start = time.perf_counter()
-        bubble_sort(data_copy)
-        t_nsq = time.perf_counter() - start
-
-        print(f"  n={n:5d}: O(n log n)={t_nlogn:.6f}s, O(n^2)={t_nsq:.6f}s, ratio={t_nsq/t_nlogn:.1f}x")
-
-
-analyze_nlogn_vs_n_squared()
-
-
-def analyze_time_complexity():
-    print("\nTime Complexity Analysis:")
-
-    def find_duplicates_naive(arr):
-        for i in range(len(arr)):
-            for j in range(i + 1, len(arr)):
-                if arr[i] == arr[j]:
-                    return arr[i]
-        return None
-
-    def find_duplicates_fast(arr):
-        seen = set()
-        for item in arr:
-            if item in seen:
-                return item
-            seen.add(item)
-        return None
-
-    for n in [100, 1000, 5000]:
-        data = [random.randint(0, n // 2) for _ in range(n)]
-
-        start = time.perf_counter()
-        find_duplicates_naive(data)
-        t1 = time.perf_counter() - start
-
-        start = time.perf_counter()
-        find_duplicates_fast(data)
-        t2 = time.perf_counter() - start
-
-        print(f"  n={n:5d}: O(n^2)={t1:.6f}s, O(n)={t2:.6f}s, speedup={t1/t2:.0f}x")
-
-
-analyze_time_complexity()
-
-
-def ammortized_analysis():
-    print("\nAmortized Analysis:")
-    print("  list.append() is O(1) amortized")
-    print("  dict.insert() is O(1) amortized")
-    print("  Python list overallocates to make appends O(1)")
-    print("  Occasional O(n) resize is 'paid for' by O(1) appends")
-
-
-ammortized_analysis()
-`
-
-## Advanced Examples
-
-`python
-import time
-import random
-import sys
-from typing import List, Dict, Any
-
-
-class ComplexityAnalyzer:
-    def __init__(self):
-        self.results: List[Dict[str, Any]] = []
-
-    def measure(self, name: str, func, sizes: List[int], *args, **kwargs):
-        for n in sizes:
-            start = time.perf_counter()
-            func(n, *args, **kwargs)
-            elapsed = time.perf_counter() - start
-            self.results.append({'name': name, 'n': n, 'time': elapsed})
-            print(f"  {name}: n={n:6d}, time={elapsed:.6f}s")
-
-    def compare(self, name1: str, name2: str):
-        r1 = [r for r in self.results if r['name'] == name1]
-        r2 = [r for r in self.results if r['name'] == name2]
-        if r1 and r2:
-            ratio = r2[-1]['time'] / r1[-1]['time']
-            print(f"\n  Ratio ({name2}/{name1}) for largest n: {ratio:.1f}x")
-
-
-analyzer = ComplexityAnalyzer()
-
-
-def o_n_example(n):
+# Demonstrating O(n) vs O(n^2)
+def linear(n):
     total = 0
     for i in range(n):
         total += i
     return total
 
-
-def o_n2_example(n):
+def quadratic(n):
     total = 0
     for i in range(n):
         for j in range(n):
             total += i * j
     return total
 
+for n in [1000, 2000, 4000]:
+    t0 = time.perf_counter(); linear(n); t1 = time.perf_counter()
+    t2 = time.perf_counter(); quadratic(n); t3 = time.perf_counter()
+    print(f'n={n:5d}: O(n)={t1-t0:.5f}s, O(n^2)={t3-t2:.5f}s')
 
-def o_nlogn_example(n):
-    data = [random.randint(0, 1000) for _ in range(n)]
-    return sorted(data)
+# Constant time operations
+import sys
+d = {i: i**2 for i in range(1000)}
+t0 = time.perf_counter()
+_ = d[500]
+t1 = time.perf_counter()
+print(f'Dict lookup (O(1)): {t1-t0:.8f}s')
+```
 
+### Intermediate Examples
+```python
+# Analysing nested loops
+def example1(n):
+    for i in range(n):          # O(n)
+        print(i)
 
-print("Complexity comparison:")
-analyzer.measure("O(n)", o_n_example, [1000, 10000, 100000])
-analyzer.measure("O(n log n)", o_nlogn_example, [1000, 10000, 100000])
-analyzer.measure("O(n^2)", o_n2_example, [100, 500, 1000])
+def example2(n):
+    for i in range(n):          # O(n)
+        for j in range(n):      # O(n)
+            print(i, j)         # O(n^2)
 
+def example3(n):
+    for i in range(n):          # O(n)
+        for j in range(i, n):   # O(n) — n + (n-1) + ... + 1 = n(n+1)/2
+            print(i, j)         # O(n^2)
 
-def space_complexity():
-    print("\nSpace Complexity Analysis:")
+def example4(n):
+    i = 1
+    while i < n:                # O(log n)
+        i *= 2
+        print(i)
 
-    def create_list(n):
-        return [0] * n  # O(n) space
+def example5(n):
+    for i in range(n):          # O(n log n)
+        j = 1
+        while j < n:
+            j *= 2
+            print(i, j)
 
-    def create_matrix(n):
-        return [[0] * n for _ in range(n)]  # O(n^2) space
+# Amortised analysis: list.append
+def amortised_demo():
+    lst = []
+    for i in range(1000000):
+        lst.append(i)           # O(1) amortised
 
-    for n in [100, 1000, 10000]:
-        lst = create_list(n)
-        print(f"  List of {n}: {sys.getsizeof(lst) + n * 28} bytes (approx)")
+# Best, average, worst case
+def linear_search(arr, target):
+    for i, x in enumerate(arr):
+        if x == target:         # Best: O(1), Worst: O(n), Avg: O(n)
+            return i
+    return -1
+```
 
-    print("\n  Space complexity examples:")
-    print("    O(1): In-place operations")
-    print("    O(n): Copying an array")
-    print("    O(n^2): 2D matrix")
+### Advanced Examples
+```python
+# Master Theorem for divide-and-conquer
+# T(n) = aT(n/b) + f(n)
+# Examples:
+# Merge Sort: T(n) = 2T(n/2) + O(n) -> O(n log n)
+# Binary Search: T(n) = T(n/2) + O(1) -> O(log n)
 
-
-space_complexity()
-`
-
-## Real-World Use Cases
-
-`python
+# Empirical complexity measurement
 import time
-from typing import List, Dict
-
-
-def database_indexing():
-    print("Real-world: Database Indexing (O(log n))")
-    print("  B-tree indexes enable O(log n) lookups")
-    print("  vs. full table scan O(n)")
-    print("  Critical for large tables")
-
-
-def search_algorithms():
-    print("Real-world: Search Engines")
-    print("  Inverted index: O(1) term lookup")
-    print("  Ranking: O(n log n) sorting of results")
-    print("  Web graph: PageRank O(V + E)")
-
-
-def caching_strategies():
-    print("Real-world: Caching Systems")
-    print("  LRU cache: O(1) get/put with hash table + linked list")
-    print("  Redis: O(log n) for sorted sets")
-
-
-def compression_tradeoffs():
-    print("Real-world: Compression Trade-offs")
-    print("  gzip: O(n) compression, good ratio")
-    print("  lz4: O(n) very fast, lower ratio")
-    print("  Trade-off between compression time and ratio")
-
-
-def machine_learning():
-    print("Real-world: Machine Learning Training")
-    print("  Linear regression: O(n^3) matrix inversion")
-    print("  SVM: O(n^2) to O(n^3)")
-    print("  k-NN: O(n) prediction (no training)")
-
-
-database_indexing()
-search_algorithms()
-caching_strategies()
-compression_tradeoffs()
-machine_learning()
-`
-
-## Common Mistakes
-
-`python
-from typing import List
-
-
-def mistake_1_dropping_wrong_terms():
-    print("Mistake 1: Dropping the wrong terms")
-    print("  O(n + n^2) -> O(n^2) (correct)")
-    print("  O(n + m) -> O(n + m) (can't drop if n != m)")
-
-
-def mistake_2_confusing_best_worst():
-    print("Mistake 2: Confusing best, average, worst case")
-    print("  Quick sort: O(n log n) average, O(n^2) worst")
-    print("  Usually we care about worst case")
-
-
-def mistake_3_ignoring_constants():
-    print("Mistake 3: Ignoring constants for small n")
-    print("  O(n) with C=1000 may be slower than O(n^2) with C=1")
-    print("  For small n, constants matter!")
-
-
-def mistake_4_space_complexity_ignored():
-    print("Mistake 4: Ignoring space complexity")
-    print("  An O(1) space solution may be better than O(n)")
-    print("  Even if time complexity is the same")
-
-
-def mistake_5_not_considering_input():
-    print("Mistake 5: Not considering input characteristics")
-    print("  Nearly sorted data: Timsort is O(n)")
-    print("  Random data: Timsort is O(n log n)")
-
-
-def mistake_6_amortized_analysis():
-    print("Mistake 6: Not understanding amortized vs worst-case")
-    print("  list.append() is O(1) amortized, O(n) worst-case")
-    print("  But the worst case is rare and predictable")
-
-
-mistake_1_dropping_wrong_terms()
-mistake_2_confusing_best_worst()
-mistake_3_ignoring_constants()
-mistake_4_space_complexity_ignored()
-mistake_5_not_considering_input()
-mistake_6_amortized_analysis()
-`
-
-## Best Practices
-
-`python
-from typing import List, Any
-
-
-def best_practice_1_profile_to_verify():
-    print("Best Practice 1: Profile to verify complexity")
-    print("  Theoretical complexity != actual performance")
-    print("  Profile with different input sizes")
-
-
-def best_practice_2_consider_input_size():
-    print("Best Practice 2: Choose algorithm by input size")
-    print("  n < 100: Simple O(n^2) may be fastest")
-    print("  n > 10000: Need O(n log n) or better")
-
-
-def best_practice_3_analyze_bottlenecks():
-    print("Best Practice 3: Analyze the dominant term")
-    print("  Find the part with highest complexity")
-    print("  That's where optimization matters most")
-
-
-def best_practice_4_trade_off_time_for_space():
-    print("Best Practice 4: Time-space trade-off")
-    print("  Use hash tables (more memory) for O(1) lookup")
-    print("  Use sorting (more time) for O(1) space")
-
-
-def best_practice_5_use_builtins():
-    print("Best Practice 5: Use optimized built-in algorithms")
-    print("  sorted() is C-optimized Timsort")
-    print("  dict/set lookups are O(1) implemented in C")
-
-
-def best_practice_6_think_in_big_o():
-    print("Best Practice 6: Always think in Big O")
-    print("  Before coding, estimate complexity")
-    print("  After coding, verify with timing")
-
-
-best_practice_1_profile_to_verify()
-best_practice_2_consider_input_size()
-best_practice_3_analyze_bottlenecks()
-best_practice_4_trade_off_time_for_space()
-best_practice_5_use_builtins()
-best_practice_6_think_in_big_o()
-`
-
-## Interview Questions
-
-`python
-def interview_q1():
-    print("Q: What is Big O notation?")
-    print("A: Describes scaling behavior of algorithms.")
-    print("   Upper bound of time/space as input grows.")
-
-
-def interview_q2():
-    print("Q: What is O(log n) and give an example?")
-    print("A: Logarithmic growth. Binary search divides input.")
-    print("   Doubling input adds only 1 more operation.")
-
-
-def interview_q3():
-    print("Q: What is amortized analysis?")
-    print("A: Average cost per operation over a sequence.")
-    print("   list.append() is O(1) amortized.")
-
-
-def interview_q4():
-    print("Q: How do you compare O(n) and O(n log n)?")
-    print("A: O(n) is faster, but both are 'efficient'.")
-    print("   At n=1M, O(n) = 1M ops, O(n log n) = 20M ops.")
-
-
-def interview_q5():
-    print("Q: What is the complexity of dict.get()?")
-    print("A: O(1) average case, O(n) worst case (hash collisions).")
-
-
-def interview_q6():
-    print("Q: How do you find the complexity of recursive functions?")
-    print("A: Master Theorem or recurrence relation analysis.")
-    print("   Fibonacci: T(n) = T(n-1) + T(n-2) + 1 -> O(2^n)")
-
-
-def interview_q7():
-    print("Q: What is space complexity?")
-    print("A: Additional memory an algorithm needs.")
-    print("   In-place sort: O(1) space. Merge sort: O(n).")
-
-
-interview_q1()
-interview_q2()
-interview_q3()
-interview_q4()
-interview_q5()
-interview_q6()
-interview_q7()
-`
-
-## Coding Challenges
-
-`python
-import time
-import random
-from typing import List
-
-
-def challenge_1_identify_complexity():
-    print("Challenge 1: Identify the Big O of these functions")
-
-    def func1(n):
+import numpy as np
+
+def measure_complexity(func, inputs):
+    times = []
+    for n in inputs:
+        data = list(range(n))
+        t0 = time.perf_counter()
+        func(data)
+        t1 = time.perf_counter()
+        times.append(t1 - t0)
+
+    # Fit to n, n^2, n log n
+    n = np.array(inputs)
+    t = np.array(times)
+
+    # Estimate exponent
+    log_n = np.log(n)
+    log_t = np.log(t)
+    exponent = np.polyfit(log_n, log_t, 1)[0]
+    return f'O(n^{exponent:.2f})'
+
+def sort_test(arr):
+    return sorted(arr)
+
+def linear_test(arr):
+    return sum(arr)
+
+print(measure_complexity(sort_test, [1000, 2000, 4000, 8000, 16000]))
+print(measure_complexity(linear_test, [100000, 200000, 400000, 800000]))
+
+# Complexity of Python operations
+op_complexity = {
+    'list[i]': 'O(1)',
+    'list.append': 'O(1) amortised',
+    'list.pop()': 'O(1)',
+    'list.pop(0)': 'O(n)',
+    'list.insert(i, x)': 'O(n)',
+    'list.__contains__ (in)': 'O(n)',
+    'dict[key]': 'O(1) avg',
+    'dict.__contains__': 'O(1) avg',
+    'set.__contains__': 'O(1) avg',
+    'list.sort': 'O(n log n)',
+    'sorted': 'O(n log n)',
+    'len()': 'O(1)',
+}
+
+# Tight bound analysis
+def analyze_function(func, n_values=[10, 50, 100, 500, 1000, 5000]):
+    for n in n_values:
+        t0 = time.perf_counter()
+        func(n)
+        t1 = time.perf_counter()
+        ratio = t1 - t0
+        print(f'n={n:5d}: {ratio:.6f}s')
+
+# Constant factor matters
+def constant_factor_demo():
+    n = 10_000_000
+    data = list(range(n))
+
+    # Both O(n), but different constants
+    t0 = time.perf_counter()
+    result = [x * 2 for x in data]     # comprehension
+    t1 = time.perf_counter()
+
+    result2 = []
+    for x in data:                      # manual loop
+        result2.append(x * 2)
+    t2 = time.perf_counter()
+
+    print(f'Comprehension: {t1-t0:.3f}s, Loop: {t2-t1:.3f}s')
+```
+
+### Real-World Use Cases
+- **System design interviews**: justify choosing a hash map (O(1) lookup) over a list (O(n)).
+- **Database query planning**: the query optimiser estimates the complexity of different join strategies and picks the cheapest.
+- **API rate limiting**: ensure the rate limiter itself is O(1) so it doesn't become the bottleneck.
+
+### Common Mistakes
+- Ignoring the worst case: an algorithm may be O(n) on average but O(n^2) worst-case (e.g., naive quicksort with bad pivot).
+- Assuming O(1) operations are always fast — a dict lookup with a slow `__hash__` can be expensive.
+- Confusing `time` measurements with complexity — a fast computer can make an O(n^2) algorithm look fast for small n.
+
+### Best Practices
+- Always consider the worst-case input when stating complexity.
+- Profile with realistic input sizes — Big O is an asymptotic guide, not an exact runtime predictor.
+- Document the complexity of your functions in docstrings so callers understand the cost.
+- Favour O(n log n) over O(n^2) for n > 1000.
+
+### Performance Considerations
+- CPU cache effects: an O(n log n) algorithm with good locality can outperform O(n) with random memory access.
+- Python overhead: built-in functions (`sorted`, `bisect`) are implemented in C and have much lower constants than equivalent Python loops.
+- Memory bandwidth: for large n, moving data from RAM to CPU is often the bottleneck, not the number of operations.
+
+### Interview Questions
+- **Q**: What is the time complexity of `list.sort()` in Python?  
+  **A**: O(n log n) average and worst case. Python uses Timsort, which is O(n) for already-sorted data.
+- **Q**: How do you compute the complexity of a recursive function?  
+  **A**: Write a recurrence relation T(n) and apply the Master Theorem: T(n) = aT(n/b) + f(n).
+
+### Coding Challenges
+- Write a function that estimates the empirical time complexity of a given function by running it with increasing input sizes and computing the ratio of runtimes.
+- Given two functions with complexities O(n^2) and O(n log n), determine the crossover point (the value of n where the O(n^2) becomes slower).
+
+### Related Topics
+- [Space complexity](#space-complexity)
+- [Algorithm analysis](#algorithm-analysis)
+- [Data Structures (Big O)](#data-structures---list-vs-dict-vs-set-performance-big-o-analysis)
+
+---
+
+## Space Complexity
+
+### What It Is
+Space complexity measures the amount of memory an algorithm uses as a function of input size `n`. It includes both the input storage and the auxiliary space (temporary variables, recursion stack, dynamic allocations). Like time complexity, it is expressed in Big O notation.
+
+### Why It Is Important
+Space complexity determines whether an algorithm can run within available memory. An algorithm with O(n^2) space may run out of memory for large n, even if its time complexity is acceptable. In data-intensive applications (big data, embedded systems), space efficiency is often more critical than time.
+
+### How It Works Internals
+Space analysis accounts for:
+1. **Input space**: the storage for the input data (usually not counted, as it is required by the problem).
+2. **Auxiliary space**: extra memory allocated during computation (the focus of analysis).
+3. **Stack space**: memory for the call stack in recursive algorithms.
+
+### Syntax
+```python
+# O(1) auxiliary space — only a few variables
+def constant_space(lst):
+    total = 0
+    for x in lst:
+        total += x
+    return total
+
+# O(n) auxiliary space — creates a new list
+def linear_space(n):
+    return [i ** 2 for i in range(n)]
+
+# O(n^2) auxiliary space — creates a matrix
+def quadratic_space(n):
+    return [[i * j for j in range(n)] for i in range(n)]
+
+# O(log n) stack space — recursive binary search
+def binary_search_recursive(arr, target, lo=0, hi=None):
+    if hi is None:
+        hi = len(arr) - 1
+    if lo > hi:
+        return -1
+    mid = (lo + hi) // 2
+    if arr[mid] == target:
+        return mid
+    if arr[mid] > target:
+        return binary_search_recursive(arr, target, lo, mid - 1)
+    return binary_search_recursive(arr, target, mid + 1, hi)
+```
+
+### Beginner Examples
+```python
+import sys
+
+# Measuring memory usage
+def measure_space(n):
+    # O(1) space
+    a = 1
+    print(f'O(1): {sys.getsizeof(a)} bytes')
+
+    # O(n) space
+    lst = list(range(n))
+    print(f'O(n) list of {n}: ~{sys.getsizeof(lst) + n * 8} bytes')
+
+    # O(n) space with dict
+    d = {i: i for i in range(n)}
+    dict_size = sys.getsizeof(d) + sum(sys.getsizeof(k) + sys.getsizeof(v) for k, v in d.items())
+    print(f'O(n) dict of {n}: ~{dict_size} bytes')
+
+measure_space(10000)
+
+# In-place vs out-of-place
+def in_place_double(lst):
+    for i in range(len(lst)):
+        lst[i] *= 2          # O(1) auxiliary space
+
+def out_of_place_double(lst):
+    return [x * 2 for x in lst]  # O(n) auxiliary space
+```
+
+### Intermediate Examples
+```python
+# Space-time tradeoff: precomputation
+# Without precomputation: O(1) space, O(n) time per query
+def is_prime_slow(n):
+    if n < 2:
+        return False
+    for i in range(2, int(n ** 0.5) + 1):
+        if n % i == 0:
+            return False
+    return True
+
+# With precomputation: O(n) space, O(1) time per query
+def sieve_of_eratosthenes(n):
+    is_prime = [True] * (n + 1)
+    is_prime[0] = is_prime[1] = False
+    for i in range(2, int(n ** 0.5) + 1):
+        if is_prime[i]:
+            for j in range(i * i, n + 1, i):
+                is_prime[j] = False
+    return is_prime
+
+# Recursive space (stack depth)
+def factorial_recursive(n):
+    if n <= 1:
+        return 1
+    return n * factorial_recursive(n - 1)  # O(n) stack space
+
+def factorial_iterative(n):
+    result = 1
+    for i in range(2, n + 1):
+        result *= i          # O(1) auxiliary space
+    return result
+
+# In-place algorithm: reversing a list
+def reverse_in_place(lst):
+    i, j = 0, len(lst) - 1
+    while i < j:
+        lst[i], lst[j] = lst[j], lst[i]
+        i += 1
+        j -= 1                # O(1) auxiliary space
+
+def reverse_out_of_place(lst):
+    return lst[::-1]          # O(n) auxiliary space
+```
+
+### Advanced Examples
+```python
+import sys
+
+# Measuring object sizes recursively
+def total_size(obj, seen=None):
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    seen.add(obj_id)
+    size = sys.getsizeof(obj)
+    if isinstance(obj, (list, tuple)):
+        size += sum(total_size(item, seen) for item in obj)
+    elif isinstance(obj, dict):
+        size += sum(total_size(k, seen) + total_size(v, seen) for k, v in obj.items())
+    elif isinstance(obj, set):
+        size += sum(total_size(item, seen) for item in obj)
+    return size
+
+# Space-efficient generator
+def read_large_file(file_path):
+    with open(file_path) as f:
+        for line in f:          # O(1) space — yields one line at a time
+            yield line.strip()
+
+# vs list-based approach
+def read_all_lines(file_path):
+    with open(file_path) as f:
+        return f.readlines()    # O(n) space — loads entire file
+
+# In-place matrix transposition
+def transpose_in_place(matrix):
+    n = len(matrix)
+    for i in range(n):
+        for j in range(i + 1, n):
+            matrix[i][j], matrix[j][i] = matrix[j][i], matrix[i][j]
+
+# Space-efficient DP (state compression)
+def fib_compressed(n):
+    if n <= 1:
+        return n
+    a, b = 0, 1                     # O(1) space instead of O(n)
+    for _ in range(2, n + 1):
+        a, b = b, a + b
+    return b
+
+# Tracking space usage with tracemalloc
+import tracemalloc
+
+def trace_allocation():
+    tracemalloc.start()
+    data = [bytearray(10000) for _ in range(1000)]
+    snapshot = tracemalloc.take_snapshot()
+    stats = snapshot.statistics('lineno')
+    for stat in stats[:5]:
+        print(stat)
+    tracemalloc.stop()
+
+# Generator as space-efficient alternative to list
+def fibonacci_generator(n):
+    a, b = 0, 1
+    for _ in range(n):
+        yield a
+        a, b = b, a + b            # O(1) space
+
+def fibonacci_list(n):
+    result = [0, 1]
+    for _ in range(2, n):
+        result.append(result[-1] + result[-2])
+    return result                   # O(n) space
+```
+
+### Real-World Use Cases
+- **Mobile/embedded development**: memory is constrained; algorithms with O(1) auxiliary space are preferred.
+- **Big data processing**: when processing terabytes of data, O(n) space is infeasible; use streaming algorithms with O(1) or O(log n) space.
+- **Database indexing**: B-tree indices use O(n) space for the index but reduce query time from O(n) to O(log n) — a classic space-time tradeoff.
+
+### Common Mistakes
+- Counting input storage as auxiliary space (it should be excluded).
+- Ignoring recursion stack depth — an O(1) auxiliary algorithm can still overflow the stack.
+- Using generators when you need random access — generators are O(1) space but O(1) forward-only iteration.
+- Creating unnecessary copies (slicing, copying list comprehensions) that turn O(1) auxiliary into O(n).
+
+### Best Practices
+- Prefer in-place algorithms when the original data can be modified.
+- Use generators for large data streams instead of building intermediate lists.
+- Measure memory with `tracemalloc` or `memory_profiler` for critical paths.
+- Document space complexity in function docstrings alongside time complexity.
+
+### Performance Considerations
+- Each Python object has overhead: `sys.getsizeof(int)` = 28 bytes, `sys.getsizeof(list)` = 56 bytes + 8 bytes per pointer.
+- Space complexity interacts with cache performance: O(n) algorithms with good locality (arrays) are faster than O(n) with random access (linked lists, hash tables).
+- Garbage collection can mask space issues — unreferenced objects linger until GC runs.
+
+### Interview Questions
+- **Q**: What is the space complexity of a recursive Fibonacci implementation?  
+  **A**: O(n) for the call stack (depth of recursion), which is often the limiting factor.
+- **Q**: How would you reverse a linked list in O(1) space?  
+  **A**: Iterative reversal with three pointers (prev, curr, next) — no additional allocations.
+
+### Coding Challenges
+- Implement a function that merges two sorted arrays in-place (O(1) auxiliary space, O(n+m) time).
+- Write a space-efficient version of Pascal's triangle that uses O(n) space instead of O(n^2) by computing rows iteratively.
+
+### Related Topics
+- [Time complexity](#time-complexity)
+- [Algorithm analysis](#algorithm-analysis)
+- [Memory Management](#memory-management---garbage-collection-reference-counting-weakref)
+
+---
+
+## Algorithm Analysis
+
+### What It Is
+Algorithm analysis is the systematic evaluation of an algorithm's efficiency using time and space complexity. It involves deriving a recurrence relation, classifying the complexity using Big O, and verifying empirically. Analysis guides algorithm selection and identifies optimisation opportunities.
+
+### Why It Is Important
+Rigorous analysis separates intuition from evidence. A developer may *feel* that a nested loop is "fast enough" until they analyse it and realise it will be O(n^2) with n=1,000,000. Analysis provides the mathematical foundation for comparing algorithms independent of hardware.
+
+### How It Works Internally
+The analysis process:
+1. **Identify the input size** `n`.
+2. **Count operations**: assignments, comparisons, arithmetic, function calls.
+3. **Derive the cost function** `T(n)` in terms of operations.
+4. **Simplify to Big O**: drop constants and lower-order terms.
+5. **Consider best, average, and worst cases**.
+6. **Verify empirically** with benchmarks across multiple input sizes.
+
+### Syntax
+```python
+# Step-by-step analysis
+
+def analyze_me(n):
+    total = 0                    # 1 assignment
+    for i in range(n):           # n iterations
+        for j in range(n):       # n * n iterations
+            total += i * j       # n^2 arithmetic ops
+    return total                 # 1 return
+
+# T(n) = 1 + n^2 + 1 = O(n^2)
+
+# Counting comparisons
+def count_comparisons(arr, target):
+    comparisons = 0
+    for x in arr:
+        comparisons += 1
+        if x == target:
+            return True, comparisons
+    return False, comparisons
+
+# Amortised analysis: dynamic array resizing
+class DynamicArray:
+    def __init__(self):
+        self._data = []
+        self._copies = 0
+
+    def append(self, value):
+        old_cap = len(self._data)
+        self._data.append(value)
+        if len(self._data) > old_cap:  # reallocation happened
+            self._copies += old_cap or 1
+
+    def total_copies(self, n):
         for i in range(n):
-            print(i)
-    print("  func1: O(n)")
+            self.append(i)
+        return self._copies
+        # Total copies: 1 + 2 + 4 + ... + n/2 ≈ n-1 = O(n) amortised
+```
 
-    def func2(n):
+### Beginner Examples
+```python
+# Analysis of three sum implementations
+
+def three_sum_brute(arr, target):
+    """O(n^3) time, O(1) space."""
+    n = len(arr)
+    for i in range(n):
+        for j in range(i + 1, n):
+            for k in range(j + 1, n):
+                if arr[i] + arr[j] + arr[k] == target:
+                    return (i, j, k)
+    return None
+
+def three_sum_better(arr, target):
+    """O(n^2) time, O(n) space."""
+    seen = {}
+    for i, x in enumerate(arr):
+        for j, y in enumerate(arr[i+1:], i+1):
+            needed = target - x - y
+            if needed in seen:
+                return (seen[needed], i, j)
+            seen[y] = j
+    return None
+
+def three_sum_best(arr, target):
+    """O(n^2) time, O(1) space (sorted)."""
+    arr.sort()
+    n = len(arr)
+    for i in range(n - 2):
+        lo, hi = i + 1, n - 1
+        while lo < hi:
+            current = arr[i] + arr[lo] + arr[hi]
+            if current == target:
+                return (i, lo, hi)
+            if current < target:
+                lo += 1
+            else:
+                hi -= 1
+    return None
+```
+
+### Intermediate Examples
+```python
+# Master Theorem application
+# T(n) = aT(n/b) + f(n)
+# Case 1: f(n) = O(n^c) where c < log_b(a) -> T(n) = Theta(n^{log_b(a)})
+# Case 2: f(n) = Theta(n^c) where c = log_b(a) -> T(n) = Theta(n^c log n)
+# Case 3: f(n) = Omega(n^c) where c > log_b(a) -> T(n) = Theta(f(n))
+
+# Example: Merge sort T(n) = 2T(n/2) + O(n)
+# a=2, b=2, log_2(2)=1, f(n)=O(n^1) => Case 2 => O(n log n)
+
+# Example: Binary search T(n) = T(n/2) + O(1)
+# a=1, b=2, log_2(1)=0, f(n)=O(1) => Case 2 => O(log n)
+
+# Worst-case analysis
+def worst_case_linear(arr, target):
+    """Worst case: target not found -> O(n)."""
+    for x in arr:
+        if x == target:
+            return True
+    return False
+
+# Average-case analysis
+def average_case_linear(arr, target):
+    """Average case: target at position n/2 -> O(n)."""
+    for i, x in enumerate(arr):
+        if x == target:
+            return i
+    return -1
+
+# Comparing growth rates empirically
+def compare_growth():
+    import time
+    for n in [10, 100, 1000]:
+        # O(n log n)
+        data = list(range(n))
+        t0 = time.perf_counter()
+        sorted(data)
+        t1 = time.perf_counter()
+
+        # O(n^2)
+        t2 = time.perf_counter()
         for i in range(n):
             for j in range(n):
-                print(i, j)
-    print("  func2: O(n^2)")
+                _ = data[i] + data[j]
+        t3 = time.perf_counter()
 
-    def func3(n):
-        i = 1
-        while i < n:
-            print(i)
-            i *= 2
-    print("  func3: O(log n)")
+        print(f'n={n:5d}: O(n log n)={t1-t0:.6f}s, O(n^2)={t3-t2:.6f}s, ratio={(t3-t2)/(t1-t0):.1f}')
+```
 
-    def func4(n):
-        for i in range(n):
-            j = 1
-            while j < n:
-                print(i, j)
-                j *= 2
-    print("  func4: O(n log n)")
+### Advanced Examples
+```python
+import time
+import random
+import math
 
+# Empirical complexity verification
+def verify_complexity(func, input_generator, expected_exponent, trials=5):
+    """
+    Verify that func's runtime grows as O(n^expected_exponent).
+    """
+    sizes = [100, 200, 400, 800, 1600, 3200]
+    times = []
 
-def challenge_2_empirical_analysis():
-    print("Challenge 2: Empirically measure complexity")
+    for n in sizes:
+        data = input_generator(n)
+        t0 = time.perf_counter()
+        for _ in range(trials):
+            func(data)
+        t1 = time.perf_counter()
+        times.append((t1 - t0) / trials)
 
-    def unknown_algorithm(n):
-        total = 0
-        for i in range(n):
-            for j in range(i):
-                total += i * j
-        return total
+    # Check doubling ratios
+    ratios = [times[i+1] / times[i] for i in range(len(times) - 1)]
+    expected_ratio = 2 ** expected_exponent
+    avg_ratio = sum(ratios) / len(ratios)
+    return f'Expected ratio: {expected_ratio:.2f}, Actual: {avg_ratio:.2f}'
 
-    for n in [100, 200, 400, 800]:
-        start = time.perf_counter()
-        unknown_algorithm(n)
-        t = time.perf_counter() - start
-        print(f"  n={n:4d}: {t:.6f}s")
+# Amortised analysis verification
+def verify_amortised():
+    n = 1000000
+    lst = []
+    import sys
 
-    print("  When n doubles, time quadruples -> O(n^2)")
+    reallocations = 0
+    prev_cap = 0
 
+    for i in range(n):
+        lst.append(i)
+        cap = sys.getsizeof(lst)
+        if cap != prev_cap:
+            reallocations += 1
+            prev_cap = cap
 
-def challenge_3_optimize_to_better_complexity():
-    print("Challenge 3: Optimize from O(n^2) to O(n)")
+    print(f'n={n}: {reallocations} reallocations')
+    # Expected: O(log n) reallocations, total copies O(n)
 
-    def has_duplicate_naive(arr):
-        for i in range(len(arr)):
-            for j in range(i + 1, len(arr)):
-                if arr[i] == arr[j]:
-                    return True
-        return False
+# Lower bound analysis (Omega)
+def lower_bound_demo():
+    """Any comparison-based sort requires Omega(n log n) comparisons."""
+    # Proof: there are n! permutations; each comparison splits the space in half.
+    # Minimum comparisons = ceil(log2(n!)) ~ n log2 n
 
-    def has_duplicate_fast(arr):
-        seen = set()
-        for x in arr:
-            if x in seen:
-                return True
-            seen.add(x)
-        return False
+# Tight bound analysis (Theta)
+def tight_bound_demo():
+    """When upper bound (O) equals lower bound (Omega), we have Theta."""
+    # Example: Merge sort is Theta(n log n) — it's both O(n log n) and Omega(n log n)
 
-    data = [random.randint(0, 10000) for _ in range(5000)]
-    start = time.perf_counter()
-    has_duplicate_naive(data)
-    t1 = time.perf_counter() - start
+# Little-o and little-omega
+def little_notation():
+    """
+    f(n) = o(g(n)): f grows strictly slower than g (e.g., n = o(n^2))
+    f(n) = omega(g(n)): f grows strictly faster than g (e.g., n^2 = omega(n))
+    f(n) = Theta(g(n)): f grows at the same rate as g
+    """
 
-    start = time.perf_counter()
-    has_duplicate_fast(data)
-    t2 = time.perf_counter() - start
-    print(f"  O(n^2): {t1:.4f}s, O(n): {t2:.4f}s, speedup: {t1/t2:.0f}x")
+# P vs NP discussion
+def complexity_classes():
+    """
+    P: problems solvable in polynomial time (sorting, searching, shortest path).
+    NP: problems verifiable in polynomial time (subset sum, SAT, TSP).
+    NP-complete: hardest problems in NP (if any NP-complete problem is in P, then P=NP).
+    """
+    pass
+```
 
+### Real-World Use Cases
+- **Code review**: reject PRs with O(n^2) algorithms in hot paths without justification.
+- **Library selection**: choose between libraries based on their documented complexity guarantees.
+- **Capacity planning**: estimate server requirements based on algorithmic complexity and expected load.
+- **Interview preparation**: algorithmic analysis is the core of technical interviews at top tech companies.
 
-def challenge_4_space_time_tradeoff():
-    print("Challenge 4: Space-time trade-off analysis")
+### Common Mistakes
+- Confusing complexity with actual runtime: an O(n^2) algorithm with a small constant can be faster than O(n log n) for small n.
+- Ignoring hidden complexity: `list.copy()`, string concatenation, and implicit loops add hidden O(n) costs.
+- Forgetting that Python's `in` operator is O(n) for lists but O(1) for sets/dicts — the single most common analysis error.
 
-    def two_sum_naive(nums, target):
-        for i in range(len(nums)):
-            for j in range(i + 1, len(nums)):
-                if nums[i] + nums[j] == target:
-                    return [i, j]
-        return [-1, -1]
+### Best Practices
+- Analyse complexity before writing code, especially for algorithms that will process large datasets.
+- Use empirical measurement to verify your analysis — real-world performance includes constants and caching effects.
+- Document the complexity of public functions in docstrings (e.g., `"""O(n log n) time, O(n) space."""`).
+- When comparing two algorithms, consider both time and space complexity — they often trade off.
 
-    def two_sum_fast(nums, target):
-        seen = {}
-        for i, num in enumerate(nums):
-            complement = target - num
-            if complement in seen:
-                return [seen[complement], i]
-            seen[num] = i
-        return [-1, -1]
+### Performance Considerations
+- Complexity analysis assumes uniform cost model; in practice, memory hierarchy (L1/L2 cache, RAM, disk) affects performance.
+- Python's interpreter adds a constant factor of ~50x over C, so an O(n log n) algorithm in Python may be slower than an O(n^2) algorithm in C for moderate n.
+- Parallelism can change effective complexity: an O(n^2) algorithm running on n processors has O(n) span.
 
-    nums = [random.randint(0, 10000) for _ in range(1000)]
-    target = 9999
+### Interview Questions
+- **Q**: What is the difference between Big O, Big Omega, and Big Theta?  
+  **A**: Big O is an upper bound (worst case). Big Omega is a lower bound (best case). Big Theta is a tight bound (both upper and lower).
+- **Q**: How would you analyse the complexity of a recursive function with two recursive calls?  
+  **A**: Write the recurrence (e.g., T(n) = 2T(n/2) + O(n)) and apply the Master Theorem.
 
-    start = time.perf_counter()
-    result1 = two_sum_naive(nums, target)
-    t1 = time.perf_counter() - start
+### Coding Challenges
+- Write a function that takes a list of algorithms and their measured runtimes across different input sizes and determines the empirical Big O of each.
+- Implement a profiler decorator that records the number of operations (comparisons, swaps) performed by a sorting function and prints the complexity class.
 
-    start = time.perf_counter()
-    result2 = two_sum_fast(nums, target)
-    t2 = time.perf_counter() - start
-
-    print(f"  O(n^2) no extra space: {t1:.6f}s -> {result1}")
-    print(f"  O(n) with O(n) space: {t2:.6f}s -> {result2}")
-    print(f"  Speedup: {t1/t2:.0f}x, Extra space: O(n)")
-
-
-challenge_1_identify_complexity()
-challenge_2_empirical_analysis()
-challenge_3_optimize_to_better_complexity()
-challenge_4_space_time_tradeoff()
-`
-
-## Summary
-
-Big O notation is essential for analyzing and comparing algorithm efficiency. Key complexities range from O(1) (constant) to O(n!) (factorial). Understanding time and space complexity trade-offs helps developers choose appropriate algorithms, optimize bottlenecks, and build scalable systems.
-
-## Related Topics
-
-- Algorithms (98_algorithms.md)
-- Data Structures (97_data_structures.md)
-- Profiling (91_profiling.md)
-- CPython Internals (93_cpython_internals.md)
+### Related Topics
+- [Time complexity](#time-complexity)
+- [Space complexity](#space-complexity)
+- [Data Structures (Big O)](#data-structures---list-vs-dict-vs-set-performance-big-o-analysis)
+- [Algorithms](#algorithms---sorting-searching-recursion-dynamic-programming)

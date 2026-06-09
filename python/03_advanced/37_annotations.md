@@ -2,180 +2,283 @@
 
 ## Introduction
 
-Annotations (also called type hints) are a way to attach metadata to function parameters, return values, and variables in Python. Introduced in Python 3.0 and significantly expanded in Python 3.5+ with the `typing` module, annotations provide a standardized syntax for expressing types. They are not enforced at runtime by the Python interpreter but can be used by static type checkers (mypy, pyright), IDEs, and linters to catch errors before runtime.
+Type hints, introduced in Python 3.5 via PEP 484, provide a way to annotate function parameters and return values with expected types. Python remains a dynamically-typed language at runtime — type hints are not enforced by the interpreter. Instead, they enable static type checking with tools like `mypy`, `pyright`, and `pytype`, as well as improved IDE support, code documentation, and early error detection.
 
-## Why It Is Important
+## Function Annotations
 
-Type annotations dramatically improve code readability, documentation, and maintainability. They enable static type checking to catch type-related bugs early, provide better IDE support (autocomplete, refactoring, inline documentation), and serve as living documentation. Annotations are increasingly essential in large codebases and team projects, where they reduce cognitive overhead and make APIs self-documenting. Modern Python development strongly encourages type annotations.
+### What It Is
 
-## Syntax
+Function annotations allow you to attach type information to function parameters and return values using the `->` syntax and `:` syntax. These annotations are stored in the function's `__annotations__` attribute as a dictionary and have no effect on runtime behavior.
+
+### Why It Is Important
+
+Annotations make code self-documenting by explicitly stating what types a function expects and returns. They enable static type checkers to catch type-related bugs before runtime, improve IDE autocompletion and refactoring support, and serve as machine-checkable documentation that cannot go out of sync with the code.
+
+### How It Works Internally
+
+When Python compiles a function with annotations, it stores them in `func.__annotations__` as a `dict`. Parameter names map to their type expressions, and the special key `'return'` maps to the return annotation. Type expressions are not evaluated at definition time when `from __future__ import annotations` is used (PEP 563), becoming strings instead.
+
+### Syntax
 
 ```python
-# Function annotations
-def func(param: type, param2: type = default) -> return_type:
-    pass
+def func(param1: type1, param2: type2) -> return_type:
+    ...
 
-# Variable annotations (Python 3.6+)
+# Variable annotations
 name: str = "Alice"
-age: int
+count: int
 items: list[int] = []
-
-# Forward references (string annotation)
-def func() -> "MyClass":
-    pass
-
-# from __future__ import annotations (Python 3.7+)
-# Makes all annotations strings (lazy evaluation)
 ```
 
-## Examples
+### Beginner Examples
 
 ```python
-from typing import (
-    List, Dict, Tuple, Set, Optional, Union, Any,
-    TypeVar, Generic, Callable, Iterator, Iterable,
-    Literal, Final, NewType, Sequence, Mapping,
-    cast, overload, Type, Protocol,
-)
-from typing import get_type_hints
-import inspect
+def greet(name: str, age: int) -> str:
+    return f"{name} is {age} years old."
+
+result = greet("Alice", 30)
+print(result)  # Alice is 30 years old.
+
+# Annotations are stored in __annotations__
+print(greet.__annotations__)
+# {'name': <class 'str'>, 'age': <class 'int'>, 'return': <class 'str'>}
+
+# Variable annotation
+user_id: int
+user_id = 42  # OK
+# user_id = "hello"  # Type checker would warn, but runtime is fine
 ```
 
-### Basic Annotations
+### Intermediate Examples
 
 ```python
-def greet(name: str, greeting: str = "Hello") -> str:
-    return f"{greeting}, {name}!"
+from typing import Optional, Union, List, Dict, Tuple
 
-age: int = 30
-pi: float = 3.14159
-active: bool = True
-
-print(greet("Alice"))
-```
-
-### Collection Type Hints
-
-```python
-def process_numbers(numbers: list[int]) -> list[int]:
-    return [n * 2 for n in numbers]
-
-def lookup(phonebook: dict[str, str], name: str) -> Optional[str]:
-    return phonebook.get(name)
-
-def coordinates() -> tuple[float, float, float]:
-    return (10.0, 20.0, 30.0)
-
-def unique(items: set[str]) -> list[str]:
-    return sorted(set(items))
-
-print(process_numbers([1, 2, 3]))
-```
-
-### Optional, Union, and Any
-
-```python
+# Optional parameter
 def find_user(user_id: int) -> Optional[str]:
-    """Return username or None if not found."""
     users = {1: "Alice", 2: "Bob"}
     return users.get(user_id)
 
+# Union types
 def process(value: Union[int, str]) -> str:
     if isinstance(value, int):
         return f"Number: {value}"
     return f"String: {value}"
 
-def log(message: Any) -> None:
-    print(f"[LOG]: {message}")
+# Collection types
+def total_scores(scores: List[int]) -> int:
+    return sum(scores)
 
-print(find_user(1))
-print(process(42))
+def lookup(entries: Dict[str, int], key: str) -> Optional[int]:
+    return entries.get(key)
+
+# Tuple with variable length
+def process_pairs(pairs: List[Tuple[str, int]]) -> None:
+    for name, value in pairs:
+        print(f"{name}: {value}")
+
+# Multiple return values
+def min_max(items: List[int]) -> Tuple[int, int]:
+    return min(items), max(items)
 ```
 
-## Beginner Examples
-
-### Function with Multiple Parameter Types
+### Advanced Examples
 
 ```python
-def multiply(a: int, b: int) -> int:
-    return a * b
+from typing import Callable, TypeVar, Generic, Protocol, Any
 
-def concat(a: str, b: str) -> str:
-    return a + b
+# Callable types
+def apply_twice(func: Callable[[int], int], x: int) -> int:
+    return func(func(x))
 
-def repeat(item: str, times: int = 1) -> list[str]:
-    return [item] * times
+print(apply_twice(lambda n: n * 2, 5))  # 20
 
-print(multiply(3, 4))
-print(concat("Hello ", "World"))
-print(repeat("Hi", 3))
-```
+# TypeVar for generics
+T = TypeVar('T')
+def first(items: List[T]) -> T:
+    return items[0]
 
-### Variable Annotations
+value: int = first([1, 2, 3])  # T inferred as int
 
-```python
-name: str
-name = "Alice"
+# Protocol (structural subtyping)
+class SupportsStr(Protocol):
+    def __str__(self) -> str: ...
 
-count: int = 0
-items: list[str] = []
+def to_string(obj: SupportsStr) -> str:
+    return str(obj)
 
-# This tells type checker 'maybe' is either str or None
-maybe: str | None = None  # Python 3.10+ syntax
+# Any - opt out of type checking
+def unsafe_func(data: Any) -> Any:
+    return data.dangerous_method()
 
-# Python 3.9+: use built-in generics
-numbers: list[int] = [1, 2, 3]
-mapping: dict[str, int] = {"a": 1, "b": 2}
-```
-
-### Type Aliases
-
-```python
-Vector = list[float]
-Matrix = list[list[float]]
-UserID = int
-JSON = dict[str, Any]
-
+# Type alias
+Vector = List[float]
 def scale(v: Vector, factor: float) -> Vector:
     return [x * factor for x in v]
 
-def create_user(user_id: UserID, data: JSON) -> None:
-    print(f"Creating user {user_id}: {data}")
+# Literal types
+from typing import Literal
+def set_mode(mode: Literal["read", "write", "append"]) -> None:
+    pass
 
-v = [1.0, 2.0, 3.0]
-print(scale(v, 2.0))
+# set_mode("read")    # OK
+# set_mode("delete")  # Type checker error
 ```
 
-## Intermediate Examples
+### Real-World Use Cases
 
-### TypeVar and Generics
+- **API endpoints**: Document request/response types in web frameworks.
+- **Data processing pipelines**: Specify transformations with clear type signatures.
+- **Library APIs**: Provide type information for IDE autocompletion.
+- **Configuration systems**: Define typed configuration schemas.
+- **Dependency injection**: Type-annotated constructors for automatic wiring.
+
+### Common Mistakes
+
+- Annotating but never type-checking (defeats the purpose).
+- Using incorrect or overly complex type expressions.
+- Forgetting that type hints are not enforced at runtime.
+- Mixing `Optional[X]` with `Union[X, None]` inconsistently.
+- Annotating with mutable default arguments without understanding the implications.
+
+### Best Practices
+
+- Use type hints consistently across all public functions and methods.
+- Start simple (`str`, `int`, `bool`, `list[str]`) and add complexity as needed.
+- Use a static type checker (`mypy`, `pyright`) in CI to enforce type correctness.
+- Prefer `list[X]` over `List[X]` (Python 3.9+), `dict[K, V]` over `Dict[K, V]`.
+- Use `Optional[X]` for `X | None` (Python 3.10+) or `Union[X, None]`.
+
+### Performance Considerations
+
+Type hints have no runtime performance cost in standard Python (they're just stored in `__annotations__`). With `from __future__ import annotations` (PEP 563), annotations become strings evaluated lazily, avoiding the cost of evaluating complex type expressions at definition time.
+
+### Interview Questions
+
+**Q: Are type hints enforced at runtime?**
+
+A: No. Python ignores type hints at runtime. They are used by static type checkers (mypy, pyright) and IDEs. You can still pass any type to an annotated parameter.
+
+**Q: What is `Optional[str]` equivalent to?**
+
+A: `Optional[str]` is equivalent to `Union[str, None]`. It means the value can be either a `str` or `None`.
+
+### Coding Challenges
+
+1. Add type hints to a complex existing function and run mypy on it.
+2. Create a generic function that works with any sequence type and returns the first element.
+3. Define a Protocol for objects that support addition and implement it with two different classes.
+
+### Related Topics
+
+- `typing` module
+- Static type checking
+- PEP 484 (Type Hints)
+- PEP 563 (Postponed Evaluation of Annotations)
+- `dataclasses` (use type hints for field definitions)
+
+## typing Module
+
+### What It Is
+
+The `typing` module, introduced in Python 3.5, provides a standard set of types, utilities, and constructs for type hinting. It includes generic types (`List`, `Dict`, `Set`, `Tuple`), special forms (`Optional`, `Union`, `Literal`), type aliases, `TypeVar` for generics, `Protocol` for structural subtyping, and `Any` for dynamic typing opt-out.
+
+### Why It Is Important
+
+The `typing` module makes type hints expressive enough to describe complex type relationships. Without it, you could only use simple types like `int` or `str`. With it, you can describe generic containers, callable signatures, optional values, discriminated unions, and custom protocols.
+
+### How It Works Internally
+
+Most typing constructs are implemented as special classes or functions that create type objects. When a type checker encounters `List[int]`, it understands this as "a list whose elements are ints." At runtime, `List[int]` is an instance of `typing._GenericAlias` and is not the same as `list`. Starting from Python 3.9, many typing types are aliases for built-in types with subscript support.
+
+### Syntax
 
 ```python
-T = TypeVar('T')  # Any type
-S = TypeVar('S', int, float)  # Only int or float
-
-def first(items: list[T]) -> Optional[T]:
-    if items:
-        return items[0]
-    return None
-
-def add_all(a: S, b: S) -> S:
-    return a + b
-
-print(first([1, 2, 3]))
-print(first(["a", "b", "c"]))
-print(add_all(10, 20))
-print(add_all(3.14, 2.86))
+from typing import (
+    List, Dict, Tuple, Set, Optional, Union,
+    Any, Callable, TypeVar, Generic, Protocol, Literal
+)
 ```
 
-### Generic Class
+### Beginner Examples
 
 ```python
+from typing import List, Dict, Tuple, Optional, Set
+
+# Basic container types
+def process_list(items: List[int]) -> int:
+    return sum(items)
+
+def process_dict(data: Dict[str, int]) -> List[str]:
+    return [k for k, v in data.items() if v > 0]
+
+def process_tuple(pair: Tuple[str, int]) -> str:
+    name, age = pair
+    return f"{name} is {age}"
+
+def process_set(values: Set[int]) -> bool:
+    return len(values) == len({v * 2 for v in values})
+
+# Optional
+def find_key(d: Dict[str, int], key: str) -> Optional[int]:
+    return d.get(key)
+```
+
+### Intermediate Examples
+
+```python
+from typing import Union, Callable, TypeVar, List
+
+# Union types
+def handle(value: Union[int, str, List[int]]) -> str:
+    if isinstance(value, int):
+        return str(value * 2)
+    elif isinstance(value, str):
+        return value.upper()
+    return ", ".join(map(str, value))
+
+# Callable
+def execute_handler(
+    handler: Callable[[str, int], bool],
+    name: str,
+    count: int
+) -> bool:
+    return handler(name, count)
+
+# TypeVar for generics
 T = TypeVar('T')
+def first(items: List[T]) -> T:
+    return items[0]
 
+# Constrained TypeVar
+Number = TypeVar('Number', int, float)
+def double(value: Number) -> Number:
+    return value * 2
+
+# TypeVar with bound
+class Animal:
+    def speak(self) -> str: ...
+    def make_sound(self) -> str:
+        return self.speak()
+
+A = TypeVar('A', bound=Animal)
+def animal_sound(animal: A) -> A:
+    print(animal.speak())
+    return animal
+```
+
+### Advanced Examples
+
+```python
+from typing import (
+    Generic, Protocol, TypeVar, List,
+    Iterable, Iterator, overload, Literal
+)
+
+# Generic classes
 class Stack(Generic[T]):
     def __init__(self) -> None:
-        self._items: list[T] = []
+        self._items: List[T] = []
 
     def push(self, item: T) -> None:
         self._items.append(item)
@@ -186,365 +289,153 @@ class Stack(Generic[T]):
     def peek(self) -> T:
         return self._items[-1]
 
-    def is_empty(self) -> bool:
-        return len(self._items) == 0
-
 stack = Stack[int]()
 stack.push(1)
 stack.push(2)
 print(stack.pop())  # 2
 
-string_stack = Stack[str]()
-string_stack.push("hello")
-print(string_stack.pop())
-```
+# Protocol for structural subtyping
+class Sized(Protocol):
+    def __len__(self) -> int: ...
 
-### Callable Type
+def size(obj: Sized) -> int:
+    return len(obj)
 
-```python
-def apply(func: Callable[[int], int], value: int) -> int:
-    return func(value)
+print(size([1, 2, 3]))  # 3
+print(size("hello"))    # 5
 
-def double(x: int) -> int:
-    return x * 2
-
-def square(x: int) -> int:
-    return x ** 2
-
-print(apply(double, 5))
-print(apply(square, 5))
-
-# Callable with more parameters
-def operate(a: int, b: int, op: Callable[[int, int], int]) -> int:
-    return op(a, b)
-
-print(operate(10, 5, lambda a, b: a + b))
-print(operate(10, 5, lambda a, b: a * b))
-```
-
-### Literal Type (Python 3.8+)
-
-```python
-from typing import Literal
-
-def set_mode(mode: Literal["read", "write", "append"]) -> None:
-    print(f"Mode set to {mode}")
-
-def set_http_status(code: Literal[200, 404, 500]) -> str:
-    status_text = {200: "OK", 404: "Not Found", 500: "Server Error"}
-    return status_text[code]
-
-# set_mode("delete")  # Type error
-set_mode("read")
-print(set_http_status(200))
-```
-
-### Final and NewType
-
-```python
-from typing import Final
-
-VERSION: Final[str] = "1.0.0"
-MAX_RETRIES: Final[int] = 3
-
-# VERSION = "2.0"  # Type error (Final)
-
-UserId = NewType('UserId', int)
-ProductId = NewType('ProductId', int)
-
-def get_user(user_id: UserId) -> str:
-    return f"User {user_id}"
-
-def get_product(product_id: ProductId) -> str:
-    return f"Product {product_id}"
-
-uid = UserId(42)
-pid = ProductId(100)
-print(get_user(uid))
-# print(get_user(pid))  # Type error (NewType is distinct)
-```
-
-## Advanced Examples
-
-### Runtime Access to Annotations
-
-```python
-def show(x: int, y: str, z: float = 3.14) -> bool:
-    """Sample function with annotations."""
-    return True
-
-# Access function annotations at runtime
-print(show.__annotations__)
-
-# Using get_type_hints (handles forward references)
-print(get_type_hints(show))
-
-# Using inspect
-sig = inspect.signature(show)
-for name, param in sig.parameters.items():
-    print(f"  {name}: {param.annotation} -> default={param.default}")
-print(f"  return: {sig.return_annotation}")
-```
-
-### Protocol (Structural Subtyping)
-
-```python
-class Drawable(Protocol):
-    def draw(self) -> str:
-        ...
-
-class Circle:
-    def draw(self) -> str:
-        return "Drawing Circle"
-
-class Square:
-    def draw(self) -> str:
-        return "Drawing Square"
-
-class NotDrawable:
-    def render(self) -> str:
-        return "Rendering"
-
-def render_all(objects: list[Drawable]) -> list[str]:
-    return [obj.draw() for obj in objects]
-
-# These work because Circle and Square satisfy the Drawable protocol
-print(render_all([Circle(), Square()]))
-# render_all([NotDrawable()])  # Type error
-```
-
-### Overload Decorator
-
-```python
+# Overload decorator
 @overload
-def process(data: int) -> str:
-    ...
+def process(data: int) -> str: ...
 
 @overload
-def process(data: str) -> int:
-    ...
+def process(data: str) -> int: ...
 
-@overload
-def process(data: list[int]) -> float:
-    ...
-
-def process(data: Union[int, str, list[int]]) -> Union[str, int, float]:
+def process(data):
     if isinstance(data, int):
         return str(data)
-    elif isinstance(data, str):
-        return len(data)
-    else:
-        return sum(data) / len(data) if data else 0.0
+    return len(data)
 
-print(process(42))
-print(process("hello"))
-print(process([1, 2, 3, 4]))
+# Literal types
+from typing import Literal
+
+def set_status(status: Literal["active", "inactive", "pending"]) -> None:
+    print(f"Status set to {status}")
+
+# Type aliases
+JSON = Union[str, int, float, bool, None, List['JSON'], Dict[str, 'JSON']]
+def parse_json(data: str) -> JSON:
+    import json
+    return json.loads(data)
 ```
 
-### TypeGuard (Python 3.10+)
+### Real-World Use Cases
 
-```python
-from typing import TypeGuard
+- **Data validation libraries**: Pydantic uses typing constructs for schema definition.
+- **Web frameworks**: FastAPI generates OpenAPI specs from type hints.
+- **Dependency injection**: Type hints drive auto-wiring in frameworks.
+- **Serialization**: Type hints guide JSON/YAML serializers.
+- **Configuration management**: Typed configuration objects with validation.
 
-def is_string_list(val: list[object]) -> TypeGuard[list[str]]:
-    return all(isinstance(x, str) for x in val)
+### Common Mistakes
 
-def process_strings(items: list[object]) -> None:
-    if is_string_list(items):
-        # items is narrowed to list[str] here
-        for s in items:
-            print(s.upper())
-    else:
-        print("Not all strings")
+- Using `List` instead of `list` in Python 3.9+ (deprecated but works).
+- Importing everything from typing unnecessarily or using deprecated types.
+- Using `TypeVar` without constraints when specific types are expected.
+- Overusing `Any` (defeats the purpose of type hints).
+- Not understanding variance (covariant, contravariant, invariant) in generic types.
 
-process_strings(["hello", "world", "python"])
-process_strings([1, 2, 3])
-```
+### Best Practices
 
-### Self Type (Python 3.11+)
+- Use built-in generic types (`list[X]`, `dict[K, V]`) in Python 3.9+ instead of typing equivalents.
+- Use `Optional[X]` for potentially-None values (Python 3.10+: `X | None`).
+- Define type aliases for complex repeating type expressions.
+- Use `Protocol` for duck typing — define what methods an object must have.
+- Run a type checker regularly and fix all reported issues.
 
-```python
-from typing import Self
+### Performance Considerations
 
-class Shape:
-    def set_scale(self, factor: float) -> Self:
-        self.scale = factor
-        return self
+At runtime, `typing` types have minimal overhead — they create objects once at module import time. With PEP 563 (lazy evaluation), annotation expressions are not evaluated at definition time, eliminating even that cost. Type checking itself is done offline by external tools.
 
-class Circle(Shape):
-    def __init__(self, radius: float) -> None:
-        self.radius = radius
-        self.scale = 1.0
+### Interview Questions
 
-    def area(self) -> float:
-        return 3.14159 * (self.radius * self.scale) ** 2
+**Q: What is the difference between `TypeVar` and `Any`?**
 
-circle = Circle(5).set_scale(2.0)
-print(circle.area())
-```
+A: `Any` tells the type checker to skip type checking entirely for that value. `TypeVar` creates a generic type variable that preserves type relationships — the same type must be used consistently (e.g., `def first(items: List[T]) -> T` returns the same type as the list elements).
 
-### ParamSpec and Concatenate (Python 3.10+)
+**Q: What is `Protocol` and how does it differ from ABC?**
 
-```python
-from typing import ParamSpec, Concatenate
+A: `Protocol` enables structural subtyping (duck typing at the type level). If an object has the methods defined in the Protocol, it satisfies the Protocol, no explicit inheritance needed. ABCs use nominal subtyping — you must explicitly inherit from the ABC.
 
-P = ParamSpec('P')
+### Coding Challenges
 
-def log_calls(func: Callable[P, Any]) -> Callable[P, Any]:
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        print(f"Calling {func.__name__}")
-        return func(*args, **kwargs)
-    return wrapper
+1. Write a generic `maybe(value: Optional[T], default: T) -> T` function.
+2. Create a `Comparable` Protocol and a generic `max_element` function that works with it.
+3. Implement a typed `Observable[T]` class using `Generic[T]`.
+4. Define a JSON-serializable type alias and validate a function against it.
 
-@log_calls
-def add(a: int, b: int) -> int:
-    return a + b
+### Related Topics
 
-print(add(3, 4))
-```
+- PEP 484 (Type Hints)
+- PEP 526 (Variable Annotations)
+- PEP 563 (Postponed Evaluation)
+- PEP 585 (Type Hinting Generics In Standard Collections)
+- `mypy` static type checker
+- `dataclasses` and type hints
 
-### TypedDict
+## Type Hints Benefits
 
-```python
-from typing import TypedDict
+### What It Is
 
-class PersonDict(TypedDict):
-    name: str
-    age: int
-    email: Optional[str]
+Type hints provide tangible benefits across the software development lifecycle, from early error detection to improved documentation and developer experience. While optional, they have become a standard practice in professional Python development.
 
-def create_person(data: PersonDict) -> PersonDict:
-    return {
-        "name": data["name"],
-        "age": data["age"],
-        "email": data.get("email"),
-    }
+### Benefits List
 
-person = create_person({"name": "Alice", "age": 30})
-print(person)
-```
+1. **Early error detection**: Static type checkers catch type errors before runtime.
+2. **Improved IDE support**: Better autocompletion, inline documentation, and refactoring.
+3. **Self-documenting code**: Types serve as always-current documentation.
+4. **Safer refactoring**: Type checkers verify that changes don't break type contracts.
+5. **Onboarding efficiency**: New developers understand code faster with type annotations.
+6. **Reduced unit testing needs**: Some type-related tests become unnecessary.
+7. **Better APIs**: Designing types first leads to cleaner interfaces.
+8. **Framework integration**: FastAPI, Pydantic, and others use type hints for validation and serialization.
 
-### Decorator with Preserved Annotations
+### Common Mistakes
 
-```python
-import functools
+- Adding type hints without running a type checker (wasted effort).
+- Making type hints too complex (defeating readability).
+- Using `# type: ignore` too liberally instead of fixing type issues.
+- Expecting type hints to prevent all bugs (they only catch type-related issues).
+- Not using `reveal_type()` in mypy for debugging type inference.
 
-def typed_decorator(func: Callable[P, T]) -> Callable[P, T]:
-    @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        return func(*args, **kwargs)
-    return wrapper
+### Best Practices
 
-@typed_decorator
-def process(x: int, y: str) -> bool:
-    return str(x) == y
+- Run type checking in CI as a required step.
+- Start with strict mode in mypy (`--strict`) for new projects.
+- Gradually add type hints to existing codebases, starting with public APIs.
+- Use `cast()` sparingly — it means you know better than the type checker.
+- Combine type hints with runtime validation (e.g., Pydantic) for defensive programming.
 
-print(get_type_hints(process))
-```
+### Interview Questions
 
-### Annotations as Metadata for Validation
+**Q: What are the trade-offs of using type hints?**
 
-```python
-def validate(func: Callable) -> Callable:
-    hints = get_type_hints(func)
-    return_type = hints.pop('return', None)
+A: Benefits: earlier bug detection, better documentation, improved IDE support, safer refactoring. Drawbacks: increased verbosity, learning curve, maintenance overhead, false negatives/positives from type checkers.
 
-    @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        bound = inspect.signature(func).bind(*args, **kwargs)
-        bound.apply_defaults()
-        for name, value in bound.arguments.items():
-            expected = hints.get(name)
-            if expected and not isinstance(value, expected):
-                raise TypeError(
-                    f"Argument '{name}' should be {expected.__name__}, "
-                    f"got {type(value).__name__}"
-                )
-        result = func(*args, **kwargs)
-        if return_type and not isinstance(result, return_type):
-            raise TypeError(
-                f"Return should be {return_type.__name__}, "
-                f"got {type(result).__name__}"
-            )
-        return result
-    return wrapper
+**Q: How do you handle third-party libraries without type stubs?**
 
-@validate
-def divide(a: int, b: int) -> float:
-    return a / b
+A: Use stub files (`.pyi`), the `typeshed` repository for popular libraries, or `# type: ignore` for imports. Libraries without stubs will be typed as `Any` by default.
 
-print(divide(10, 3))
-```
+### Coding Challenges
 
-## Real-World Use Cases
+1. Take an untyped Python module and add complete type hints.
+2. Configure mypy for a project and fix all type errors.
+3. Write a type-annotated decorator that preserves the signature of the decorated function.
 
-- **Static type checking**: Using mypy, pyright, or pyre to catch type errors before runtime.
-- **IDE support**: Autocomplete, inline documentation, refactoring, and error highlighting.
-- **API documentation**: Self-documenting function signatures.
-- **Data validation**: Using annotations as metadata for runtime validation libraries (pydantic, marshmallow).
-- **Dependency injection**: Frameworks that use annotations to resolve dependencies.
-- **Serialization**: Automatically generating serialization/deserialization code from type hints.
-- **Command-line interfaces**: Using annotations to define CLI arguments (typer, click).
-- **Database ORMs**: Mapping Python types to database column types.
+### Related Topics
 
-## Common Mistakes
-
-- Using `typing.List` instead of `list` (Python 3.9+ supports built-in generics).
-- Forgetting `Optional` vs just using `Union[T, None]`.
-- Using mutable default arguments with type annotations (still a bug).
-- Not importing `from __future__ import annotations` when doing forward references in Python 3.7-3.10.
-- Over-annotating with `Any` (defeats the purpose of type hints).
-- Confusing `Type[T]` (the class itself) with `T` (an instance of the class).
-- Using `Callable` without specifying parameter types.
-- Not using `Protocol` when structural subtyping would be more appropriate.
-
-## Best Practices
-
-- Use built-in generics (`list`, `dict`, `set`, `tuple`) instead of `typing` versions in Python 3.9+.
-- Prefer `Optional[X]` over `Union[X, None]`.
-- Use `TypeVar` for generic functions and classes.
-- Use `Protocol` for duck typing (structural subtyping).
-- Use `from __future__ import annotations` for lazy evaluation of annotations.
-- Run a static type checker (mypy) regularly in CI.
-- Annotate all function parameters and return types in public APIs.
-- Use `Final` for constants and `Literal` for constrained values.
-- Prefer `NewType` over plain type aliases for distinct concepts.
-- Use `cast()` sparingly — it should be the exception, not the rule.
-
-## Interview Questions
-
-1. What are type annotations in Python and how are they used?
-2. What is the difference between `typing.List[int]` and `list[int]`?
-3. What is `Optional` and when should you use it?
-4. What is a `TypeVar` and how does it work with generics?
-5. What is `Protocol` and how is it different from ABC?
-6. How do you access annotations at runtime?
-7. What is `Literal` and when would you use it?
-8. What is `NewType` and how is it different from a type alias?
-9. How does `cast()` work and when should you use it?
-10. What is `from __future__ import annotations` and what problem does it solve?
-
-## Coding Challenges
-
-1. **Type Validator**: Write a function that validates arguments at runtime using annotations.
-2. **Generic Stack**: Implement a generic `Stack[T]` class with proper type hints.
-3. **Typed Dict Validator**: Create a function that validates `TypedDict` data at runtime.
-4. **Overloaded Function**: Write an overloaded function that handles `int`, `str`, and `list`.
-5. **Protocol Checker**: Implement a structural subtyping check using `Protocol`.
-6. **Annotation Extractor**: Write a function that extracts and prints all annotations from a module.
-7. **TypeGuard Filter**: Implement a filter function using `TypeGuard`.
-8. **Self-returning Builder**: Create a builder pattern class that uses `Self` type.
-
-## Summary
-
-Type annotations provide a standardized way to express types in Python code, enabling static type checking, better IDE support, and self-documenting APIs. The `typing` module provides a rich set of tools including `Optional`, `Union`, `TypeVar`, `Generic`, `Protocol`, `Literal`, and `TypedDict`. While optional, annotations have become a standard practice in modern Python development.
-
-## Related Topics
-
-- typing module
-- Static type checking (mypy, pyright)
-- Duck typing vs structural typing
-- Generic programming
-- Function overloading
-- Decorator annotations
-- Data classes and attrs
+- `mypy` static type checker
+- `pyright`/`pylance` for VS Code
+- `typeshed` (type stubs for the standard library)
+- PEP 484 (specification)
+- `dataclasses` integration with type hints

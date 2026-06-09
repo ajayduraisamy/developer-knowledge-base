@@ -1,682 +1,724 @@
 # Cython - Static types, .pyx files, C extensions, compilation
 
 ## Introduction
+Cython is a superset of Python that compiles Python-like code into C extensions, achieving performance close to hand-written C. By adding static type declarations to Python code, Cython bypasses the CPython interpreter overhead and generates optimised C code that calls directly into the CPython C API or external C libraries. It is widely used in scientific computing, data processing, and for wrapping native libraries.
 
-Cython is a programming language that makes writing C extensions for Python as easy as Python itself. It allows you to write Python code that is translated into C extensions, providing near C-level performance while maintaining Python-like syntax.
+## Static Type Declarations
 
-## Why It Is Important
+### What It Is
+Cython extends Python's syntax with C-level type annotations using `cdef` and `cpdef` keywords. Variables, function parameters, return types, and structs can be annotated with C types (`int`, `double`, `float`, `Py_ssize_t`, pointers, etc.), which causes Cython to generate C code that operates on raw C values instead of Python `PyObject*` pointers.
 
-Cython bridges the gap between Python's ease of use and C's performance. It enables significant speedups (often 10-100x) for numerical computations, tight loops, and operations that would be slow in pure Python. It also allows direct interaction with C libraries.
+### Why It Is Important
+Python's dynamic typing forces every operation to go through the interpreter loop and PyObject protocol. Static typing allows Cython to compile arithmetic, loops, and function calls into native C instructions — typically 10–100x faster for compute-intensive code.
 
-## Syntax
+### How It Works Internally
+Cython's compiler (`cythonize`) parses `.pyx` files, resolves type annotations, and emits a `.c` file. For a typed variable `cdef int x`, the generated C code declares `int x;` and uses `x = PyLong_AsLong(py_obj);` for assignments. Arithmetic on typed variables becomes raw C `+`, `-`, `*`, `/` operations. Function calls with `cdef` become direct C function calls (no Python call overhead).
 
-```python
-# Cython .pyx file syntax
-# cdef for C-level functions and variables
-# cpdef for functions callable from both C and Python
-# def for pure Python functions
+### Syntax
+```cython
+# Pure Python style with cython annotation comments
+import cython
 
-# Static type declarations
-cdef int i
-cdef double x
-cdef list items
-cdef dict mapping
+@cython.cfunc
+@cython.returns(cython.int)
+@cython.locals(a=cython.int, b=cython.int)
+def add(a, b):
+    return a + b
 
-# Memory views for array access
-cdef int[:] arr_view = arr
-
-# C imports
-# from libc.math cimport sin, cos
-# from libc.stdlib cimport malloc, free
-
-# Function declarations
-cdef int square(int x):
-    return x * x
-
-cpdef double average(list data):
-    cdef int n = len(data)
-    cdef double total = 0.0
-    for i in range(n):
-        total += data[i]
-    return total / n
+# .pyx style
+# cdef int add(int a, int b):
+#     return a + b
 ```
 
-## Examples
-
+### Beginner Examples
 ```python
-import math
-import time
-
-
-def pure_python_sum_squares(n: int) -> float:
-    total = 0.0
+# compute.pyx
+def compute_pure(n):
+    total = 0
     for i in range(n):
-        total += math.sqrt(i ** 2)
+        total += i * i
     return total
 
+# With static types
+def compute_typed(int n):
+    cdef int i
+    cdef long long total = 0
+    for i in range(n):
+        total += i * i
+    return total
 
-start = time.perf_counter()
-result = pure_python_sum_squares(1000000)
-print(f"Pure Python: {time.perf_counter() - start:.4f}s")
+# setup.py
+from setuptools import setup
+from Cython.Build import cythonize
 
-
-def demonstrate_cython_syntax():
-    print("Cython equivalent would look like:")
-    print("""
-    cimport cython
-    from libc.math cimport sqrt
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    cpdef double cython_sum_squares(int n):
-        cdef int i
-        cdef double total = 0.0
-        for i in range(n):
-            total += sqrt(i * i)
-        return total
-    """)
-
-
-demonstrate_cython_syntax()
+setup(ext_modules=cythonize('compute.pyx'))
 ```
 
-## Beginner Examples
+### Intermediate Examples
+```cython
+# math_ops.pyx
+cimport cython
 
-```python
-import time
-import math
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def dot_product(double[:] a, double[:] b):
+    cdef:
+        int i
+        int n = a.shape[0]
+        double total = 0.0
 
+    for i in range(n):
+        total += a[i] * b[i]
+    return total
 
-def cython_basics_intro():
-    print("Cython Basics:")
-    print("1. Cython files use .pyx extension")
-    print("2. Use cdef for C variables")
-    print("3. Use cdef for C-only functions")
-    print("4. Use cpdef for dual C/Python functions")
-    print("5. Use def for Python-only functions")
-    print("6. Static typing gives major speedups")
+# Enums and structs
+cdef struct Point:
+    double x
+    double y
 
+cdef double distance(Point p1, Point p2):
+    cdef double dx = p1.x - p2.x
+    cdef double dy = p1.y - p2.y
+    return (dx * dx + dy * dy) ** 0.5
 
-cython_basics_intro()
+def compute_distances(double[:] xs, double[:] ys):
+    cdef:
+        int n = xs.shape[0]
+        int i, j
+        list result = []
+        Point p1, p2
 
+    for i in range(n):
+        p1 = Point(xs[i], ys[i])
+        for j in range(i + 1, n):
+            p2 = Point(xs[j], ys[j])
+            result.append(distance(p1, p2))
+    return result
+```
 
-def compare_loop_speed():
-    n = 1000000
+### Advanced Examples
+```cython
+# advanced_typed.pyx
+from libc.math cimport sin, cos, sqrt
+from libc.stdlib cimport malloc, free
 
-    def python_loop():
-        total = 0
-        for i in range(n):
-            total += i
-        return total
+cdef class ComplexArray:
+    """Array of complex numbers with C-level storage."""
+    cdef:
+        double *real
+        double *imag
+        int size
 
-    start = time.perf_counter()
-    python_loop()
-    py_time = time.perf_counter() - start
-    print(f"Python loop: {py_time:.4f}s")
+    def __init__(self, int size):
+        self.size = size
+        self.real = <double*>malloc(size * sizeof(double))
+        self.imag = <double*>malloc(size * sizeof(double))
 
-    print("""
-    Cython version would be:
-    cpdef int cython_loop(int n):
+    def __dealloc__(self):
+        free(self.real)
+        free(self.imag)
+
+    cpdef void set(self, int idx, double r, double i):
+        self.real[idx] = r
+        self.imag[idx] = i
+
+    cpdef double magnitude(self, int idx):
+        return sqrt(self.real[idx] * self.real[idx] + self.imag[idx] * self.imag[idx])
+
+    @cython.boundscheck(False)
+    cpdef void multiply_all(self, double factor):
         cdef int i
-        cdef int total = 0
-        for i in range(n):
-            total += i
-        return total
-    Expected: ~10-50x faster
-    """)
+        for i in range(self.size):
+            self.real[i] *= factor
+            self.imag[i] *= factor
 
+# Template-like fused types
+ctypedef fused numeric:
+    float
+    double
+    int
+    long long
 
-compare_loop_speed()
+cdef numeric square(numeric x):
+    return x * x
 
+def apply_square(numeric[:] arr):
+    cdef int i
+    cdef int n = arr.shape[0]
+    for i in range(n):
+        arr[i] = square(arr[i])
+```
 
-def setup_py_example():
-    print("setup.py for building Cython extension:")
-    print("""
-    from setuptools import setup
-    from Cython.Build import cythonize
+### Real-World Use Cases
+- **NumPy/SciPy internals**: many NumPy operations are backed by Cython-generated C code that processes arrays element-by-element without Python overhead.
+- **Game physics engines**: Cython particle systems and collision detectors run at native speed while keeping game logic in Python.
+- **High-frequency trading**: latency-critical order book processing in Cython bridges Python risk infrastructure with C++ matching engines.
 
-    setup(
-        ext_modules = cythonize("example.pyx")
+### Common Mistakes
+- Declaring a variable `cdef int x` but forgetting to initialise it — Cython does not zero-initialise.
+- Using `def` instead of `cdef` or `cpdef` for internal functions — every call still goes through Python.
+- Accessing Python objects (lists, dicts) inside typed loops — each access re-wraps the value in a `PyObject*`.
+
+### Best Practices
+- Use `@cython.boundscheck(False)` and `@cython.wraparound(False)` on performance-critical loops.
+- Annotate loop variables (`cdef int i`) to keep loops entirely in C.
+- Use `cpdef` for methods that are called from both Cython and Python — they generate both a C-fast-path and a Python wrapper.
+- Profile before and after adding types — the first 10% of type declarations yield 90% of the speedup.
+
+### Performance Considerations
+- Typed loops can be 50–200x faster than CPython for pure arithmetic.
+- Function call overhead drops from ~50 ns (Python) to ~1 ns (C) when using `cdef` functions.
+- Type conversions (e.g., Python `int` to C `int`) add overhead — minimise crossing the Python/C boundary in hot loops.
+
+### Interview Questions
+- **Q**: What is the difference between `def`, `cdef`, and `cpdef` in Cython?  
+  **A**: `def` is a Python-visible function (always Python call overhead). `cdef` is a C-only function (fast, invisible from Python). `cpdef` generates both paths — a C function for internal calls and a Python wrapper for external calls.
+- **Q**: How does `@cython.boundscheck(False)` improve performance?  
+  **A**: It skips the index-out-of-range check for each array access, turning a conditional branch into a raw memory load.
+
+### Coding Challenges
+- Convert a pure Python Mandelbrot set computation to Cython with static types and measure the speedup.
+- Write a Cython function that computes the pairwise Euclidean distance matrix for two 2D arrays and compare performance with SciPy's `cdist`.
+
+### Related Topics
+- [.pyx files](#pyx-files)
+- [C extensions](#c-extensions)
+- [Compilation](#compilation)
+
+---
+
+## .pyx files
+
+### What It Is
+A `.pyx` file is the source file for Cython. It contains Python code extended with Cython-specific syntax: `cdef`, `cpdef`, `cimport`, `cdef class`, `cdef struct`, `cdef enum`, and `cimport` declarations. The `.pyx` file is processed by `cythonize` to produce a `.c` file, which is then compiled by a C compiler into a shared library (`.pyd` on Windows, `.so` on Linux/macOS).
+
+### Why It Is Important
+The `.pyx` file is where Cython's performance transformation happens. It is the developer's interface for deciding which parts of the code are Python and which are C. The `.pxd` file (analogous to `.h` in C) provides declarations for sharing C-level definitions across modules.
+
+### How It Works Internally
+The Cython compiler (`cython.py`) parses the `.pyx` file into an AST, resolves inferred and declared types, and performs code generation. Key stages:
+1. **Tokenisation and parsing** (similar to CPython's `parser`).
+2. **Type analysis and inference**: resolves `cdef`, `cpdef`, `ctypedef`, and implicit Python ↔ C conversions.
+3. **C code generation**: emits a `.c` file that uses CPython C API calls where Python interaction is needed and raw C where types are static.
+4. **Module initialisation**: generates `PyMODINIT_FUNC` for `PyInit_<module>`.
+
+### Syntax
+```cython
+# mymodule.pyx
+cdef extern from "some_c_lib.h":
+    int c_function(int x)
+
+def py_wrapper(x):
+    return c_function(x)
+
+# mymodule.pxd (declaration file)
+cdef int helper(int x)
+
+# cimport from another Cython module
+from libc.math cimport sin, cos
+```
+
+### Beginner Examples
+```cython
+# hello.pyx
+def say_hello(name):
+    return f"Hello, {name}!"
+
+# Use from Python:
+# >>> from hello import say_hello
+# >>> say_hello("World")
+```
+
+### Intermediate Examples
+```cython
+# utils.pyx
+cimport cython
+from libc.math cimport exp, log, sqrt
+
+# Public Python function
+def softmax(double[:] arr):
+    cdef:
+        int i
+        int n = arr.shape[0]
+        double total = 0.0
+        double max_val = -1e300
+
+    for i in range(n):
+        if arr[i] > max_val:
+            max_val = arr[i]
+
+    for i in range(n):
+        total += exp(arr[i] - max_val)
+
+    for i in range(n):
+        arr[i] = exp(arr[i] - max_val) / total
+
+# utils.pxd
+cdef double _internal_scale(double x, double factor)
+
+# Multiple files
+# fastmath.pyx
+cimport utils
+
+def compute(double[:] data):
+    utils.softmax(data)
+```
+
+### Advanced Examples
+```cython
+# complex_module.pyx
+from libcpp.vector cimport vector
+from libcpp.string cimport string
+from libc.string cimport memcpy
+
+# Cython with C++ STL
+cdef class Polynomial:
+    cdef:
+        vector[double] coeffs
+
+    def __init__(self, list coeffs):
+        self.coeffs = coeffs
+
+    cpdef double evaluate(self, double x):
+        cdef:
+            double result = 0.0
+            double power = 1.0
+            int i
+
+        for i in range(self.coeffs.size()):
+            result += self.coeffs[i] * power
+            power *= x
+        return result
+
+    cpdef Polynomial derivative(self):
+        cdef Polynomial deriv = Polynomial.__new__(Polynomial)
+        cdef int n = self.coeffs.size()
+        if n <= 1:
+            deriv.coeffs = [0.0]
+        else:
+            cdef vector[double] new_coeffs
+            new_coeffs.resize(n - 1)
+            for i in range(1, n):
+                new_coeffs[i - 1] = self.coeffs[i] * i
+            deriv.coeffs = new_coeffs
+        return deriv
+
+# Conditional compilation for platform-specific code
+IF UNAME_SYSNAME == "Windows":
+    cdef extern from "Windows.h":
+        void Sleep(int ms)
+ELSE:
+    cdef extern from "unistd.h":
+        void usleep(int microseconds)
+```
+
+### Real-World Use Cases
+- **Splitting Python monoliths**: create `.pyx` files for performance-critical modules (e.g., image processing, JSON parsing) while keeping I/O and config in pure Python.
+- **Cross-language projects**: `.pyx` files with `cdef extern from` headers allow direct integration of C/C++ libraries without a separate `ctypes` or `cffi` layer.
+- **Scientific computing packages**: many PyPI packages include `.pyx` files that are compiled at install time via `setuptools` and `cythonize`.
+
+### Common Mistakes
+- Mixing `.py` and `.pyx` files without proper `# distutils: language = c++` or `# cython: language_level=3` header comments.
+- Forgetting to include a `.pxd` file for shared declarations — each `.pyx` sees only its own declarations.
+- Using Python features that Cython does not support (e.g., `yield from` in older Cython versions, certain metaclass patterns).
+
+### Best Practices
+- Keep `.pyx` files focused on hot loops and data structures; leave orchestration and I/O in `.py`.
+- Use `cimport` to share C-level declarations between `.pyx` files and avoid duplication.
+- Include `# cython: language_level=3, boundscheck=False, wraparound=False` as module-level comments for consistent behaviour.
+
+### Performance Considerations
+- The `.pyx` compilation pipeline adds incremental build time (seconds to minutes for large projects).
+- Cython-generated `.c` files can be 10–100x larger than the original `.pyx`, increasing compilation time.
+- Runtime speed of compiled `.pyx` code is comparable to hand-written C, minus the Python→C boundary crossing.
+
+### Interview Questions
+- **Q**: What is the purpose of the `.pxd` file in a Cython project?  
+  **A**: The `.pxd` file provides C-level declarations (function signatures, type definitions) that can be shared across multiple `.pyx` files, analogous to a C header file.
+- **Q**: Can you mix Python and Cython in the same project?  
+  **A**: Yes, `.py` and `.pyx` files coexist. `.pyx` files are compiled to `.so`/`.pyd` files, and pure `.py` files are interpreted normally.
+
+### Coding Challenges
+- Create a `.pyx` module that wraps a simple C library (e.g., a Fibonacci calculator) and call it from Python.
+- Structure a multi-file Cython project with `.pxd` declarations and build it with `setuptools`.
+
+### Related Topics
+- [Static type declarations](#static-type-declarations)
+- [C extensions](#c-extensions)
+- [Compilation](#compilation)
+
+---
+
+## C Extensions
+
+### What It Is
+C extensions are shared libraries written in C (or generated by Cython) that expose Python-callable functions and types. They are loaded by CPython via `import` and interact with the interpreter through the Python C API (`Python.h`). Every Cython-compiled `.so`/`.pyd` file is a C extension.
+
+### Why It Is Important
+C extensions provide the ultimate escape hatch for performance: they run at full native speed, can call any C library, and bypass the CPython interpreter entirely. Many core Python modules (`json`, `itertools`, `collections`, `socket`) are implemented as C extensions.
+
+### How It Works Internally
+A C extension module must implement `PyMODINIT_FUNC PyInit_<modulename>(void)` which:
+1. Defines module-level functions as `PyMethodDef` arrays.
+2. Defines types as `PyTypeObject` structs with custom `tp_*` slots.
+3. Calls `PyModule_Create` to register the module in CPython's module cache.
+4. The `PyMethodDef` maps Python function names to C function pointers of type `PyCFunction`.
+
+### Syntax
+```c
+// mymodule.c
+#include <Python.h>
+
+static PyObject* my_add(PyObject *self, PyObject *args) {
+    int a, b;
+    if (!PyArg_ParseTuple(args, "ii", &a, &b))
+        return NULL;
+    return PyLong_FromLong(a + b);
+}
+
+static PyMethodDef MyMethods[] = {
+    {"add", my_add, METH_VARARGS, "Add two integers"},
+    {NULL, NULL, 0, NULL}
+};
+
+static struct PyModuleDef mymodule = {
+    PyModuleDef_HEAD_INIT,
+    "mymodule",
+    NULL,
+    -1,
+    MyMethods
+};
+
+PyMODINIT_FUNC PyInit_mymodule(void) {
+    return PyModule_Create(&mymodule);
+}
+```
+
+### Beginner Examples
+```cython
+# Using Cython to create a C extension
+# simple_ext.pyx
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+
+# setup.py
+from setuptools import setup, Extension
+from Cython.Build import cythonize
+
+setup(
+    ext_modules=cythonize("simple_ext.pyx"),
+)
+```
+
+### Intermediate Examples
+```c
+// A custom type in C
+#include <Python.h>
+#include <structmember.h>
+
+typedef struct {
+    PyObject_HEAD
+    double x;
+    double y;
+} PointObject;
+
+static int Point_init(PointObject *self, PyObject *args, PyObject *kwds) {
+    if (!PyArg_ParseTuple(args, "dd", &self->x, &self->y))
+        return -1;
+    return 0;
+}
+
+static PyObject* Point_repr(PointObject *self) {
+    return PyUnicode_FromFormat("Point(%g, %g)", self->x, self->y);
+}
+
+static PyMemberDef Point_members[] = {
+    {"x", T_DOUBLE, offsetof(PointObject, x), 0, "x coordinate"},
+    {"y", T_DOUBLE, offsetof(PointObject, y), 0, "y coordinate"},
+    {NULL}
+};
+
+static PyTypeObject PointType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "mymodule.Point",
+    .tp_basicsize = sizeof(PointObject),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_init = (initproc)Point_init,
+    .tp_members = Point_members,
+    .tp_repr = (reprfunc)Point_repr,
+};
+```
+
+### Advanced Examples
+```c
+// Buffer protocol for zero-copy array access
+static int MyBuffer_getbuf(MyObject *self, Py_buffer *view, int flags) {
+    return PyBuffer_FillInfo(view, (PyObject*)self,
+                             self->data, self->size,
+                             0, flags);
+}
+
+static PyBufferProcs MyBuffer_as_buffer = {
+    (getbufferproc)MyBuffer_getbuf,
+    (releasebufferproc)MyBuffer_releasebuf
+};
+
+// Exception handling
+static PyObject* divide(PyObject *self, PyObject *args) {
+    int a, b;
+    if (!PyArg_ParseTuple(args, "ii", &a, &b))
+        return NULL;
+    if (b == 0) {
+        PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+        return NULL;
+    }
+    return PyLong_FromLong(a / b);
+}
+
+// Memory management in extensions
+static PyObject* create_array(PyObject *self, PyObject *args) {
+    int size;
+    if (!PyArg_ParseTuple(args, "i", &size))
+        return NULL;
+
+    double *arr = (double*)PyMem_Malloc(size * sizeof(double));
+    if (!arr) return PyErr_NoMemory();
+
+    PyObject *result = PyCapsule_New(arr, "my_array", free_capsule);
+    return result;
+}
+
+static void free_capsule(PyObject *capsule) {
+    double *arr = (double*)PyCapsule_GetPointer(capsule, "my_array");
+    if (arr) PyMem_Free(arr);
+}
+```
+
+### Real-World Use Cases
+- **NumPy**: implemented primarily in C with a Python frontend; the C extension handles all array operations without interpreter overhead.
+- **Database drivers**: `psycopg2` and `mysql-connector` are C extensions that talk directly to PostgreSQL/MySQL wire protocols.
+- **Image processing**: `Pillow` uses C extensions to call libjpeg, libpng, etc., decoding images at C speed.
+
+### Common Mistakes
+- Forgetting to increment/decrement reference counts — causes crashes or memory leaks.
+- Ignoring the Python GIL — calling blocking C code while holding the GIL stalls all Python threads.
+- Using `PyArg_ParseTuple` without `&` before pointer arguments — silent corruption.
+
+### Best Practices
+- Use `PyMem_Malloc`/`PyMem_Free` instead of `malloc`/`free` for memory that might interact with Python objects.
+- Release the GIL with `Py_BEGIN_ALLOW_THREADS` / `Py_END_ALLOW_THREADS` around long-running C code.
+- Wrap all Python-facing APIs in `try`/`except` at the Python level and return `NULL` with `PyErr_SetString` on errors.
+
+### Performance Considerations
+- C extensions avoid the interpreter loop entirely — calls from Python cost only the `PyCFunction` dispatch (~30 ns).
+- Crossing the Python↔C boundary has overhead from argument parsing and type conversion; batch work in large chunks.
+- C extensions are compiled to native machine code and are fully optimised by the C compiler (-O2 or -O3).
+
+### Interview Questions
+- **Q**: What is `PyCapsule` and when would you use it?  
+  **A**: `PyCapsule` wraps a `void*` pointer for safely passing C resources (allocated memory, library handles) through Python code without leaking.
+- **Q**: How does a C extension avoid holding the GIL during a long computation?  
+  **A**: By using `Py_BEGIN_ALLOW_THREADS` and `Py_END_ALLOW_THREADS` macros around the computation, releasing the GIL temporarily.
+
+### Coding Challenges
+- Write a minimal C extension that computes the Fibonacci sequence and returns a Python list.
+- Create a C extension type that implements `__len__`, `__getitem__`, and `__setitem__` for a fixed-size integer array.
+
+### Related Topics
+- [Static type declarations](#static-type-declarations)
+- [Compilation](#compilation)
+- [Advanced Topics (C extensions)](#advanced-topics---pattern-matching-ast-c-extensions-pep-deep-dives)
+
+---
+
+## Compilation
+
+### What It Is
+Cython compilation is the process of translating `.pyx` (or `.py` with annotations) files into C code and then compiling that C code into a native shared library. The build is typically orchestrated by `setuptools` via `cythonize()` or a `Makefile`.
+
+### Why It Is Important
+Proper compilation is essential for using Cython effectively. Different platforms require different compiler flags, and the build system must know where to find Python headers and libraries. The compilation mode also controls optimisation, debugging symbols, and linking.
+
+### How It Works Internally
+1. **Cython (frontend)**: The `cython` command or `Cython.Build.cythonize` reads `.pyx` files, applies the Cython compiler, and generates `.c` files.
+2. **C compiler (backend)**: The C compiler (`gcc`, `clang`, `MSVC`) compiles the `.c` file into a `.o` object file and links it against `libpython` to produce a `.pyd`/`.so`.
+3. **Import**: When Python imports the module, CPython calls `PyInit_<module>`, which registers functions and types.
+
+### Syntax
+```python
+# setup.py
+from setuptools import setup, Extension
+from Cython.Build import cythonize
+import numpy as np
+
+extensions = [
+    Extension(
+        "fastmath",
+        ["fastmath.pyx"],
+        include_dirs=[np.get_include()],
+        libraries=["m"],
+        define_macros=[("CYTHON_CLINE_IN_TRACEBACK", "0")]
+    ),
+]
+
+setup(
+    ext_modules=cythonize(
+        extensions,
+        language_level="3",
+        annotate=True,           # produces HTML annotation
+        compiler_directives={
+            "boundscheck": False,
+            "wraparound": False,
+        }
+    ),
+)
+
+# Build command:
+# python setup.py build_ext --inplace
+```
+
+### Beginner Examples
+```bash
+# Simplest compilation
+cythonize -i mymodule.pyx
+
+# With annotations
+cythonize -i -a mymodule.pyx
+
+# Using pyximport (for quick prototyping)
+import pyximport
+pyximport.install()
+import mymodule
+```
+
+### Intermediate Examples
+```python
+# build_ext.py
+from setuptools import setup, Extension
+from Cython.Build import cythonize
+import sys
+
+def get_extra_compile_args():
+    if sys.platform == 'win32':
+        return ['/O2', '/openmp']
+    return ['-O3', '-march=native', '-fopenmp']
+
+ext = Extension(
+    "fast_processor",
+    sources=["fast_processor.pyx"],
+    extra_compile_args=get_extra_compile_args(),
+    extra_link_args=[],
+)
+
+setup(
+    ext_modules=cythonize(
+        [ext],
+        language_level="3",
+        annotate=True,
+        gdb_debug=False,
     )
-    """)
-    print("Build with: python setup.py build_ext --inplace")
-
-
-setup_py_example()
+)
 ```
 
-## Intermediate Examples
-
+### Advanced Examples
 ```python
-import time
-import math
-from typing import List
+# build.py - Full build pipeline
+from Cython.Build import cythonize
+from Cython.Compiler import Options
+from setuptools import setup, Extension
+import os
+import sysconfig
 
+# Global Cython options
+Options.docstrings = False
 
-class CythonConcepts:
-    def __init__(self):
-        pass
+# Per-module directives
+compiler_directives = {
+    'binding': False,
+    'boundscheck': False,
+    'wraparound': False,
+    'initializedcheck': False,
+    'cdivision': True,
+    'embedsignature': False,
+}
 
-    def static_declarations(self):
-        print("Static type declarations in Cython:")
-        print("  cdef int i               # C int")
-        print("  cdef float f              # C float")
-        print("  cdef double d             # C double")
-        print("  cdef char c               # C char")
-        print("  cdef long long ll         # C long long")
-        print("  cdef int[10] arr          # C array")
-        print("  cdef int* ptr             # C pointer")
-        print("  cdef list py_list         # Python list")
-        print("  cdef dict py_dict         # Python dict")
-        print("  cdef str s                # Python string")
+modules = [
+    Extension(
+        "engine.core",
+        ["engine/core.pyx"],
+        include_dirs=[
+            sysconfig.get_config_var('INCLUDEPY'),
+            os.path.join('vendor', 'include')
+        ],
+        libraries=['pthread'],
+    ),
+    Extension(
+        "engine.io",
+        ["engine/io.pyx"],
+    ),
+]
 
-    def cdef_vs_cpdef(self):
-        print("\ncdef functions:")
-        print("  - Only callable from Cython")
-        print("  - Fastest, no Python overhead")
-        print("  - Return type must be C type")
-        print("\ncpdef functions:")
-        print("  - Callable from both C and Python")
-        print("  - Slightly slower than cdef")
-        print("  - Python wrapper generated")
-        print("\ndef functions:")
-        print("  - Pure Python, no speedup")
-        print("  - Callable from Python")
+ext_modules = cythonize(
+    modules,
+    language_level="3",
+    compiler_directives=compiler_directives,
+    nthreads=4,              # parallel compilation
+    force=True,              # rebuild even if .pyx is older
+)
 
-    def interacting_with_c(self):
-        print("\nInteracting with C libraries:")
-        print("  from libc.math cimport sin, cos, sqrt")
-        print("  from libc.stdlib cimport malloc, free")
-        print("  from libc.string cimport strlen, memcpy")
-        print("  from libc.stdio cimport printf")
+setup(
+    name='engine',
+    ext_modules=ext_modules,
+    zip_safe=False,
+)
 
+# Using Cython with pkg-config
+import subprocess
+flags = subprocess.check_output(
+    ['pkg-config', '--cflags', '--libs', 'opencv4']
+).decode().strip().split()
 
-concepts = CythonConcepts()
-concepts.static_declarations()
-concepts.cdef_vs_cpdef()
-concepts.interacting_with_c()
-
-
-def manual_optimization_pattern():
-    print("\nCython optimization decorators:")
-    print("  @cython.boundscheck(False)  # Skip bounds checks")
-    print("  @cython.wraparound(False)   # Skip negative indexing")
-    print("  @cython.nonecheck(False)    # Skip None checks")
-    print("  @cython.cdivision(True)     # C division semantics")
-    print("  @cython.infer_types(True)   # Infer types automatically")
-
-
-manual_optimization_pattern()
-
-
-def cdef_class_example():
-    print("\nCython extension types (cdef class):")
-    print("""
-    cdef class Point:
-        cdef public double x, y
-
-        def __init__(self, double x, double y):
-            self.x = x
-            self.y = y
-
-        cpdef double distance(self, Point other):
-            return sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
-    """)
-
-
-cdef_class_example()
+cv_ext = Extension(
+    "vision.processor",
+    ["vision/processor.pyx"],
+    extra_compile_args=flags[:len(flags)//2],
+    extra_link_args=flags[len(flags)//2:],
+)
 ```
 
-## Advanced Examples
-
-```python
-import time
-import math
-import random
-from typing import List, Tuple
-
-
-class AdvancedCython:
-    def __init__(self):
-        pass
-
-    def memory_views(self):
-        print("Memory views for efficient array access:")
-        print("""
-    cdef double[:, :] view_2d = numpy_array
-    cdef int[:] view_1d = array
-
-    # Access without Python overhead
-    for i in range(shape[0]):
-        for j in range(shape[1]):
-            view_2d[i, j] = view_2d[i, j] * 2.0
-        """)
-
-    def fused_types(self):
-        print("\nFused types (templates):")
-        print("""
-    cimport cython
-
-    @cython.fused_type
-    ctypedef fused my_type:
-        int
-        double
-        float
-
-    cpdef my_type max(my_type a, my_type b):
-        return a if a > b else b
-        """)
-
-    def parallel_support(self):
-        print("\nOpenMP parallel support:")
-        print("""
-    from cython.parallel import prange, parallel
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    cpdef double parallel_sum(double[:] arr):
-        cdef int i
-        cdef double total = 0.0
-        for i in prange(arr.shape[0], nogil=True):
-            total += arr[i]
-        return total
-        """)
-
-    def callback_to_python(self):
-        print("\nCalling Python from Cython:")
-        print("""
-    cpdef void apply_func(list data, object func):
-        cdef int i
-        for i in range(len(data)):
-            data[i] = func(data[i])  # Still Python overhead
-        """)
-
-
-adv = AdvancedCython()
-adv.memory_views()
-adv.fused_types()
-adv.parallel_support()
-adv.callback_to_python()
-
-
-def performance_comparison_detailed():
-    print("\nDetailed performance comparison:")
-
-    def pure_python(n: int) -> float:
-        total = 0.0
-        for i in range(n):
-            total += math.sin(i) * math.cos(i)
-        return total
-
-    n = 500000
-    start = time.perf_counter()
-    pure_python(n)
-    t1 = time.perf_counter() - start
-
-    print(f"Pure Python: {t1:.4f}s")
-    print("""
-    Expected Cython performance:
-    - With cdef types: {:.4f}s (estimated)
-    - With @boundscheck(False): {:.4f}s (estimated)
-    - With nogil parallel: {:.4f}s (estimated)
-    """.format(t1 / 20, t1 / 30, t1 / 40))
-
-
-performance_comparison_detailed()
-
-
-def compilation_process():
-    print("Compilation process:")
-    print("1. Cython compiles .pyx to .c")
-    print("2. C compiler compiles .c to .so/.pyd")
-    print("3. Extension is importable in Python")
-    print()
-    print("Build methods:")
-    print("  - setup.py with cythonize()")
-    print("  - pyximport for on-the-fly compilation")
-    print("  - Cython.Build.cythonize()")
-    print("  - Manual: cython -3 file.pyx")
-    print()
-
-
-compilation_process()
-```
-
-## Real-World Use Cases
-
-```python
-import time
-import math
-import random
-
-
-def scientific_computing():
-    print("Real-world: Scientific Computing")
-
-    def compute_pi_python(n: int) -> float:
-        total = 0.0
-        step = 1.0 / n
-        for i in range(n):
-            x = (i + 0.5) * step
-            total += 4.0 / (1.0 + x * x)
-        return total * step
-
-    n = 1000000
-    start = time.perf_counter()
-    result = compute_pi_python(n)
-    t = time.perf_counter() - start
-    print(f"Pi (Python): {result:.6f}, Time: {t:.4f}s")
-    print("Cython version would be 50-100x faster")
-
-
-def game_development():
-    print("Real-world: Game Development")
-    print("""
-    cdef class Vector3:
-        cdef double x, y, z
-
-        cpdef Vector3 add(Vector3 other):
-            return Vector3(self.x + other.x,
-                          self.y + other.y,
-                          self.z + other.z)
-
-        cpdef double magnitude(self):
-            return sqrt(self.x * self.x +
-                       self.y * self.y +
-                       self.z * self.z)
-    """)
-
-
-def image_processing():
-    print("Real-world: Image Processing")
-    print("""
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    cpdef void grayscale(unsigned char[:, :, :] img):
-        cdef int i, j
-        cdef unsigned char r, g, b, gray
-        for i in range(img.shape[0]):
-            for j in range(img.shape[1]):
-                r = img[i, j, 0]
-                g = img[i, j, 1]
-                b = img[i, j, 2]
-                gray = <unsigned char>(0.299 * r + 0.587 * g + 0.114 * b)
-                img[i, j, 0] = gray
-                img[i, j, 1] = gray
-                img[i, j, 2] = gray
-    """)
-
-
-def wrapping_c_library():
-    print("Real-world: Wrapping C Libraries")
-    print("""
-    cdef extern from "sodium.h":
-        int crypto_box_easy(
-            unsigned char *ciphertext,
-            const unsigned char *plaintext,
-            unsigned long long mlen,
-            const unsigned char *n,
-            const unsigned char *pk,
-            const unsigned char *sk
-        )
-
-    def encrypt(bytes plaintext, bytes nonce, bytes pk, bytes sk):
-        cdef unsigned char *ciphertext
-        cdef int result
-        # ... allocate and call C function
-    """)
-
-
-scientific_computing()
-game_development()
-image_processing()
-wrapping_c_library()
-```
-
-## Common Mistakes
-
-```python
-def mistake_1_wrong_type_declarations():
-    print("Mistake 1: Wrong or missing type declarations")
-    print("Without types, Cython is no faster than Python")
-    print("Always declare types for loop variables")
-
-
-def mistake_2_python_overhead_in_hot_loops():
-    print("Mistake 2: Python calls inside tight loops")
-    print("Avoid calling Python functions in hot loops")
-    print("Use C math library instead of math module")
-
-
-def mistake_3_no_bounds_check_disable():
-    print("Mistake 3: Not disabling bounds checks")
-    print("@cython.boundscheck(False) for hot loops")
-    print("Only disable after verifying correctness")
-
-
-def mistake_4_using_list_append():
-    print("Mistake 4: Using Python list append in loops")
-    print("Pre-allocate with cdef list arr = [0] * n")
-    print("Or use memory views for arrays")
-
-
-def mistake_5_not_using_nogil():
-    print("Mistake 5: Not using 'nogil' where possible")
-    print("Release GIL for pure C operations")
-    print("with nogil: # pure C operations here")
-
-
-def mistake_6_wrong_build_config():
-    print("Mistake 6: Incorrect build configuration")
-    print("Use proper compiler flags for optimization")
-    print("Add -O3 flag for maximum optimization")
-
-
-mistake_1_wrong_type_declarations()
-mistake_2_python_overhead_in_hot_loops()
-mistake_3_no_bounds_check_disable()
-mistake_4_using_list_append()
-mistake_5_not_using_nogil()
-mistake_6_wrong_build_config()
-```
-
-## Best Practices
-
-```python
-import math
-
-
-def best_practice_1_profile_first():
-    print("Best Practice 1: Profile before converting to Cython")
-    print("Only convert the hot paths that need optimization")
-
-
-def best_practice_2_incremental_conversion():
-    print("Best Practice 2: Convert incrementally")
-    print("1. Profile to find bottlenecks")
-    print("2. Add type declarations")
-    print("3. Convert to cdef/cpdef functions")
-    print("4. Add optimization decorators")
-    print("5. Add nogil blocks")
-
-
-def best_practice_3_use_memory_views():
-    print("Best Practice 3: Use memory views for arrays")
-    print("Memory views provide zero-overhead access")
-    print("Works with NumPy, array, bytes objects")
-
-
-def best_practice_4_minimize_python_interaction():
-    print("Best Practice 4: Minimize Python interaction")
-    print("Each Python call adds overhead")
-    print("Batch Python operations when possible")
-
-
-def best_practice_5_compile_with_optimization():
-    print("Best Practice 5: Compile with optimization flags")
-    print("  setup.py: extra_compile_args=['-O3']")
-    print("  Consider LTO and architecture-specific flags")
-
-
-def best_practice_6_test_thoroughly():
-    print("Best Practice 6: Test thoroughly")
-    print("Cython can introduce subtle bugs")
-    print("Test both Python and Cython versions")
-
-
-best_practice_1_profile_first()
-best_practice_2_incremental_conversion()
-best_practice_3_use_memory_views()
-best_practice_4_minimize_python_interaction()
-best_practice_5_compile_with_optimization()
-best_practice_6_test_thoroughly()
-```
-
-## Interview Questions
-
-```python
-def interview_q1():
-    print("Q: What is Cython and how does it improve performance?")
-    print("A: Cython compiles Python to C extensions.")
-    print("   Static typing removes interpreter overhead.")
-
-
-def interview_q2():
-    print("Q: What is the difference between cdef and cpdef?")
-    print("A: cdef: C-only function, faster, no Python call overhead.")
-    print("   cpdef: Both C and Python callable.")
-
-
-def interview_q3():
-    print("Q: How do you compile a Cython file?")
-    print("A: Using cythonize in setup.py or pyximport.")
-    print("   Output: .c file -> .so/.pyd extension.")
-
-
-def interview_q4():
-    print("Q: What are memory views in Cython?")
-    print("A: Efficient array access without Python overhead.")
-    print("   Typed memory views: int[:], double[:, :]")
-
-
-def interview_q5():
-    print("Q: What is nogil and when should it be used?")
-    print("A: Releases the GIL for parallel execution.")
-    print("   Only use with pure C operations.")
-
-
-def interview_q6():
-    print("Q: How does Cython compare to Numba?")
-    print("A: Cython: compile-time optimization, broader scope.")
-    print("   Numba: JIT runtime, best for NumPy operations.")
-
-
-def interview_q7():
-    print("Q: What are fused types in Cython?")
-    print("A: Cython's template mechanism for generic functions.")
-    print("   Similar to C++ templates or Java generics.")
-
-
-interview_q1()
-interview_q2()
-interview_q3()
-interview_q4()
-interview_q5()
-interview_q6()
-interview_q7()
-```
-
-## Coding Challenges
-
-```python
-import time
-import math
-
-
-def challenge_1_vector_dot_product():
-    print("Challenge 1: Implement dot product in Cython")
-
-    def dot_product_python(a, b):
-        total = 0.0
-        for i in range(len(a)):
-            total += a[i] * b[i]
-        return total
-
-    n = 1000000
-    a = [i * 0.5 for i in range(n)]
-    b = [i * 0.3 for i in range(n)]
-    start = time.perf_counter()
-    result = dot_product_python(a, b)
-    t = time.perf_counter() - start
-    print(f"Python dot product: {result:.2f}, Time: {t:.4f}s")
-    print("Cython version would be ~50x faster")
-
-
-def challenge_2_mandelbrot_set():
-    print("Challenge 2: Implement Mandelbrot set computation")
-    print("""
-    cpdef int mandelbrot(double cr, double ci, int max_iter):
-        cdef double zr = 0.0, zi = 0.0
-        cdef double zr2, zi2
-        cdef int n = 0
-        while n < max_iter:
-            zr2 = zr * zr
-            zi2 = zi * zi
-            if zr2 + zi2 > 4.0:
-                return n
-            zi = 2.0 * zr * zi + ci
-            zr = zr2 - zi2 + cr
-            n += 1
-        return max_iter
-    """)
-
-
-def challenge_3_matrix_multiplication():
-    print("Challenge 3: Implement matrix multiplication")
-    print("""
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    cpdef void matrix_multiply(double[:, :] A, double[:, :] B, double[:, :] C):
-        cdef int i, j, k
-        cdef double total
-        for i in range(A.shape[0]):
-            for j in range(B.shape[1]):
-                total = 0.0
-                for k in range(A.shape[1]):
-                    total += A[i, k] * B[k, j]
-                C[i, j] = total
-    """)
-
-
-def challenge_4_implement_reduce():
-    print("Challenge 4: Implement parallel sum reduction")
-    print("""
-    from cython.parallel import prange
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    cpdef double parallel_sum(double[:] arr):
-        cdef int i
-        cdef double total = 0.0
-        for i in prange(arr.shape[0], nogil=True):
-            total += arr[i]
-        return total
-    """)
-
-
-challenge_1_vector_dot_product()
-challenge_2_mandelbrot_set()
-challenge_3_matrix_multiplication()
-challenge_4_implement_reduce()
-```
-
-## Summary
-
-Cython bridges Python and C by compiling Python-like code to C extensions. It offers significant performance gains through static typing, C-level functions, memory views, and parallel processing. Best for numerical computing, game development, image processing, and wrapping C libraries.
-
-## Related Topics
-
-- Numba (95_numba.md)
-- CPython Internals (93_cpython_internals.md)
-- Profiling (91_profiling.md)
-- Advanced Topics (100_advanced_topics.md)
+### Real-World Use Cases
+- **pip-installable packages**: specify `cythonize` in `setup.py` so users get compiled extensions when they run `pip install`.
+- **Windows + MSVC builds**: ensure `vcvarsall.bat` is loaded so `setuptools` finds the compiler; use `/Ox` for optimisation.
+- **Cross-compilation** (e.g., Raspberry Pi): compile `.pyx` to `.c` on a build server, then cross-compile `.c` to ARM `.so`.
+
+### Common Mistakes
+- Not installing `Cython` before running `setup.py` — `cythonize` is not available.
+- Forgetting `language_level="3"` — defaults to Python 2 in older Cython versions.
+- Using `pyximport` in production — it compiles at import time, slowing startup and requiring a compiler on the target machine.
+
+### Best Practices
+- Use `annotate=True` in early development to identify yellow lines (Python interaction) that need typing.
+- Keep Cython compilation in a separate `build` step for CI — don't rely on `pyximport`.
+- Set `CYTHON_TRACE=1` and `CYTHON_TRACE_NOGIL=1` macros only for profile builds; leave them off in release builds.
+- Pin Cython version in `setup.py` with `setup_requires=['cython>=3.0']`.
+
+### Performance Considerations
+- Compiled extensions are as fast as hand-written C for compute-heavy loops.
+- Startup time increases slightly because loading a `.pyd` requires dynamic linking.
+- The `.so`/`.pyd` files are platform-specific — distribute wheels for each platform (use `cibuildwheel` or manylinux).
+
+### Interview Questions
+- **Q**: What is the purpose of the `-a` flag in `cythonize -a`?  
+  **A**: It produces an HTML annotation file that colours each line by how much it interacts with Python (white = pure C, yellow = Python API calls).
+- **Q**: What does `cythonize` do with `compiler_directives={'boundscheck': False}`?  
+  **A**: It disables runtime bounds checks on array indexing for all functions in the module, trading safety for speed.
+
+### Coding Challenges
+- Set up a minimal Cython project with `setup.py`, one `.pyx` file, and a `.pxd` declaration file; build and import it.
+- Write a `Makefile` that compiles a Cython module with optimisations (`-O3 -march=native`) and measures the speedup over the pure Python equivalent.
+
+### Related Topics
+- [Static type declarations](#static-type-declarations)
+- [.pyx files](#pyx-files)
+- [C extensions](#c-extensions)

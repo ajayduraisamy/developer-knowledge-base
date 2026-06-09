@@ -2,375 +2,257 @@
 
 ## Introduction
 
-A **class** is a blueprint for creating objects. It defines a set of attributes (data) and methods (functions) that characterize any object instantiated from it. An **object** is an instance of a class — a concrete entity that contains actual values and behaves according to the class definition.
+Object-Oriented Programming (OOP) is a paradigm that organizes code around objects rather than functions. In Python, everything is an object, and classes are the blueprints for creating objects. Understanding classes and objects is foundational to mastering Python, as they enable encapsulation of data and behavior into reusable, modular components. Python's class system is flexible and powerful, supporting multiple inheritance, metaclasses, and dynamic attribute resolution, yet it remains approachable due to its clean syntax.
 
-Python is an object-oriented language, meaning nearly everything you work with — integers, strings, lists, functions — is an object under the hood.
+## class keyword
 
-## Why It Is Important
+### What It Is
 
-- **Code reuse**: Classes let you define behaviour once and create many objects from the same blueprint.
-- **Organization**: Group related data and functions together in a single unit.
-- **Modelling real-world entities**: Represent things like `Car`, `User`, `Invoice` in a natural way.
-- **Foundation for OOP**: Classes are the building block for inheritance, polymorphism, encapsulation, and abstraction.
-- **Maintainability**: Changes to a class propagate to all instances, reducing duplication.
-
-## Syntax
-
-```python
-class ClassName:
-    """Optional docstring."""
-    class_attribute = value          # shared by all instances
-
-    def __init__(self, param1, param2):
-        self.instance_attr1 = param1  # unique to each instance
-        self.instance_attr2 = param2
-
-    def method_name(self):
-        # self refers to the current instance
-        pass
-```
-
-Instantiating:
-
-```python
-obj = ClassName(arg1, arg2)
-```
-
-## Examples
-
-### Minimal class
+The `class` keyword in Python is used to define a new class, which serves as a blueprint for creating objects. A class bundles data (attributes) and functions (methods) that operate on that data into a single logical unit.
 
 ```python
 class Dog:
+    pass
+```
+
+### Why It Is Important
+
+The `class` keyword is the fundamental building block of OOP in Python. It allows you to create custom data types that model real-world entities, making code more intuitive, reusable, and organized. Without classes, complex programs would rely solely on primitive data types and standalone functions, leading to scattered, hard-to-maintain code.
+
+### How It Works Internally
+
+When Python encounters a `class` statement, it executes the class body in a new namespace, collects all variable and function definitions, and passes them to the metaclass (usually `type`) to construct the class object. The resulting class object is callable and serves as a factory for instances.
+
+```python
+# Internally, this:
+class Dog:
     species = "Canis familiaris"
-
-    def __init__(self, name, age):
-        self.name = name
-        self.age = age
-
     def bark(self):
-        return f"{self.name} says woof!"
+        return "Woof!"
 
-
-buddy = Dog("Buddy", 4)
-print(buddy.bark())          # Buddy says woof!
-print(buddy.species)         # Canis familiaris
-print(buddy.age)             # 4
+# Is roughly equivalent to:
+def bark_function(self):
+    return "Woof!"
+Dog = type("Dog", (), {"species": "Canis familiaris", "bark": bark_function})
 ```
 
-## Beginner Examples
-
-### 1. Person class
+### Syntax
 
 ```python
-class Person:
-    def __init__(self, name, age):
-        self.name = name
-        self.age = age
+class ClassName(ParentClass):
+    """Optional docstring"""
+    class_variable = value
 
-    def greet(self):
-        return f"Hi, I'm {self.name} and I'm {self.age}."
+    def __init__(self, params):
+        self.instance_variable = params
 
-
-p = Person("Alice", 30)
-print(p.greet())
+    def method(self, params):
+        pass
 ```
 
-### 2. Counter with class attribute
+- `ClassName`: follows standard naming conventions (PascalCase)
+- `ParentClass`: optional inheritance specification
+- `self`: mandatory first parameter of instance methods
+
+### Beginner Examples
 
 ```python
-class Counter:
-    total_count = 0
+class Car:
+    wheels = 4
 
-    def __init__(self):
-        Counter.total_count += 1
-        self.id = Counter.total_count
+    def __init__(self, brand, model):
+        self.brand = brand
+        self.model = model
 
+    def describe(self):
+        return f"{self.brand} {self.model} with {self.wheels} wheels"
 
-a = Counter()
-b = Counter()
-print(b.id)               # 2
-print(Counter.total_count)  # 2
+car1 = Car("Toyota", "Camry")
+car2 = Car("Honda", "Civic")
+print(car1.describe())  # Toyota Camry with 4 wheels
+print(car2.describe())  # Honda Civic with 4 wheels
 ```
 
-### 3. BankAccount
+### Intermediate Examples
 
 ```python
 class BankAccount:
+    interest_rate = 0.02
+    _total_accounts = 0
+
     def __init__(self, owner, balance=0):
         self.owner = owner
         self.balance = balance
+        self._transactions = []
+        BankAccount._total_accounts += 1
 
     def deposit(self, amount):
+        if amount <= 0:
+            raise ValueError("Deposit amount must be positive")
         self.balance += amount
-        return self.balance
+        self._transactions.append(f"Deposit: +{amount}")
 
     def withdraw(self, amount):
         if amount > self.balance:
-            return "Insufficient funds"
+            raise ValueError("Insufficient funds")
         self.balance -= amount
-        return self.balance
+        self._transactions.append(f"Withdrawal: -{amount}")
 
-
-acct = BankAccount("Bob", 100)
-print(acct.deposit(50))   # 150
-print(acct.withdraw(200)) # Insufficient funds
-```
-
-## Intermediate Examples
-
-### 1. Class and instance attribute interaction
-
-```python
-class Employee:
-    raise_factor = 1.04
-    emp_count = 0
-
-    def __init__(self, name, salary):
-        self.name = name
-        self.salary = salary
-        Employee.emp_count += 1
-
-    def apply_raise(self):
-        self.salary = int(self.salary * Employee.raise_factor)
+    def apply_interest(self):
+        interest = self.balance * BankAccount.interest_rate
+        self.balance += interest
+        self._transactions.append(f"Interest: +{interest:.2f}")
 
     @classmethod
-    def from_string(cls, data):
-        name, salary = data.split("-")
-        return cls(name, int(salary))
+    def total_accounts(cls):
+        return cls._total_accounts
 
+class SavingsAccount(BankAccount):
+    interest_rate = 0.05
 
-e1 = Employee("Alice", 50000)
-e2 = Employee.from_string("Bob-60000")
-e1.apply_raise()
-print(e1.salary)      # 52000
-print(e2.salary)      # 60000
-print(Employee.emp_count)  # 2
+    def withdraw(self, amount):
+        if self.balance - amount < 100:
+            raise ValueError("Cannot drop below minimum balance of 100")
+        super().withdraw(amount)
+
+accounts = [
+    BankAccount("Alice", 1000),
+    SavingsAccount("Bob", 2000)
+]
+for acc in accounts:
+    acc.apply_interest()
+    print(f"{acc.owner}: ${acc.balance:.2f}")
+# Alice: $1020.00
+# Bob: $2100.00
 ```
 
-### 2. Private name mangling convention
+### Advanced Examples
 
 ```python
-class Student:
-    def __init__(self, name, grade):
-        self.name = name
-        self._grade = grade          # "protected" convention
-        self.__id = hash(name)       # name-mangled to _Student__id
+from dataclasses import dataclass
+from typing import ClassVar, List, Optional
+import uuid
 
-    def get_id(self):
-        return self.__id
+@dataclass
+class Product:
+    name: str
+    price: float
+    category: str
+    tax_rate: ClassVar[float] = 0.08
 
+    def __post_init__(self):
+        self._id = uuid.uuid4()
+        if self.price < 0:
+            raise ValueError("Price cannot be negative")
 
-s = Student("Eve", 85)
-print(s._grade)        # works but discouraged
-print(s.get_id())      # correct usage
-# print(s.__id)        # AttributeError
-print(s._Student__id)  # name mangling workaround
-```
+    @property
+    def total_price(self) -> float:
+        return self.price * (1 + self.tax_rate)
 
-### 3. `__init__` with defaults and type hints
-
-```python
-class Point:
-    def __init__(self, x: float = 0.0, y: float = 0.0) -> None:
-        self.x = x
-        self.y = y
-
-    def distance_from_origin(self) -> float:
-        return (self.x ** 2 + self.y ** 2) ** 0.5
+    @classmethod
+    def from_dict(cls, data: dict) -> "Product":
+        return cls(**data)
 
     def __repr__(self) -> str:
-        return f"Point({self.x}, {self.y})"
+        return f"Product({self.name}, ${self.price:.2f})"
 
 
-p = Point(3, 4)
-print(p)                    # Point(3, 4)
-print(p.distance_from_origin())  # 5.0
+class Inventory:
+    def __init__(self):
+        self._products: List[Product] = []
+
+    def add_product(self, product: Product) -> None:
+        self._products.append(product)
+
+    def total_value(self) -> float:
+        return sum(p.total_price for p in self._products)
+
+    def filter_by_category(self, category: str) -> List[Product]:
+        return [p for p in self._products if p.category == category]
+
+
+# Usage with metaclass example
+class SingletonMeta(type):
+    _instances: dict = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+class Logger(metaclass=SingletonMeta):
+    def log(self, msg: str) -> None:
+        print(f"[LOG] {msg}")
+
+logger1 = Logger()
+logger2 = Logger()
+assert logger1 is logger2  # True
 ```
 
-## Advanced Examples
+### Real-World Use Cases
 
-### 1. Data descriptors with `__set_name__`
+- **Web frameworks**: Django models (each model class maps to a database table)
+- **GUI applications**: Tkinter/ PyQt widgets as class instances
+- **Game development**: Player, Enemy, Item as classes with state and behavior
+- **Data processing**: Pipeline stages represented as classes with transform methods
+- **API clients**: Resource classes (User, Order, Product) mapping to REST endpoints
 
+### Common Mistakes
+
+1. **Forgetting `self` as first method parameter**
 ```python
-class PositiveNumber:
-    def __set_name__(self, owner, name):
-        self.name = f"_{name}"
-
-    def __get__(self, obj, objtype=None):
-        return getattr(obj, self.name, 0)
-
-    def __set__(self, obj, value):
-        if value <= 0:
-            raise ValueError("Must be positive")
-        setattr(obj, self.name, value)
-
-
-class Order:
-    quantity = PositiveNumber()
-    price = PositiveNumber()
-
-    def __init__(self, quantity, price):
-        self.quantity = quantity
-        self.price = price
-
-    def total(self):
-        return self.quantity * self.price
-
-
-o = Order(5, 10.0)
-print(o.total())  # 50.0
-# o.quantity = -1  # ValueError
+class Wrong:
+    def method():  # Missing self
+        return "hi"
 ```
 
-### 2. Slots for memory optimisation
-
+2. **Mutating shared class attributes via instance**
 ```python
-class Point2D:
-    __slots__ = ("x", "y")
+class Team:
+    members = []  # Shared mutable
 
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-    def __repr__(self):
-        return f"Point2D({self.x}, {self.y})"
-
-
-p = Point2D(10, 20)
-print(p)          # Point2D(10, 20)
-# p.z = 30        # AttributeError: 'Point2D' object has no attribute 'z'
+team1 = Team()
+team1.members.append("Alice")  # Affects all instances
 ```
 
-### 3. Metaclass-powered class factory
+3. **Misunderstanding attribute lookup order**: instance → class → parent classes
 
+4. **Using mutable default arguments in `__init__`**
 ```python
-class AutoStr:
-    """Metaclass that auto-generates __str__ from attributes."""
-
-    def __new__(cls, name, bases, namespace):
-        if "__str__" not in namespace and "_fields" in namespace:
-            fields = namespace["_fields"]
-
-            def __str__(self):
-                parts = [f"{f}={getattr(self, f)!r}" for f in fields]
-                return f"{name}({', '.join(parts)})"
-
-            namespace["__str__"] = __str__
-        return super().__new__(cls, name, bases, namespace)
-
-
-class Product(metaclass=AutoStr):
-    _fields = ("name", "price")
-
-    def __init__(self, name, price):
-        self.name = name
-        self.price = price
-
-
-p = Product("Widget", 9.99)
-print(p)  # Product(name='Widget', price=9.99)
+def __init__(self, items=[]):  # Shared across all instances!
+    self.items = items
 ```
 
-## Real-World Use Cases
+### Best Practices
 
-- **Web frameworks**: Django models are classes mapping to database tables.
-- **GUI applications**: Each window, button, or widget is an object from a class.
-- **Game development**: Entities such as `Player`, `Enemy`, `Bullet` are classes with shared and unique state.
-- **Configuration handlers**: Classes encapsulate loading, validation, and access to settings.
-- **API clients**: A `Client` class holds authentication tokens, base URLs, and HTTP methods.
+- Use PascalCase for class names
+- Keep classes focused (Single Responsibility Principle)
+- Document classes with docstrings
+- Prefer `@dataclass` for simple data containers
+- Use type hints to improve readability
+- Avoid overly deep inheritance hierarchies
 
-## Common Mistakes
+### Performance Considerations
 
-| Mistake | Why it's wrong | Fix |
-|---|---|---|
-| Forgetting `self` as first parameter | Python will silently treat the method as a regular function | Always include `self` (or `cls`) |
-| Mutating class attribute via instance | Creates a new instance attribute instead of updating the class attribute | Use `ClassName.attr = value` |
-| Using mutable default arguments in `__init__` | Default is shared across all instances | Use `None` and create a new mutable inside |
-| Naming instance and local variables the same | Shadows the instance attribute | Use different names or prefix with `self.` |
-| Forgetting to call `super().__init__()` | Parent initialisation is skipped | Call `super().__init__(...)` when inheriting |
+- Attribute access follows the MRO and is cached in `__dict__` after first lookup
+- `__slots__` can reduce memory usage for classes with many instances
+- Method calls have overhead; for hot loops, consider extracting method logic inline
+- Property access is slower than direct attribute access
 
-```python
-# Mutable default — BAD
-class Bad:
-    def __init__(self, items=[]):
-        self.items = items
+### Interview Questions
 
-a = Bad()
-b = Bad()
-a.items.append(1)
-print(b.items)  # [1]  — oops!
+1. What is the difference between a class and an instance?
+2. How does Python's attribute lookup work?
+3. What is `__slots__` and when should you use it?
+4. Explain the relationship between `type` and metaclasses.
+5. What happens when you call `ClassName()`?
 
+### Coding Challenges
 
-# Mutable default — GOOD
-class Good:
-    def __init__(self, items=None):
-        self.items = items if items is not None else []
+1. Implement a `Vector2D` class with `x`, `y` attributes and methods for addition, subtraction, and magnitude calculation.
+2. Create a `Library` class that manages `Book` objects with checkout/return functionality.
+3. Implement a `Task` class with a priority queue using the `heapq` pattern.
 
-a = Good()
-b = Good()
-a.items.append(1)
-print(b.items)  # []
-```
+### Related Topics
 
-## Best Practices
-
-- Use **PascalCase** for class names.
-- Keep `__init__` simple — only assign attributes, avoid heavy logic.
-- Prefer **instance attributes** for per-object data; use **class attributes** for constants or shared state.
-- Type-annotate `__init__` parameters and return `None`.
-- Document the class with a docstring explaining its purpose.
-- Use properties (`@property`) instead of bare getter/setter methods.
-- Keep classes **small** and **single-responsibility** — if a class does too much, split it.
-- Favour composition over inheritance.
-
-## Interview Questions
-
-1. **What is the difference between a class attribute and an instance attribute?**
-   *Class attributes are shared by all instances; instance attributes belong to a specific object.*
-
-2. **Explain the role of `self` in Python classes.**
-   *`self` is the reference to the current instance; it is passed implicitly when calling a method on an object.*
-
-3. **How does Python handle attribute lookup?**
-   *It follows the C3 linearization: instance → class → parent classes → `__getattr__` → `AttributeError`.*
-
-4. **What is the purpose of `__init__`? Is it a constructor?**
-   *It is an initialiser, not a constructor (`__new__` creates the object). `__init__` sets up initial state.*
-
-5. **Can you change a class attribute after instantiation?**
-   *Yes, via `ClassName.attr = new_value`. Changing it via an instance creates a new instance attribute that shadows the class one.*
-
-6. **What are `__slots__` and when should you use them?**
-   *`__slots__` restricts which attributes an instance can have and saves memory by eliminating `__dict__`. Use in memory-sensitive applications with many instances.*
-
-## Coding Challenges
-
-1. **Library System**: Create a `Book` class with `title`, `author`, `isbn`. Add a `Library` class that can add, remove, and search books.
-
-2. **Banking System**: Implement `Account` (base), `SavingsAccount` (with interest), `CheckingAccount` (with overdraft). Track all transactions.
-
-3. **Vector Class**: Build a 2D `Vector` class with `__add__`, `__sub__`, `__mul__` (dot product), `__abs__` (magnitude), and `__repr__`.
-
-4. **Task Tracker**: Create a `Task` class with status, priority, due date. Build a `Project` class that manages a collection of tasks and can filter by status/priority.
-
-5. **Event System**: Implement `Event` and `EventEmitter` classes. The emitter stores listeners and notifies them when the event fires.
-
-## Summary
-
-- A **class** is a blueprint; an **object** is an instance of that blueprint.
-- `__init__` initialises instance attributes on creation.
-- `self` always refers to the current instance.
-- **Class attributes** are shared; **instance attributes** are per-object.
-- Attribute lookup follows MRO: instance → class → parents.
-- Use `__slots__` to save memory for large numbers of objects.
-
-## Related Topics
-
-- Inheritance — reusing and extending class behaviour
-- Polymorphism — same interface, different implementations
-- Encapsulation — hiding internal state
-- Abstraction — defining interfaces via ABCs
-- Magic methods — customising object behaviour
-- Properties — computed attributes with getter/setter logic
-- Static and class methods — methods that don't operate on instances
+Inheritance, Magic Methods, Properties, Static and Class Methods, Data Classes, Metaclasses

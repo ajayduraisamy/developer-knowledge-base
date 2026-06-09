@@ -2,56 +2,40 @@
 
 ## Introduction
 
-Custom exceptions are user-defined exception classes that inherit from Python's built-in `Exception` class (or any of its subclasses). While Python provides a rich set of built-in exceptions (ValueError, TypeError, KeyError, etc.), custom exceptions allow developers to create domain-specific error types that precisely describe problems occurring in their applications. They form the backbone of robust error handling strategies in large-scale Python projects by making error handling more expressive, granular, and maintainable.
+Custom exceptions are user-defined exception classes that inherit from Python's built-in `Exception` class. While Python provides dozens of built-in exceptions for common error conditions, real-world applications often need domain-specific errors that precisely describe problems in their context. Custom exceptions form the backbone of robust error handling in large-scale Python projects, making error handling more expressive, granular, and maintainable.
 
-## Why It Is Important
+## class MyError(Exception)
 
-Custom exceptions are critical for building maintainable and self-documenting code. They enable precise error catching—instead of catching a generic `Exception` and inspecting its message, you can catch a specific custom type. This improves code clarity, allows hierarchical error handling, and makes APIs more predictable for consumers. In library and framework development, custom exceptions are the standard way to communicate error conditions to users without exposing internal implementation details. They also facilitate better debugging by attaching extra context (attributes) that help diagnose root causes faster.
+### What It Is
 
-## Syntax
+Creating a custom exception is as simple as defining a class that inherits from `Exception` (or any of its subclasses). The new class inherits all the standard exception behavior and can add custom attributes, methods, and formatting. The convention is to name custom exceptions with an "Error" or "Exception" suffix.
 
-Creating a custom exception is as simple as defining a class that inherits from `Exception`:
+### Why It Is Important
+
+Custom exceptions allow precise error catching. Instead of catching a generic `Exception` and inspecting its message string, you catch a specific custom type. This makes code self-documenting, prevents string-matching fragility, and enables hierarchical error handling. They also improve API clarity by giving consumers a clear contract of what errors to expect.
+
+### How It Works Internally
+
+A custom exception class is a regular Python class. When raised, Python creates an instance and stores `args` (the positional arguments passed to the constructor). The `__init__` method can store additional attributes. The `__str__` method controls string representation. Exception objects, like all Python objects, are garbage-collected when no longer referenced. The inheritance chain determines which `except` clauses will catch the exception.
+
+### Syntax
 
 ```python
-class MyCustomError(Exception):
+class MyError(Exception):
     pass
-```
 
-You can also inherit from more specific built-in exceptions:
-
-```python
-class MyValueError(ValueError):
-    pass
-```
-
-For richer exceptions with extra attributes:
-
-```python
-class DetailedError(Exception):
-    def __init__(self, message, code, payload=None):
+class MyError(Exception):
+    def __init__(self, message, code=None):
         self.code = code
-        self.payload = payload
         super().__init__(message)
 ```
 
-Custom exceptions are raised and caught just like built-in exceptions:
+### Beginner Examples
 
 ```python
-raise MyCustomError("Something went wrong")
-
-try:
-    raise DetailedError("Invalid state", 42, {"key": "value"})
-except DetailedError as e:
-    print(e.code)
-```
-
-## Examples
-
-```python
-# Example 1: Minimal custom exception
+# Minimal custom exception
 class ValidationError(Exception):
     pass
-
 
 def validate_age(age):
     if age < 0:
@@ -60,107 +44,28 @@ def validate_age(age):
         raise ValidationError(f"Age seems unrealistic: {age}")
     return True
 
-
 try:
     validate_age(-5)
 except ValidationError as e:
     print(f"Validation failed: {e}")
 
-
-# Example 2: Custom exception with attributes
-class ApiError(Exception):
-    def __init__(self, message, status_code, response_body=None):
-        self.status_code = status_code
-        self.response_body = response_body
-        super().__init__(message)
-
-
-def call_api(url):
-    raise ApiError("Not Found", 404, {"error": "resource_missing"})
-
-
-try:
-    call_api("/users/999")
-except ApiError as e:
-    print(f"API call failed with status {e.status_code}: {e}")
-
-
-# Example 3: Custom exception hierarchy
-class DatabaseError(Exception):
-    pass
-
-
-class ConnectionError(DatabaseError):
-    pass
-
-
-class QueryError(DatabaseError):
-    pass
-
-
-class TimeoutError(QueryError):
-    pass
-
-
-def execute_query(query, timeout=30):
-    if timeout > 60:
-        raise TimeoutError(f"Query timed out after {timeout}s", query=query)
-    if not query.startswith("SELECT"):
-        raise QueryError("Only SELECT queries are allowed")
-    return ["result1", "result2"]
-
-
-try:
-    execute_query("DELETE FROM users", timeout=90)
-except TimeoutError as e:
-    print(f"Timeout: {e}")
-except QueryError as e:
-    print(f"Query problem: {e}")
-except DatabaseError as e:
-    print(f"General database error: {e}")
-```
-
-## Beginner Examples
-
-```python
-# Beginner Example 1: Simple custom exception for input validation
-class NegativeNumberError(Exception):
-    pass
-
-
-def square_root(value):
-    if value < 0:
-        raise NegativeNumberError("Cannot compute square root of a negative number")
-    return value ** 0.5
-
-
-try:
-    result = square_root(-9)
-except NegativeNumberError as e:
-    print(f"Error: {e}")
-
-
-# Beginner Example 2: Custom exception with a message
+# Custom exception with message
 class EmptyListError(Exception):
     pass
 
-
 def average(numbers):
     if not numbers:
-        raise EmptyListError("Cannot compute average of an empty list")
+        raise EmptyListError("Cannot compute average of empty list")
     return sum(numbers) / len(numbers)
-
 
 try:
     avg = average([])
 except EmptyListError as e:
     print(f"Error: {e}")
 
-
-# Beginner Example 3: Using pass for a minimal custom exception
+# Simple domain exception
 class InsufficientFundsError(Exception):
     pass
-
 
 class BankAccount:
     def __init__(self, balance=0):
@@ -174,30 +79,22 @@ class BankAccount:
         self.balance -= amount
         return self.balance
 
-
 account = BankAccount(100)
 try:
     account.withdraw(200)
 except InsufficientFundsError as e:
     print(f"Withdrawal failed: {e}")
 
-
-# Beginner Example 4: Catching multiple custom exceptions
-class TooHotError(Exception):
-    pass
-
-
-class TooColdError(Exception):
-    pass
-
+# Multiple custom exceptions
+class TooHotError(Exception): pass
+class TooColdError(Exception): pass
 
 def check_temperature(temp):
     if temp > 40:
-        raise TooHotError(f"Temperature {temp}°C is too hot")
+        raise TooHotError(f"Temperature {temp} is too hot")
     if temp < 0:
-        raise TooColdError(f"Temperature {temp}°C is too cold")
+        raise TooColdError(f"Temperature {temp} is too cold")
     return "Temperature is acceptable"
-
 
 try:
     check_temperature(50)
@@ -207,10 +104,10 @@ except TooColdError as e:
     print(f"Cold: {e}")
 ```
 
-## Intermediate Examples
+### Intermediate Examples
 
 ```python
-# Intermediate Example 1: Exception with multiple attributes and __str__
+# Custom exception with attributes and __str__
 class HttpError(Exception):
     def __init__(self, message, status_code, headers=None):
         self.status_code = status_code
@@ -219,7 +116,6 @@ class HttpError(Exception):
 
     def __str__(self):
         return f"[{self.status_code}] {self.args[0]}"
-
 
 class NotFoundError(HttpError):
     def __init__(self, resource, resource_id):
@@ -230,78 +126,21 @@ class NotFoundError(HttpError):
             404
         )
 
-
 try:
     raise NotFoundError("User", 42)
 except NotFoundError as e:
     print(f"Status: {e.status_code}, Resource: {e.resource}, ID: {e.resource_id}")
-    print(f"String: {e}")
 
-
-# Intermediate Example 2: Exception hierarchy with try/except grouping
-class PaymentError(Exception):
-    pass
-
-
-class InsufficientBalanceError(PaymentError):
-    def __init__(self, balance, required, currency="USD"):
-        self.balance = balance
-        self.required = required
-        self.currency = currency
-        self.shortfall = required - balance
-        super().__init__(
-            f"Insufficient balance: have {balance} {currency}, "
-            f"need {required} {currency}"
-        )
-
-
-class CardDeclinedError(PaymentError):
-    def __init__(self, card_last_four, reason):
-        self.card_last_four = card_last_four
-        self.reason = reason
-        super().__init__(f"Card ending in {card_last_four} declined: {reason}")
-
-
-class FraudSuspicionError(PaymentError):
-    def __init__(self, transaction_id):
-        self.transaction_id = transaction_id
-        super().__init__(f"Transaction {transaction_id} flagged for fraud review")
-
-
-def process_payment(amount, balance, card_last_four):
-    if amount > balance:
-        raise InsufficientBalanceError(balance, amount)
-    if card_last_four == "0000":
-        raise CardDeclinedError(card_last_four, "card expired")
-    if amount > 10000:
-        raise FraudSuspicionError("TXN-99999")
-    return "Payment successful"
-
-
-try:
-    process_payment(500, 100, "1234")
-except InsufficientBalanceError as e:
-    print(f"Need more money: short by {e.shortfall} {e.currency}")
-except CardDeclinedError as e:
-    print(f"Card issue: {e.reason}")
-except FraudSuspicionError as e:
-    print(f"Fraud check needed for {e.transaction_id}")
-except PaymentError as e:
-    print(f"Other payment problem: {e}")
-
-
-# Intermediate Example 3: Adding context with exception chaining
+# Adding context with exception chaining
 class DataProcessingError(Exception):
     pass
 
-
 def load_data(filepath):
     try:
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             return f.read()
     except FileNotFoundError as e:
         raise DataProcessingError(f"Cannot load data from {filepath}") from e
-
 
 def parse_data(content):
     if not content.strip():
@@ -311,15 +150,247 @@ def parse_data(content):
     except ValueError as e:
         raise DataProcessingError("Failed to parse content as integer") from e
 
-
 try:
     result = parse_data(load_data("nonexistent.txt"))
 except DataProcessingError as e:
-    print(f"Data processing failed: {e}")
+    print(f"Failed: {e}")
     print(f"Caused by: {e.__cause__}")
 
+# Exception with factory methods
+class ApiError(Exception):
+    def __init__(self, message, status_code=500, error_code="UNKNOWN"):
+        self.status_code = status_code
+        self.error_code = error_code
+        super().__init__(message)
 
-# Intermediate Example 4: Using __init_subclass__ for registry pattern
+    @classmethod
+    def not_found(cls, resource):
+        return cls(f"{resource} not found", 404, "NOT_FOUND")
+
+    @classmethod
+    def bad_request(cls, detail):
+        return cls(f"Bad request: {detail}", 400, "BAD_REQUEST")
+
+    @classmethod
+    def unauthorized(cls, reason="Authentication required"):
+        return cls(reason, 401, "UNAUTHORIZED")
+
+raise ApiError.not_found("User")
+```
+
+### Advanced Examples
+
+```python
+# Dataclass-based exception (Python 3.7+)
+from dataclasses import dataclass
+
+@dataclass
+class DatabaseError(Exception):
+    message: str
+    query: str = ""
+    error_code: int = 0
+    connection_id: str = ""
+
+    def __post_init__(self):
+        super().__init__(self.message)
+
+    def to_dict(self):
+        return {
+            "error": "DATABASE_ERROR",
+            "message": self.message,
+            "code": self.error_code,
+        }
+
+class ConnectionTimeout(DatabaseError):
+    def __init__(self, host, port, timeout):
+        super().__init__(
+            message=f"Connection to {host}:{port} timed out after {timeout}s",
+            error_code=1001,
+        )
+
+# Exception with automatic logging
+import logging
+logger = logging.getLogger(__name__)
+
+class LoggedException(Exception):
+    def __init__(self, message, log_level=logging.ERROR, **context):
+        self.context = context
+        super().__init__(message)
+        logger.log(log_level, "%s | context=%s", message, context)
+
+class ServiceUnavailable(LoggedException):
+    pass
+
+# Exception with retry metadata
+class RetryableError(Exception):
+    def __init__(self, message, retry_after=1.0, max_retries=3):
+        self.retry_after = retry_after
+        self.max_retries = max_retries
+        self.attempts = 0
+        super().__init__(message)
+
+    def should_retry(self):
+        self.attempts += 1
+        return self.attempts < self.max_retries
+
+class RateLimitError(RetryableError):
+    pass
+
+import time
+
+def call_with_retry(func, *args, **kwargs):
+    while True:
+        try:
+            return func(*args, **kwargs)
+        except RetryableError as e:
+            if not e.should_retry():
+                raise
+            time.sleep(e.retry_after)
+```
+
+## Exception hierarchies
+
+### What It Is
+
+Exception hierarchies organize custom exceptions into parent-child relationships, mirroring the structure of Python's built-in exception hierarchy. A base exception class defines a category, and subclasses define specific error types within that category.
+
+### Why It Is Important
+
+Hierarchies enable flexible error handling. Callers can catch a broad category (like `PaymentError`) to handle all payment failures, or catch a specific type (like `CardDeclinedError`) for specialized handling. This follows the principle of catching what you can handle and letting the rest propagate. Hierarchies also make APIs more maintainable—adding a new exception subclass doesn't break existing catch clauses for parent types.
+
+### How It Works Internally
+
+The `except` clause uses `isinstance()` matching against the hierarchy. `except PaymentError` catches any instance of `PaymentError` or any of its subclasses. This polymorphic behavior is the same mechanism used for all Python inheritance. The `except` clauses are checked in order, so more specific exceptions should be listed before broader ones.
+
+### Syntax
+
+```python
+class PaymentError(Exception): pass
+class InsufficientBalanceError(PaymentError): pass
+class CardDeclinedError(PaymentError): pass
+class FraudSuspicionError(PaymentError): pass
+class NetworkError(PaymentError): pass
+```
+
+### Beginner Examples
+
+```python
+# Simple hierarchy
+class DatabaseError(Exception): pass
+class ConnectionError(DatabaseError): pass
+class QueryError(DatabaseError): pass
+class TimeoutError(QueryError): pass
+
+def execute_query(query, timeout=30):
+    if timeout > 60:
+        raise TimeoutError(f"Query timed out after {timeout}s")
+    if not query.startswith("SELECT"):
+        raise QueryError("Only SELECT queries are allowed")
+    return ["result1", "result2"]
+
+try:
+    execute_query("DELETE FROM users", timeout=90)
+except TimeoutError as e:
+    print(f"Timeout: {e}")
+except QueryError as e:
+    print(f"Query problem: {e}")
+except DatabaseError as e:
+    print(f"General database error: {e}")
+```
+
+### Intermediate Examples
+
+```python
+# Hierarchical HTTP errors
+class HTTPError(Exception):
+    def __init__(self, description, status_code=500):
+        self.description = description
+        self.status_code = status_code
+        super().__init__(description)
+
+class BadRequest(HTTPError):
+    def __init__(self, description="Bad request"):
+        super().__init__(description, 400)
+
+class Unauthorized(HTTPError):
+    def __init__(self, description="Unauthorized"):
+        super().__init__(description, 401)
+
+class Forbidden(HTTPError):
+    def __init__(self, description="Forbidden"):
+        super().__init__(description, 403)
+
+class NotFound(HTTPError):
+    def __init__(self, description="Not found"):
+        super().__init__(description, 404)
+
+class ConflictError(HTTPError):
+    def __init__(self, description="Conflict"):
+        super().__init__(description, 409)
+
+class InternalServerError(HTTPError):
+    def __init__(self, description="Internal error"):
+        super().__init__(description, 500)
+
+# Handler that catches hierarchy
+def handle_request(method, path):
+    if method not in ("GET", "POST"):
+        raise BadRequest(f"Unsupported method: {method}")
+    if path == "/secret":
+        raise Unauthorized("Authentication required")
+    if path == "/users/999":
+        raise NotFound("User not found")
+    return {"status": "ok"}
+
+def app(method, path):
+    try:
+        return handle_request(method, path)
+    except NotFound:
+        return {"error": "not_found"}, 404
+    except HTTPError as e:
+        return {"error": e.description}, e.status_code
+```
+
+### Advanced Examples
+
+```python
+# Rich hierarchy with shared behavior
+class ServiceError(Exception):
+    def __init__(self, message, service=None, request_id=None):
+        self.service = service
+        self.request_id = request_id
+        super().__init__(message)
+
+    def to_dict(self):
+        return {
+            "error": type(self).__name__,
+            "message": str(self),
+            "service": self.service,
+            "request_id": self.request_id,
+        }
+
+class ValidationError(ServiceError): pass
+class RateLimit(ServiceError):
+    def __init__(self, message, retry_after, **kwargs):
+        self.retry_after = retry_after
+        super().__init__(message, **kwargs)
+
+class DependencyError(ServiceError): pass
+class TimeoutError(DependencyError): pass
+class CircuitBreakerOpen(DependencyError): pass
+
+# Middleware-style handler
+def error_middleware(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ServiceError as e:
+            return e.to_dict(), e.status_code if hasattr(e, "status_code") else 500
+        except Exception as e:
+            return {"error": "INTERNAL", "message": str(e)}, 500
+    return wrapper
+
+# __init_subclass__ for registry
 class RegisteredError(Exception):
     _registry = {}
 
@@ -333,260 +404,72 @@ class RegisteredError(Exception):
             return cls._registry[name](message)
         return UnknownError(f"Unknown error type: {name}")
 
+class NetworkError(RegisteredError): pass
+class ConfigError(RegisteredError): pass
+class UnknownError(Exception): pass
 
-class NetworkError(RegisteredError):
-    pass
-
-
-class ConfigError(RegisteredError):
-    pass
-
-
-class UnknownError(Exception):
-    pass
-
-
-print(RegisteredError._registry)
 err = RegisteredError.from_name("NetworkError", "Connection refused")
-print(f"Created: {type(err).__name__}: {err}")
+print(type(err).__name__)  # NetworkError
 ```
 
-## Advanced Examples
+### Real-World Use Cases
 
 ```python
-# Advanced Example 1: Context manager for capturing and re-raising exceptions
-from contextlib import contextmanager
-import traceback
-import sys
-
-
-class ExceptionCapture:
-    def __init__(self):
-        self.exceptions = []
-
-    @contextmanager
-    def capture(self, error_types=Exception):
-        try:
-            yield
-        except error_types as e:
-            self.exceptions.append({
-                "type": type(e).__name__,
-                "message": str(e),
-                "traceback": traceback.format_exc()
-            })
-
-
-capture = ExceptionCapture()
-with capture.capture((ValueError, TypeError)):
-    int("not_a_number")
-
-with capture.capture((ValueError, TypeError)):
-    "hello" + 42
-
-for exc in capture.exceptions:
-    print(f"Caught {exc['type']}: {exc['message']}")
-
-
-# Advanced Example 2: Reusable exception with automatic traceback trimming
-import linecache
-
-
-class SanitizedError(Exception):
-    """Strips internal stack frames from the traceback."""
-
-    def __init__(self, message, hide_frames=1):
-        self.hide_frames = hide_frames
+# Payment processing hierarchy
+class PaymentError(Exception):
+    def __init__(self, message, transaction_id=None):
+        self.transaction_id = transaction_id
         super().__init__(message)
 
-    def with_traceback(self, tb):
-        for _ in range(self.hide_frames):
-            if tb is not None:
-                tb = tb.tb_next
-        return super().with_traceback(tb)
+class InsufficientBalanceError(PaymentError):
+    def __init__(self, balance, amount, currency="USD"):
+        self.balance = balance
+        self.required = amount
+        self.shortfall = amount - balance
+        super().__init__(
+            f"Insufficient balance: have {balance} {currency}, need {amount} {currency}",
+        )
 
+class CardDeclinedError(PaymentError):
+    def __init__(self, card_last_four, reason):
+        self.card_last_four = card_last_four
+        self.reason = reason
+        super().__init__(f"Card ending in {card_last_four} declined: {reason}")
 
-def internal_helper():
-    raise SanitizedError("Something broke", hide_frames=1)
-
-
-def public_api():
-    internal_helper()
-
-
-try:
-    public_api()
-except SanitizedError as e:
-    traceback.print_exception(type(e), e, e.__traceback__)
-
-
-# Advanced Example 3: Exception with automatic logging
-import logging
-
-logger = logging.getLogger(__name__)
-
-
-class LoggedException(Exception):
-    def __init__(self, message, log_level=logging.ERROR, **context):
-        self.context = context
-        super().__init__(message)
-        logger.log(log_level, "%s | context=%s", message, context)
-
-
-class DatabaseTimeout(LoggedException):
+class FraudSuspicionError(PaymentError):
     pass
 
+class GatewayTimeoutError(PaymentError):
+    def __init__(self, gateway, timeout):
+        self.gateway = gateway
+        self.timeout = timeout
+        super().__init__(f"Gateway {gateway} timed out after {timeout}s")
+
+def process_payment(amount, balance, card_last_four):
+    if amount > balance:
+        raise InsufficientBalanceError(balance, amount)
+    if card_last_four == "0000":
+        raise CardDeclinedError(card_last_four, "card expired")
+    if amount > 10000:
+        raise FraudSuspicionError("Transaction flagged for review")
+    return "Payment successful"
 
 try:
-    raise DatabaseTimeout("Query exceeded time limit", timeout=60, query="SELECT *")
-except DatabaseTimeout:
-    print("Exception was automatically logged")
-
-
-# Advanced Example 4: Exception with retry metadata
-class RetryableError(Exception):
-    def __init__(self, message, retry_after=1.0, max_retries=3):
-        self.retry_after = retry_after
-        self.max_retries = max_retries
-        self.attempts = 0
-        super().__init__(message)
-
-    def should_retry(self):
-        self.attempts += 1
-        return self.attempts < self.max_retries
-
-
-class RateLimitError(RetryableError):
-    pass
-
-
-class ServiceUnavailableError(RetryableError):
-    pass
-
-
-import time
-
-
-def call_with_retry(func, *args, **kwargs):
-    last_exception = None
-    while True:
-        try:
-            return func(*args, **kwargs)
-        except RetryableError as e:
-            last_exception = e
-            if not e.should_retry():
-                raise
-            print(f"Retrying after {e.retry_after}s (attempt {e.attempts})")
-            time.sleep(e.retry_after)
-
-
-def unreliable_service():
-    import random
-    if random.random() < 0.7:
-        raise ServiceUnavailableError("Service is down", retry_after=0.1, max_retries=3)
-    return "Success"
-
-
-try:
-    result = call_with_retry(unreliable_service)
-    print(f"Got result: {result}")
-except RetryableError as e:
-    print(f"All retries exhausted after {e.attempts} attempts")
+    process_payment(500, 100, "1234")
+except InsufficientBalanceError as e:
+    print(f"Need more: short by {e.shortfall}")
+except CardDeclinedError as e:
+    print(f"Card issue: {e.reason}")
+except PaymentError as e:
+    print(f"Other payment error: {e}")
 ```
 
-## Real-World Use Cases
-
-Custom exceptions are extensively used in web frameworks (e.g., Django's `Http404`, `PermissionDenied`), database libraries (e.g., SQLAlchemy's `IntegrityError`, `OperationalError`), API clients, and financial systems. They allow libraries to provide a clean error contract to consumers, enable middleware to handle errors centrally, and make audit logging more precise. In microservice architectures, custom exceptions are often serialized to JSON error responses with structured error codes for client consumption.
+### Common Mistakes
 
 ```python
-# Real-world: Flask-style HTTP exception framework
-class HTTPException(Exception):
-    def __init__(self, description, status_code=500):
-        self.description = description
-        self.status_code = status_code
-        super().__init__(description)
-
-    def to_response(self):
-        return {
-            "error": type(self).__name__,
-            "message": self.description,
-            "status_code": self.status_code,
-        }, self.status_code
-
-
-class BadRequest(HTTPException):
-    def __init__(self, description="Bad request"):
-        super().__init__(description, 400)
-
-
-class Unauthorized(HTTPException):
-    def __init__(self, description="Unauthorized"):
-        super().__init__(description, 401)
-
-
-class Forbidden(HTTPException):
-    def __init__(self, description="Forbidden"):
-        super().__init__(description, 403)
-
-
-class NotFound(HTTPException):
-    def __init__(self, description="Resource not found"):
-        super().__init__(description, 404)
-
-
-class ConflictError(HTTPException):
-    def __init__(self, description="Resource conflict"):
-        super().__init__(description, 409)
-
-
-class InternalServerError(HTTPException):
-    def __init__(self, description="Internal server error"):
-        super().__init__(description, 500)
-
-
-def handle_request(method, path, body=None):
-    if method not in ("GET", "POST", "PUT", "DELETE"):
-        raise BadRequest(f"Unsupported method: {method}")
-    if path == "/secret" and not body:
-        raise Unauthorized("Authentication required")
-    if path == "/admin" and body.get("role") != "admin":
-        raise Forbidden("Admin access required")
-    if path == "/users/999":
-        raise NotFound("User not found")
-    if path == "/conflict":
-        raise ConflictError("Resource already exists")
-    return {"status": "ok"}
-
-
-def app(method, path, body=None):
-    try:
-        return handle_request(method, path, body)
-    except HTTPException as e:
-        return e.to_response()
-
-
-print(app("GET", "/users/999"))
-print(app("DELETE", "/", None))
-print(app("GET", "/secret"))
-```
-
-## Common Mistakes
-
-1. **Overusing custom exceptions** — creating a new exception type for every possible error leads to explosion of types; use judiciously with hierarchy grouping.
-2. **Catching the wrong level** — catching `Exception` instead of a specific custom exception, silently swallowing unexpected errors.
-3. **Inheriting from BaseException** — should always inherit from `Exception` (not `BaseException`) to avoid catching `SystemExit`/`KeyboardInterrupt`.
-4. **Forgetting to call `super().__init__()`** — results in the exception message being empty.
-5. **Using mutable default arguments** — in the `__init__` signature (e.g., `headers=None` instead of `headers={}`).
-6. **Not using `__cause__` or `from`** — swallowing the original traceback when re-raising a custom exception.
-7. **Making exceptions too heavy** — including database connections or file handles in exception objects that may persist across long stack unwinds.
-8. **Inconsistent naming** — not following the `Error`/`Exception` suffix convention.
-
-```python
-# Common mistakes demonstration
-
-# Mistake 1: Inheriting from BaseException (wrong)
-class BadMistake(BaseException):  # Catches KeyboardInterrupt, SystemExit
+# Mistake 1: Inheriting from BaseException
+class BadError(BaseException):  # Catches KeyboardInterrupt, SystemExit!
     pass
-
 
 # Mistake 2: Forgetting super().__init__
 class ForgetfulError(Exception):
@@ -594,24 +477,26 @@ class ForgetfulError(Exception):
         self.code = code
         # Missing: super().__init__(message)
 
-
 try:
     raise ForgetfulError("Oops", 123)
 except ForgetfulError as e:
     print(f"Message is empty: '{e}'")  # Empty message!
 
-
-# Mistake 3: Mutable default argument
+# Mistake 3: Mutable default arguments
 class BuggyError(Exception):
+    def __init__(self, message, extra={}):  # BAD: shared mutable default
+        self.extra = extra
+        super().__init__(message)
+
+# Correct:
+class FixedError(Exception):
     def __init__(self, message, extra=None):
         self.extra = extra or {}
         super().__init__(message)
 
-
 # Mistake 4: Swallowing the chain
 class WrapperError(Exception):
     pass
-
 
 def read_file(path):
     try:
@@ -620,125 +505,87 @@ def read_file(path):
     except FileNotFoundError:
         raise WrapperError("File not found")  # Loses original traceback!
 
-
-# Correct way:
+# Correct:
 def read_file_fixed(path):
     try:
         with open(path) as f:
             return f.read()
     except FileNotFoundError as e:
         raise WrapperError("File not found") from e
-```
 
-## Best Practices
-
-1. **Inherit from `Exception`**, never from `BaseException` directly.
-2. **Name your exceptions with an `Error` or `Exception` suffix** (e.g., `ValidationError`, `ConnectionException`).
-3. **Build hierarchies** that mirror your domain (e.g., `DatabaseError` -> `ConnectionError`, `QueryError`).
-4. **Add meaningful attributes** (status codes, error IDs, payload) to aid debugging and error reporting.
-5. **Implement `__str__` and/or `__repr__`** for informative error messages.
-6. **Use exception chaining (`raise ... from e`)** to preserve the original traceback.
-7. **Keep exceptions lightweight** — avoid heavy objects or I/O in constructors.
-8. **Document exceptions in docstrings** so consumers know what to catch.
-9. **Provide factory class methods** for common error patterns.
-10. **Use dataclasses for simple exceptions** in modern Python (3.7+).
-
-```python
-# Best practices in action
-from dataclasses import dataclass
-
-
-@dataclass
+# Mistake 5: Not including useful context
 class ApiError(Exception):
-    message: str
-    status_code: int = 500
-    error_code: str = "UNKNOWN"
-    details: dict = None
+    pass  # No status_code, no error_code, no details
 
-    def __post_init__(self):
-        if self.details is None:
-            self.details = {}
-        super().__init__(self.message)
-
-    def to_dict(self):
-        return {
-            "error": self.error_code,
-            "message": self.message,
-            "status": self.status_code,
-            "details": self.details,
-        }
-
-
-class RateLimitError(ApiError):
-    def __init__(self, retry_after, message="Rate limit exceeded"):
-        super().__init__(
-            message=message,
-            status_code=429,
-            error_code="RATE_LIMIT",
-            details={"retry_after_seconds": retry_after},
-        )
-
-
-# Usage
-try:
-    raise RateLimitError(retry_after=30)
-except ApiError as e:
-    print(e.to_dict())
+# Mistake 6: Over-customizing (too many exception types)
+class ErrorLevel1(Exception): pass
+class ErrorLevel2(ErrorLevel1): pass
+class ErrorLevel3(ErrorLevel2): pass  # Pointlessly specific
 ```
 
-## Interview Questions
+### Best Practices
 
-**Q1: How do you create a custom exception in Python?**
-```python
-class MyError(Exception):
-    pass
-```
+- Always inherit from `Exception`, never from `BaseException`
+- Name with `Error` or `Exception` suffix (e.g., `ValidationError`)
+- Build meaningful hierarchies that mirror your domain
+- Add informative attributes (status codes, error codes, context)
+- Implement `__str__` for readable error messages
+- Use `raise ... from e` to preserve original traceback
+- Keep exceptions lightweight—no heavy objects or I/O in constructors
+- Document exceptions in docstrings for API consumers
+- Use dataclasses for simple exceptions (Python 3.7+)
+- Provide factory class methods for common error creation patterns
+- Create a base exception for your library/application
+- Use `__init_subclass__` for registry patterns when needed
 
-**Q2: Why would you use a hierarchy of custom exceptions?**
-A: To allow callers to catch specific errors or broad categories. For example, `DatabaseError` -> `ConnectionError`, `TimeoutError` lets users either handle specific issues or catch all database problems.
+### Performance Considerations
 
-**Q3: What is the difference between `raise` and `raise from`?**
-```python
-# Without from: loses original context
-try:
-    int("abc")
-except ValueError:
-    raise RuntimeError("Bad conversion")
+Custom exceptions have the same performance characteristics as built-in exceptions. The overhead is entirely in the raising (traceback construction, stack unwinding), not in the exception class itself. Creating many custom exception classes is cheap. However, avoid expensive operations in exception constructors, since exceptions may be constructed even when they won't be caught (e.g., during traceback display).
 
-# With from: preserves chain
-try:
-    int("abc")
-except ValueError as e:
-    raise RuntimeError("Bad conversion") from e
-```
+### Interview Questions
 
-**Q4: When should you NOT use a custom exception?**
-A: When a built-in exception (`ValueError`, `TypeError`, `KeyError` etc.) already communicates the problem clearly. Over-customizing leads to exception class explosion.
+1. How do you create a custom exception in Python?
 
-**Q5: How can you make custom exceptions serializable?**
-A: Implement `__reduce__` or use dataclasses with `asdict()` from the `dataclasses` module, or add a `to_dict()` method.
+   ```python
+   class MyError(Exception):
+       pass
+   ```
 
-## Coding Challenges
+2. Why use a hierarchy of custom exceptions?
 
-**Challenge 1: HTTP Error Framework**
-Create a set of custom exceptions for an HTTP client library with status codes, headers, and response body attributes. Include: `HttpClientError` (4xx), `HttpServerError` (5xx), and specific subclasses like `NotFoundError`, `UnauthorizedError`, `InternalServerError`.
+   To allow callers to catch specific errors or broad categories. `DatabaseError` -> `ConnectionError`, `TimeoutError` lets users handle specific issues or catch all database problems with one `except DatabaseError` clause.
 
-**Challenge 2: Retryable Operation Runner**
-Build an exception hierarchy for a task queue: `TaskError` -> `RetryableTaskError` (with `max_retries` and `delay`) and `FatalTaskError`. Write a runner that retries `RetryableTaskError` up to `max_retries` times before giving up.
+3. What is the difference between `raise` and `raise from`?
 
-**Challenge 3: Validation Rule Engine**
-Create exceptions for a validation framework: `ValidationError` (base), `RequiredFieldError`, `TypeMismatchError`, `RangeError`, `PatternMismatchError`. Each should store the field name, value, and a user-readable message. Build a simple validator that uses these.
+   `raise X` inside an `except` block implicitly chains via `__context__`. `raise X from Y` sets `__cause__` explicitly with a clearer traceback message. `raise X from None` suppresses the chain.
 
-## Summary
+4. When should you NOT use a custom exception?
 
-Custom exceptions are a fundamental tool for building robust, maintainable Python applications. They provide semantic clarity, enable precise error handling, and form the foundation of a library's error contract. By creating well-structured exception hierarchies, adding meaningful context, using exception chaining, and following established naming conventions, developers can dramatically improve debugging experiences and API usability. The key is to balance granularity with simplicity—create enough exception types to be useful, but not so many that they become a burden to maintain.
+   When a built-in exception (`ValueError`, `TypeError`, `KeyError`) already communicates the problem clearly. Over-customizing leads to exception class explosion.
 
-## Related Topics
+5. How can you make custom exceptions serializable?
 
-- Python's built-in exception hierarchy (`Exception`, `BaseException`, `ArithmeticError`, `OSError`)
-- Exception chaining (`raise ... from e`)
-- Context managers and exception handling (`__enter__`, `__exit__`)
-- The `warnings` module for non-fatal issues
-- `traceback` module for traceback inspection
-- Dataclasses for lightweight exception definitions
-- Logging module integration with exceptions
+   Implement `__reduce__`, use dataclasses with `asdict()`, or add a `to_dict()` method.
+
+6. Why should exceptions inherit from `Exception` not `BaseException`?
+
+   `BaseException` includes `SystemExit`, `KeyboardInterrupt`, and `GeneratorExit`. Inheriting from it means your exception could be caught by `except BaseException` which also catches system-level exceptions that should normally terminate the program.
+
+### Coding Challenges
+
+1. Create an HTTP error hierarchy with `ClientError` (4xx), `ServerError` (5xx), and specific subclasses like `NotFoundError`, `BadRequestError`, `InternalServerError`. Each should carry status code, message, and response body.
+
+2. Build an exception hierarchy for a task queue: `TaskError` base, `RetryableTaskError` (with `max_retries` and `delay`), and `FatalTaskError`. Write a runner that retries retryable errors.
+
+3. Create validation exceptions: `ValidationError` (base), `RequiredFieldError`, `TypeMismatchError`, `RangeError`, `PatternMismatchError`. Each stores field name, value, and message.
+
+4. Implement a `retry` decorator that checks if an exception is a subclass of `RetryableError` and retries accordingly, with different backoff strategies per exception type.
+
+5. Design a circuit breaker that uses exception types to determine which failures should open the circuit.
+
+### Related Topics
+
+- `43_exceptions.md` - The raise statement and exception hierarchy overview
+- `44_try_except.md` - Catching exceptions with try/except
+- `46_logging.md` - Logging exceptions
+- `47_assertions.md` - Assertions vs exceptions for debugging

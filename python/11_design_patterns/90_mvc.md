@@ -1,1227 +1,580 @@
 # MVC - Model-View-Controller, separation of concerns, MVVM
-
 ## Introduction
+MVC (Model-View-Controller) is a architectural pattern that separates an application into three interconnected components: Model (data and business logic), View (user interface), and Controller (handles user input and coordinates Model and View). This separation enables modular development, parallel workflow, and maintainability. Python frameworks like Django use a variation called MVT (Model-View-Template), while desktop and mobile frameworks often use MVVM (Model-View-ViewModel).
 
-The Model-View-Controller (MVC) pattern separates an application into three interconnected components: the Model (data and business logic), the View (user interface), and the Controller (handles input and coordinates). This separation enables modular development, parallel work on different components, and maintainable codebases. Variants include Model-View-ViewModel (MVVM) and Model-View-Template (MTV).
+## Model
+### What It Is
+The Model represents the application's data and business logic. It manages the data, responds to queries, and encapsulates the rules for manipulating data. The Model is independent of the user interface.
 
-## Why It Is Important
+### Why It Is Important
+The Model centralizes data management and business rules. Changes to data logic only affect the Model, not the Views or Controllers. This separation makes the code more maintainable and testable.
 
-MVC is the foundation of most web frameworks and GUI applications. It enforces separation of concerns, making code more testable, maintainable, and reusable. Changes to the user interface do not affect business logic, and data models can be modified without rewriting views. This pattern scales well from small applications to large enterprise systems and is the standard architecture for frameworks like Django, Rails, Spring, and ASP.NET.
-
-## Syntax
-
-The Model manages data and rules. The View displays data to the user. The Controller handles user input and updates the Model. In web frameworks, the Controller receives HTTP requests, interacts with the Model, and selects a View to render. In MVVM, the ViewModel acts as a specialized controller that exposes data and commands for data binding.
-
-## Examples
+### How It Works Internally
+The Model typically contains data structures (classes, databases), validation logic, computation rules, and data access methods. In frameworks like Django, the Model maps to database tables via ORM.
 
 ```python
-# Basic MVC implementation
-from typing import List, Dict, Any, Optional
+from typing import List, Optional, Dict
+from datetime import datetime
 import json
 
-
-class Model:
-    def __init__(self):
-        self._data: Dict[str, Any] = {}
-        self._observers: List[callable] = []
-
-    def add_observer(self, observer: callable):
-        self._observers.append(observer)
-
-    def notify_observers(self, event: str, data: Any = None):
-        for observer in self._observers:
-            observer(event, data)
-
-    def get(self, key: str):
-        return self._data.get(key)
-
-    def set(self, key: str, value: Any):
-        self._data[key] = value
-        self.notify_observers("data_changed", {key: value})
-
-    def delete(self, key: str):
-        if key in self._data:
-            del self._data[key]
-            self.notify_observers("data_deleted", key)
-
-
-class View:
-    def render(self, data: Any) -> str:
-        raise NotImplementedError
-
-
-class TextView(View):
-    def render(self, data: Any) -> str:
-        if isinstance(data, dict):
-            return "\n".join(f"{k}: {v}" for k, v in data.items())
-        return str(data)
-
-
-class JSONView(View):
-    def render(self, data: Any) -> str:
-        return json.dumps(data, indent=2)
-
-
-class HTMLView(View):
-    def render(self, data: Any) -> str:
-        if isinstance(data, dict):
-            items = "".join(f"<li><b>{k}:</b> {v}</li>" for k, v in data.items())
-            return f"<ul>{items}</ul>"
-        return f"<p>{data}</p>"
-
-
-class Controller:
-    def __init__(self, model: Model, view: View):
-        self._model = model
-        self._view = view
-        self._model.add_observer(self._on_model_change)
-
-    def _on_model_change(self, event: str, data: Any):
-        print(f"[Event] {event}: {data}")
-
-    def set_data(self, key: str, value: Any):
-        self._model.set(key, value)
-
-    def get_data(self, key: str) -> Any:
-        return self._model.get(key)
-
-    def delete_data(self, key: str):
-        self._model.delete(key)
-
-    def display(self):
-        return self._view.render(self._model._data)
-
-
-model = Model()
-view = HTMLView()
-controller = Controller(model, view)
-
-controller.set_data("name", "Alice")
-controller.set_data("age", 30)
-print(controller.display())
-
-controller = Controller(model, JSONView())
-print(controller.display())
-```
-
-```python
-# User management MVC
 class UserModel:
     def __init__(self):
         self._users: Dict[int, dict] = {}
         self._next_id = 1
+        self._observers = []
 
-    def create(self, name: str, email: str) -> dict:
-        user = {"id": self._next_id, "name": name, "email": email}
+    def add_observer(self, observer):
+        self._observers.append(observer)
+
+    def _notify_observers(self, event, data):
+        for observer in self._observers:
+            observer.update(event, data)
+
+    def create_user(self, name: str, email: str) -> dict:
+        user = {
+            "id": self._next_id,
+            "name": name,
+            "email": email,
+            "created_at": datetime.now().isoformat()
+        }
         self._users[self._next_id] = user
         self._next_id += 1
+        self._notify_observers("user_created", user)
         return user
 
-    def get(self, user_id: int) -> Optional[dict]:
+    def get_user(self, user_id: int) -> Optional[dict]:
         return self._users.get(user_id)
 
-    def get_all(self) -> List[dict]:
+    def get_all_users(self) -> List[dict]:
         return list(self._users.values())
 
-    def update(self, user_id: int, **kwargs) -> Optional[dict]:
+    def update_user(self, user_id: int, **kwargs) -> Optional[dict]:
         user = self._users.get(user_id)
         if user:
             user.update(kwargs)
+            self._notify_observers("user_updated", user)
         return user
 
-    def delete(self, user_id: int) -> bool:
-        return self._users.pop(user_id, None) is not None
-
-
-class UserView:
-    def render_user(self, user: dict) -> str:
-        return f"ID: {user['id']}, Name: {user['name']}, Email: {user['email']}"
-
-    def render_user_list(self, users: List[dict]) -> str:
-        if not users:
-            return "No users found"
-        return "\n".join(self.render_user(u) for u in users)
-
-    def render_error(self, message: str) -> str:
-        return f"Error: {message}"
-
-
-class UserController:
-    def __init__(self, model: UserModel, view: UserView):
-        self._model = model
-        self._view = view
-
-    def create_user(self, name: str, email: str) -> str:
-        if not name or not email:
-            return self._view.render_error("Name and email required")
-        if "@" not in email:
-            return self._view.render_error("Invalid email")
-        user = self._model.create(name, email)
-        return self._view.render_user(user)
-
-    def get_user(self, user_id: int) -> str:
-        user = self._model.get(user_id)
-        if user is None:
-            return self._view.render_error("User not found")
-        return self._view.render_user(user)
-
-    def list_users(self) -> str:
-        users = self._model.get_all()
-        return self._view.render_user_list(users)
-
-    def update_user(self, user_id: int, **kwargs) -> str:
-        user = self._model.update(user_id, **kwargs)
-        if user is None:
-            return self._view.render_error("User not found")
-        return self._view.render_user(user)
-
-    def delete_user(self, user_id: int) -> str:
-        if self._model.delete(user_id):
-            return f"User {user_id} deleted"
-        return self._view.render_error("User not found")
-
-
-ctrl = UserController(UserModel(), UserView())
-print(ctrl.create_user("Alice", "alice@example.com"))
-print(ctrl.create_user("Bob", "bob@example.com"))
-print(ctrl.list_users())
-print(ctrl.update_user(1, name="Alice Smith"))
-print(ctrl.delete_user(2))
-print(ctrl.list_users())
-```
-
-## Beginner Examples
-
-```python
-# Simple todo app MVC
-class TodoModel:
-    def __init__(self):
-        self._todos: List[dict] = []
-        self._next_id = 1
-
-    def add(self, title: str) -> dict:
-        todo = {"id": self._next_id, "title": title, "completed": False}
-        self._todos.append(todo)
-        self._next_id += 1
-        return todo
-
-    def toggle(self, todo_id: int) -> Optional[dict]:
-        for todo in self._todos:
-            if todo["id"] == todo_id:
-                todo["completed"] = not todo["completed"]
-                return todo
-        return None
-
-    def remove(self, todo_id: int) -> bool:
-        for todo in self._todos:
-            if todo["id"] == todo_id:
-                self._todos.remove(todo)
-                return True
+    def delete_user(self, user_id: int) -> bool:
+        user = self._users.pop(user_id, None)
+        if user:
+            self._notify_observers("user_deleted", user)
+            return True
         return False
-
-    def get_all(self) -> List[dict]:
-        return list(self._todos)
-
-    def clear_completed(self):
-        self._todos = [t for t in self._todos if not t["completed"]]
-
-
-class TodoView:
-    def render_list(self, todos: List[dict]) -> str:
-        if not todos:
-            return "No todos"
-        lines = []
-        for todo in todos:
-            status = "[X]" if todo["completed"] else "[ ]"
-            lines.append(f"{todo['id']}. {status} {todo['title']}")
-        return "\n".join(lines)
-
-    def render_message(self, message: str) -> str:
-        return f"*** {message} ***"
-
-
-class TodoController:
-    def __init__(self, model: TodoModel, view: TodoView):
-        self._model = model
-        self._view = view
-
-    def add(self, title: str):
-        todo = self._model.add(title)
-        print(self._view.render_message(f"Added: {todo['title']}"))
-
-    def toggle(self, todo_id: int):
-        todo = self._model.toggle(todo_id)
-        if todo:
-            status = "completed" if todo["completed"] else "uncompleted"
-            print(self._view.render_message(f"Todo {todo_id} {status}"))
-        else:
-            print(self._view.render_message("Todo not found"))
-
-    def remove(self, todo_id: int):
-        if self._model.remove(todo_id):
-            print(self._view.render_message(f"Removed todo {todo_id}"))
-        else:
-            print(self._view.render_message("Todo not found"))
-
-    def list_all(self):
-        print(self._view.render_list(self._model.get_all()))
-
-    def clear_completed(self):
-        self._model.clear_completed()
-        print(self._view.render_message("Cleared completed todos"))
-
-
-ctrl = TodoController(TodoModel(), TodoView())
-ctrl.add("Learn MVC pattern")
-ctrl.add("Write Python code")
-ctrl.add("Review design patterns")
-ctrl.toggle(1)
-ctrl.list_all()
-ctrl.remove(2)
-ctrl.list_all()
-```
-
-```python
-# Counter MVC
-class CounterModel:
-    def __init__(self):
-        self._count = 0
-
-    def increment(self) -> int:
-        self._count += 1
-        return self._count
-
-    def decrement(self) -> int:
-        self._count -= 1
-        return self._count
-
-    def reset(self) -> int:
-        self._count = 0
-        return self._count
-
-    @property
-    def value(self) -> int:
-        return self._count
-
-
-class CounterView:
-    def display(self, count: int) -> str:
-        return f"Count: {count}"
-
-    def display_history(self, history: List[int]) -> str:
-        return "History: " + ", ".join(str(h) for h in history)
-
-
-class CounterController:
-    def __init__(self, model: CounterModel, view: CounterView):
-        self._model = model
-        self._view = view
-        self._history = []
-
-    def increment(self):
-        value = self._model.increment()
-        self._history.append(value)
-        print(self._view.display(value))
-
-    def decrement(self):
-        value = self._model.decrement()
-        self._history.append(value)
-        print(self._view.display(value))
-
-    def reset(self):
-        value = self._model.reset()
-        self._history.append(value)
-        print(self._view.display(value))
-
-    def show_history(self):
-        print(self._view.display_history(self._history))
-
-
-ctrl = CounterController(CounterModel(), CounterView())
-ctrl.increment()
-ctrl.increment()
-ctrl.decrement()
-ctrl.show_history()
-ctrl.reset()
-```
-
-## Intermediate Examples
-
-```python
-# MVC with multiple views (Observer-based sync)
-class MVCModel:
-    def __init__(self):
-        self._data = {}
-        self._observers = []
-
-    def attach(self, observer):
-        self._observers.append(observer)
-
-    def detach(self, observer):
-        self._observers.remove(observer)
-
-    def _notify(self, event: str, **kwargs):
-        for obs in self._observers:
-            obs.update(event, **kwargs)
-
-    def set(self, key: str, value: Any):
-        old = self._data.get(key)
-        self._data[key] = value
-        self._notify("changed", key=key, value=value, old_value=old)
-
-    def get(self, key: str):
-        return self._data.get(key)
-
-    def all(self) -> dict:
-        return dict(self._data)
-
-
-class BaseView:
-    def update(self, event: str, **kwargs):
-        raise NotImplementedError
-
-    def render(self) -> str:
-        raise NotImplementedError
-
-
-class ConsoleView(BaseView):
-    def __init__(self, model: MVCModel):
-        self._model = model
-        self._model.attach(self)
-
-    def update(self, event: str, **kwargs):
-        print(f"[View] {event}: {kwargs}")
-        self.render()
-
-    def render(self) -> str:
-        data = self._model.all()
-        print(f"  Data: {data}")
-        return str(data)
-
-
-class StatsView(BaseView):
-    def __init__(self, model: MVCModel):
-        self._model = model
-        self._model.attach(self)
-        self._change_count = 0
-
-    def update(self, event: str, **kwargs):
-        self._change_count += 1
-        self.render()
-
-    def render(self) -> str:
-        data = self._model.all()
-        stats = f"Total keys: {len(data)}, Changes: {self._change_count}"
-        print(f"  Stats: {stats}")
-        return stats
-
-
-class JSONExportView(BaseView):
-    def __init__(self, model: MVCModel):
-        self._model = model
-
-    def update(self, event: str, **kwargs):
-        pass
-
-    def render(self) -> str:
-        return json.dumps(self._model.all(), indent=2)
-
-
-class MVCController:
-    def __init__(self, model: MVCModel):
-        self._model = model
-
-    def update(self, key: str, value: Any):
-        self._model.set(key, value)
-
-    def delete(self, key: str):
-        self._model.set(key, None)
-
-
-model = MVCModel()
-console = ConsoleView(model)
-stats = StatsView(model)
-controller = MVCController(model)
-
-controller.update("name", "Alice")
-controller.update("age", 30)
-controller.update("city", "New York")
-
-export = JSONExportView(model)
-print("\nJSON Export:")
-print(export.render())
-```
-
-```python
-# MVC with routing (web-style)
-import re
-
-
-class Request:
-    def __init__(self, method: str, path: str, body: dict = None):
-        self.method = method
-        self.path = path
-        self.body = body or {}
-        self.params = {}
-
-    def __repr__(self):
-        return f"{self.method} {self.path}"
-
-
-class Response:
-    def __init__(self, status: int = 200, body: Any = None):
-        self.status = status
-        self.body = body
-
-    def __repr__(self):
-        return f"HTTP {self.status}: {self.body}"
-
-
-class Router:
-    def __init__(self):
-        self._routes: List[tuple] = []
-
-    def add(self, method: str, pattern: str, handler: Callable):
-        regex = re.compile(f"^{pattern}$")
-        self._routes.append((method, regex, handler))
-
-    def dispatch(self, request: Request) -> Response:
-        for method, pattern, handler in self._routes:
-            if method == request.method:
-                match = pattern.match(request.path)
-                if match:
-                    request.params = match.groupdict()
-                    return handler(request)
-        return Response(404, "Not Found")
-
 
 class ProductModel:
     def __init__(self):
-        self._products = {
-            1: {"id": 1, "name": "Laptop", "price": 999.99},
-            2: {"id": 2, "name": "Mouse", "price": 29.99},
+        self._products = {}
+        self._next_id = 1
+
+    def add_product(self, name: str, price: float, quantity: int) -> dict:
+        product = {
+            "id": self._next_id,
+            "name": name,
+            "price": price,
+            "quantity": quantity
         }
-
-    def all(self) -> List[dict]:
-        return list(self._products.values())
-
-    def get(self, product_id: int) -> Optional[dict]:
-        return self._products.get(product_id)
-
-    def create(self, name: str, price: float) -> dict:
-        new_id = max(self._products.keys()) + 1
-        self._products[new_id] = {"id": new_id, "name": name, "price": price}
-        return self._products[new_id]
-
-    def update(self, product_id: int, **kwargs) -> Optional[dict]:
-        product = self._products.get(product_id)
-        if product:
-            product.update(kwargs)
+        self._products[self._next_id] = product
+        self._next_id += 1
         return product
 
-    def delete(self, product_id: int) -> bool:
-        return self._products.pop(product_id, None) is not None
+    def get_product(self, product_id: int) -> Optional[dict]:
+        return self._products.get(product_id)
 
+    def update_stock(self, product_id: int, quantity: int) -> Optional[dict]:
+        product = self._products.get(product_id)
+        if product:
+            product["quantity"] = quantity
+        return product
+```
 
-class ProductView:
-    def render_product(self, product: dict) -> str:
-        return f"Product #{product['id']}: {product['name']} (${product['price']:.2f})"
+## View
+### What It Is
+The View is the visual representation of the Model. It displays data to the user and provides the user interface for interaction. The View observes the Model and updates when data changes.
 
-    def render_list(self, products: List[dict]) -> str:
-        return "\n".join(self.render_product(p) for p in products)
+### Why It Is Important
+The View encapsulates all presentation logic. By separating it from the Model and Controller, different Views (web, desktop, mobile, CLI) can reuse the same Model and business logic.
 
-    def render_json(self, data: Any) -> str:
-        return json.dumps(data, indent=2)
+### How It Works Internally
+The View subscribes to Model changes and re-renders when notified. It receives user input events and forwards them to the Controller. The View should not contain business logic or direct data manipulation.
 
-    def render_error(self, message: str) -> str:
-        return json.dumps({"error": message})
+```python
+from abc import ABC, abstractmethod
 
+class Observer(ABC):
+    @abstractmethod
+    def update(self, event: str, data):
+        pass
+
+class UserConsoleView(Observer):
+    def __init__(self):
+        self._displayed_users = []
+
+    def update(self, event: str, data):
+        if event == "user_created":
+            print(f"[View] New user added: {data['name']}")
+        elif event == "user_updated":
+            print(f"[View] User updated: {data}")
+        elif event == "user_deleted":
+            print(f"[View] User deleted: {data['name']}")
+
+    def show_users(self, users):
+        print("\n=== User List ===")
+        for user in users:
+            print(f"  {user['id']}. {user['name']} ({user['email']})")
+        print("================\n")
+
+    def show_user_details(self, user):
+        if user:
+            print(f"\nID: {user['id']}")
+            print(f"Name: {user['name']}")
+            print(f"Email: {user['email']}")
+            print(f"Created: {user['created_at']}\n")
+        else:
+            print("User not found.\n")
+
+    def get_user_input(self) -> dict:
+        name = input("Enter name: ")
+        email = input("Enter email: ")
+        return {"name": name, "email": email}
+
+class UserHTMLView(Observer):
+    def update(self, event: str, data):
+        if event == "user_created":
+            self._render_user_row(data)
+
+    def render_user_table(self, users):
+        html = "<table>\n<thead>\n<tr><th>ID</th><th>Name</th><th>Email</th></tr>\n</thead>\n<tbody>\n"
+        for user in users:
+            html += f"  <tr><td>{user['id']}</td><td>{user['name']}</td><td>{user['email']}</td></tr>\n"
+        html += "</tbody>\n</table>"
+        return html
+
+    def _render_user_row(self, user):
+        print(f"Appending row for {user['name']} to HTML table")
+
+class UserJSONView(Observer):
+    def update(self, event: str, data):
+        if event == "user_created":
+            print(f"[JSON] {json.dumps(data, indent=2)}")
+
+    def render(self, users):
+        return json.dumps(users, indent=2)
+```
+
+## Controller
+### What It Is
+The Controller handles user input, interprets it, and updates the Model or View accordingly. It acts as the intermediary between the View and Model, containing the application logic for responding to user actions.
+
+### Why It Is Important
+The Controller decouples input handling from presentation and data logic. It coordinates the application flow, validates input, and decides which View to display.
+
+### How It Works Internally
+The Controller receives user actions from the View, translates them into Model operations, and updates the View with results. It may also handle navigation, authentication, and other cross-cutting concerns.
+
+```python
+class UserController:
+    def __init__(self, model: UserModel, view: UserConsoleView):
+        self._model = model
+        self._view = view
+        self._model.add_observer(self._view)
+
+    def list_users(self):
+        users = self._model.get_all_users()
+        self._view.show_users(users)
+
+    def show_user(self, user_id: int):
+        user = self._model.get_user(user_id)
+        self._view.show_user_details(user)
+
+    def create_user(self):
+        data = self._view.get_user_input()
+        self._validate_user_data(data)
+        user = self._model.create_user(data["name"], data["email"])
+        return user
+
+    def delete_user(self, user_id: int):
+        if self._model.delete_user(user_id):
+            print(f"User {user_id} deleted successfully.")
+
+    def _validate_user_data(self, data):
+        if not data.get("name") or not data.get("email"):
+            raise ValueError("Name and email are required")
+        if "@" not in data["email"]:
+            raise ValueError("Invalid email format")
 
 class ProductController:
-    def __init__(self, model: ProductModel, view: ProductView):
+    def __init__(self, model: ProductModel, view):
         self._model = model
         self._view = view
 
-    def index(self, request: Request) -> Response:
-        products = self._model.all()
-        return Response(200, self._view.render_list(products))
+    def add_product(self, name: str, price: float, quantity: int):
+        if price < 0:
+            raise ValueError("Price cannot be negative")
+        product = self._model.add_product(name, price, quantity)
+        return product
 
-    def show(self, request: Request) -> Response:
-        product_id = int(request.params.get("id", 0))
-        product = self._model.get(product_id)
+    def check_stock(self, product_id: int, requested: int) -> bool:
+        product = self._model.get_product(product_id)
         if not product:
-            return Response(404, self._view.render_error("Product not found"))
-        return Response(200, self._view.render_product(product))
-
-    def create(self, request: Request) -> Response:
-        name = request.body.get("name")
-        price = request.body.get("price")
-        if not name or price is None:
-            return Response(400, self._view.render_error("Name and price required"))
-        product = self._model.create(name, float(price))
-        return Response(201, self._view.render_product(product))
-
-    def update(self, request: Request) -> Response:
-        product_id = int(request.params.get("id", 0))
-        product = self._model.update(product_id, **request.body)
-        if not product:
-            return Response(404, self._view.render_error("Product not found"))
-        return Response(200, self._view.render_product(product))
-
-    def delete(self, request: Request) -> Response:
-        product_id = int(request.params.get("id", 0))
-        if self._model.delete(product_id):
-            return Response(204, "")
-        return Response(404, self._view.render_error("Product not found"))
-
-
-model = ProductModel()
-view = ProductView()
-ctrl = ProductController(model, view)
-router = Router()
-
-router.add("GET", "/products", ctrl.index)
-router.add("GET", r"/products/(?P<id>\d+)", ctrl.show)
-router.add("POST", "/products", ctrl.create)
-router.add("PUT", r"/products/(?P<id>\d+)", ctrl.update)
-router.add("DELETE", r"/products/(?P<id>\d+)", ctrl.delete)
-
-print(router.dispatch(Request("GET", "/products")))
-print(router.dispatch(Request("GET", "/products/1")))
-print(router.dispatch(Request("POST", "/products", {"name": "Keyboard", "price": 79.99})))
-print(router.dispatch(Request("DELETE", "/products/999")))
+            return False
+        return product["quantity"] >= requested
 ```
 
-## Advanced Examples
+## Separation of concerns
+### What It Is
+Separation of concerns (SoC) divides a program into distinct sections, each addressing a separate concern. In MVC, the Model handles data, the View handles presentation, and the Controller handles interaction logic.
+
+### Why It Is Important
+SoC enables independent development, testing, and modification of each component. Changes to one concern (e.g., switching from console to web UI) don't affect others. Teams can work on different components in parallel.
+
+### How It Works Internally
+Communication between components follows strict rules:
+- Model <-> View: View subscribes to Model changes (Observer pattern)
+- Controller -> Model: Controller updates Model directly
+- Controller -> View: Controller tells View what to display
+- View -> Controller: View forwards user input events to Controller
 
 ```python
-# MVVM pattern (Model-View-ViewModel)
-import tkinter as tk
-from typing import Any, Dict, List, Callable
-
-
-class ObservableProperty:
-    def __init__(self, default=None):
-        self._value = default
-        self._observers: List[Callable] = []
-
-    def observe(self, callback: Callable):
-        self._observers.append(callback)
-
-    @property
-    def value(self):
-        return self._value
-
-    @value.setter
-    def value(self, new_value):
-        old = self._value
-        self._value = new_value
-        for cb in self._observers:
-            cb(new_value, old)
-
-
-class UserModel:
+# Clean separation example
+class MVCApplication:
     def __init__(self):
-        self.name = ObservableProperty("")
-        self.email = ObservableProperty("")
-        self.age = ObservableProperty(0)
+        self._model = UserModel()
+        self._view = UserConsoleView()
+        self._controller = UserController(self._model, self._view)
 
-    def validate(self) -> List[str]:
-        errors = []
-        if not self.name.value:
-            errors.append("Name is required")
-        if "@" not in self.email.value:
-            errors.append("Invalid email")
-        if self.age.value < 0 or self.age.value > 150:
-            errors.append("Invalid age")
-        return errors
+    def run(self):
+        while True:
+            action = input("Action (list/show/create/delete/quit): ").strip().lower()
+            try:
+                if action == "quit":
+                    break
+                elif action == "list":
+                    self._controller.list_users()
+                elif action == "show":
+                    user_id = int(input("User ID: "))
+                    self._controller.show_user(user_id)
+                elif action == "create":
+                    self._controller.create_user()
+                elif action == "delete":
+                    user_id = int(input("User ID: "))
+                    self._controller.delete_user(user_id)
+                else:
+                    print("Unknown action")
+            except Exception as e:
+                print(f"Error: {e}")
 
+# Usage
+app = MVCApplication()
+app.run()
+```
+
+## MVVM (Model-View-ViewModel)
+### What It Is
+MVVM is an evolution of MVC popularized by Microsoft for WPF/Silverlight. The ViewModel replaces the Controller, acting as a specialized intermediary that exposes data from the Model in a form suitable for the View, often using data binding.
+
+### Why It Is Important
+MVVM enables a more declarative UI approach where Views bind directly to ViewModel properties. This reduces boilerplate code and enables two-way data binding, making UIs more responsive and easier to maintain.
+
+### How It Works Internally
+The ViewModel converts Model data into View-friendly formats and exposes commands for View actions. Data binding mechanisms automatically synchronize the View and ViewModel. The ViewModel has no reference to the View (unlike MVC's Controller that may update the View directly).
+
+```python
+from typing import List, Callable
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 class UserViewModel:
     def __init__(self, model: UserModel):
         self._model = model
-        self.name = ""
-        self.email = ""
-        self.age = 0
-        self.errors: List[str] = []
-        self.on_errors_changed: Callable = None
+        self._on_users_changed: List[Callable] = []
+        self._selected_user = None
 
-    def save(self) -> bool:
-        self._model.name.value = self.name
-        self._model.email.value = self.email
-        self._model.age.value = self.age
-        self.errors = self._model.validate()
-        if self.on_errors_changed:
-            self.on_errors_changed(self.errors)
-        return len(self.errors) == 0
+    @property
+    def users(self):
+        return self._model.get_all_users()
 
+    @property
+    def selected_user(self):
+        return self._selected_user
 
+    @selected_user.setter
+    def selected_user(self, user):
+        self._selected_user = user
+        self._notify_property_changed("selected_user")
+
+    def bind(self, callback):
+        self._on_users_changed.append(callback)
+
+    def _notify(self, event, data=None):
+        for callback in self._on_users_changed:
+            callback()
+
+    def _notify_property_changed(self, property_name):
+        pass
+
+    def create_user(self, name: str, email: str):
+        self._model.create_user(name, email)
+        self._notify("users_changed")
+
+    def delete_user(self, user_id: int):
+        self._model.delete_user(user_id)
+        self._notify("users_changed")
+
+    def get_user_display_text(self, user_id: int) -> str:
+        user = self._model.get_user(user_id)
+        if user:
+            return f"{user['name']} ({user['email']})"
+        return ""
+
+# View (Tkinter)
 class UserView:
     def __init__(self, view_model: UserViewModel):
         self._vm = view_model
-        self._vm.on_errors_changed = self.show_errors
+        self._vm.bind(self._refresh)
 
-    def show_errors(self, errors: List[str]):
-        if errors:
-            print("Validation errors:")
-            for e in errors:
-                print(f"  - {e}")
-        else:
-            print("User saved successfully!")
+        self.root = tk.Tk()
+        self.root.title("User Manager")
+        self.root.geometry("500x400")
 
+        # Listbox
+        self.listbox = tk.Listbox(self.root)
+        self.listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.listbox.bind('<<ListboxSelect>>', self._on_select)
 
+        # Entry fields
+        frame = ttk.Frame(self.root)
+        frame.pack(fill=tk.X, padx=10)
+
+        ttk.Label(frame, text="Name:").grid(row=0, column=0, sticky=tk.W)
+        self.name_entry = ttk.Entry(frame)
+        self.name_entry.grid(row=0, column=1, padx=5, pady=2, sticky=tk.EW)
+
+        ttk.Label(frame, text="Email:").grid(row=1, column=0, sticky=tk.W)
+        self.email_entry = ttk.Entry(frame)
+        self.email_entry.grid(row=1, column=1, padx=5, pady=2, sticky=tk.EW)
+
+        frame.columnconfigure(1, weight=1)
+
+        # Buttons
+        button_frame = ttk.Frame(self.root)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        ttk.Button(button_frame, text="Add", command=self._add_user).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Delete", command=self._delete_user).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Refresh", command=self._refresh).pack(side=tk.LEFT, padx=5)
+
+    def _refresh(self):
+        self.listbox.delete(0, tk.END)
+        for user in self._vm.users:
+            self.listbox.insert(tk.END, f"{user['name']} ({user['email']})")
+
+    def _on_select(self, event):
+        selection = self.listbox.curselection()
+        if selection:
+            index = selection[0]
+            user = self._vm.users[index]
+            self._vm.selected_user = user
+
+    def _add_user(self):
+        name = self.name_entry.get().strip()
+        email = self.email_entry.get().strip()
+        if name and email:
+            self._vm.create_user(name, email)
+            self.name_entry.delete(0, tk.END)
+            self.email_entry.delete(0, tk.END)
+
+    def _delete_user(self):
+        if self._vm.selected_user:
+            self._vm.delete_user(self._vm.selected_user["id"])
+            self._vm.selected_user = None
+
+    def run(self):
+        self._refresh()
+        self.root.mainloop()
+
+# Usage
 model = UserModel()
-vm = UserViewModel(model)
-view = UserView(vm)
-
-vm.name = "Alice"
-vm.email = "invalid"
-vm.age = 200
-vm.save()
-
-vm.email = "alice@example.com"
-vm.age = 30
-vm.save()
+view_model = UserViewModel(model)
+view = UserView(view_model)
+# view.run()
 ```
 
+### Django MVT (Model-View-Template)
 ```python
-# Django-style MTV (Model-Template-View)
-class MTVModel:
-    def __init__(self):
-        self._data = {}
+"""
+Django's interpretation of MVC:
+- Model: Database schema and business logic (models.py)
+- View: Controller equivalent (views.py)
+- Template: View equivalent (HTML templates)
 
-    def save(self):
-        print(f"[DB] Saved: {self._data}")
+# models.py
+from django.db import models
 
-    def to_dict(self) -> dict:
-        return dict(self._data)
+class User(models.Model):
+    name = models.CharField(max_length=100)
+    email = models.EmailField(unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self):
+        return self.name
 
-class ArticleModel(MTVModel):
-    def __init__(self, title: str, content: str, author: str):
-        super().__init__()
-        self._data = {
-            "title": title,
-            "content": content,
-            "author": author,
-            "published": False,
-            "views": 0,
-        }
+# views.py
+from django.shortcuts import render, get_object_or_404
+from django.http import JsonResponse
+from .models import User
 
-    def publish(self):
-        self._data["published"] = True
-        self.save()
+def user_list(request):
+    users = User.objects.all()
+    return render(request, 'users/list.html', {'users': users})
 
-    def view(self):
-        self._data["views"] += 1
+def user_detail(request, user_id):
+    user = get_object_or_404(User, id=user_id)
+    return render(request, 'users/detail.html', {'user': user})
 
-
-class Template:
-    def render(self, context: dict) -> str:
-        raise NotImplementedError
-
-
-class ArticleTemplate(Template):
-    def render(self, context: dict) -> str:
-        article = context["article"]
-        published = "Published" if article["published"] else "Draft"
-        return f"""
-<html>
-<head><title>{article['title']}</title></head>
-<body>
-  <h1>{article['title']}</h1>
-  <p>By {article['author']} | Status: {published}</p>
-  <p>Views: {article['views']}</p>
-  <article>{article['content']}</article>
-</body>
-</html>"""
-
-
-class ArticleListView(Template):
-    def render(self, context: dict) -> str:
-        articles = context["articles"]
-        items = "\n".join(
-            f"<li><a href='/article/{a['title']}'>{a['title']}</a> by {a['author']}</li>"
-            for a in articles
+def user_create(request):
+    if request.method == 'POST':
+        user = User.objects.create(
+            name=request.POST['name'],
+            email=request.POST['email']
         )
-        return f"<html><body><ul>{items}</ul></body></html>"
+        return JsonResponse({'id': user.id, 'name': user.name, 'email': user.email})
+    return render(request, 'users/create.html')
 
-
-class View:
-    def get(self, request: Request, **kwargs) -> Response:
-        raise NotImplementedError
-
-
-class ArticleDetailView(View):
-    def __init__(self, model_class, template: Template):
-        self._model_class = model_class
-        self._template = template
-
-    def get(self, request: Request, **kwargs) -> Response:
-        article = self._model_class("Sample", "Hello World", "Alice")
-        article.view()
-        html = self._template.render({"article": article.to_dict()})
-        return Response(200, html)
-
-
-class ArticleListView(View):
-    def __init__(self, template: Template):
-        self._template = template
-
-    def get(self, request: Request, **kwargs) -> Response:
-        articles = [
-            ArticleModel("Post 1", "Content 1", "Alice"),
-            ArticleModel("Post 2", "Content 2", "Bob"),
-        ]
-        html = self._template.render({
-            "articles": [a.to_dict() for a in articles]
-        })
-        return Response(200, html)
-
-
-detail_view = ArticleDetailView(ArticleModel, ArticleTemplate())
-list_view = ArticleListView(ArticleListView())
-
-router2 = Router()
-router2.add("GET", "/article/(?P<title>\\w+)", detail_view.get)
-router2.add("GET", "/articles", list_view.get)
-
-print(router2.dispatch(Request("GET", "/articles")))
+# templates/users/list.html
+# <ul>
+# {% for user in users %}
+#   <li>{{ user.name }} - {{ user.email }}</li>
+# {% endfor %}
+# </ul>
+"""
 ```
 
+### Flask MVC Example
 ```python
-# FastAPI-style MVC
-from dataclasses import dataclass
-from typing import List, Optional
+"""
+Flask application with MVC structure
 
+app/
+├── __init__.py
+├── models/
+│   ├── __init__.py
+│   └── user.py
+├── views/
+│   ├── __init__.py
+│   └── user_views.py
+├── controllers/
+│   ├── __init__.py
+│   └── user_controller.py
+├── templates/
+│   └── users/
+│       ├── list.html
+│       └── form.html
+└── static/
+"""
 
-@dataclass
-class Item:
-    id: int
-    name: str
-    price: float
-    in_stock: bool = True
-
-
-class ItemModel:
-    def __init__(self):
-        self._items = [
-            Item(1, "Laptop", 999.99),
-            Item(2, "Mouse", 29.99),
-            Item(3, "Keyboard", 79.99, in_stock=False),
-        ]
-        self._next_id = 4
-
-    def list_items(self) -> List[Item]:
-        return self._items
-
-    def get_item(self, item_id: int) -> Optional[Item]:
-        for item in self._items:
-            if item.id == item_id:
-                return item
-        return None
-
-    def create_item(self, name: str, price: float) -> Item:
-        item = Item(self._next_id, name, price)
-        self._items.append(item)
-        self._next_id += 1
-        return item
-
-    def update_item(self, item_id: int, **kwargs) -> Optional[Item]:
-        item = self.get_item(item_id)
-        if item:
-            for k, v in kwargs.items():
-                if hasattr(item, k):
-                    setattr(item, k, v)
-        return item
-
-    def delete_item(self, item_id: int) -> bool:
-        item = self.get_item(item_id)
-        if item:
-            self._items.remove(item)
-            return True
-        return False
-
-
-class ItemSchema:
-    @staticmethod
-    def to_dict(item: Item) -> dict:
-        return {"id": item.id, "name": item.name, "price": item.price, "in_stock": item.in_stock}
-
-    @staticmethod
-    def to_json(items) -> str:
-        if isinstance(items, list):
-            return json.dumps([ItemSchema.to_dict(i) for i in items], indent=2)
-        return json.dumps(ItemSchema.to_dict(items), indent=2)
-
-
-class ItemService:
-    def __init__(self, model: ItemModel):
-        self._model = model
-
-    def search(self, query: str = None, min_price: float = None, max_price: float = None) -> List[Item]:
-        items = self._model.list_items()
-        if query:
-            items = [i for i in items if query.lower() in i.name.lower()]
-        if min_price is not None:
-            items = [i for i in items if i.price >= min_price]
-        if max_price is not None:
-            items = [i for i in items if i.price <= max_price]
-        return items
-
-
-class ItemController:
-    def __init__(self, model: ItemModel, service: ItemService):
-        self._model = model
-        self._service = service
-
-    def list_all(self, request: Request) -> Response:
-        query = request.body.get("query")
-        min_price = request.body.get("min_price")
-        max_price = request.body.get("max_price")
-        items = self._service.search(query, min_price, max_price)
-        return Response(200, ItemSchema.to_json(items))
-
-    def get(self, request: Request) -> Response:
-        item = self._model.get_item(int(request.params["id"]))
-        if not item:
-            return Response(404, json.dumps({"error": "Item not found"}))
-        return Response(200, ItemSchema.to_json(item))
-
-    def create(self, request: Request) -> Response:
-        name = request.body.get("name")
-        price = request.body.get("price")
-        if not name or price is None:
-            return Response(400, json.dumps({"error": "Name and price required"}))
-        item = self._model.create_item(name, float(price))
-        return Response(201, ItemSchema.to_json(item))
-
-    def update(self, request: Request) -> Response:
-        item = self._model.update_item(int(request.params["id"]), **request.body)
-        if not item:
-            return Response(404, json.dumps({"error": "Item not found"}))
-        return Response(200, ItemSchema.to_json(item))
-
-    def delete(self, request: Request) -> Response:
-        if self._model.delete_item(int(request.params["id"])):
-            return Response(204, "")
-        return Response(404, json.dumps({"error": "Item not found"}))
-
-
-model = ItemModel()
-service = ItemService(model)
-ctrl = ItemController(model, service)
-router3 = Router()
-
-router3.add("GET", "/api/items", ctrl.list_all)
-router3.add("GET", r"/api/items/(?P<id>\d+)", ctrl.get)
-router3.add("POST", "/api/items", ctrl.create)
-router3.add("PUT", r"/api/items/(?P<id>\d+)", ctrl.update)
-router3.add("DELETE", r"/api/items/(?P<id>\d+)", ctrl.delete)
-
-print(router3.dispatch(Request("GET", "/api/items")))
-print(router3.dispatch(Request("POST", "/api/items", {"name": "Monitor", "price": 299.99})))
-```
-
-## Real-World Use Cases
-
-```python
-# Flask-style MVC structure
 # models/user.py
 class User:
     def __init__(self, db):
-        self._db = db
-        self._table = "users"
+        self.db = db
 
-    def find_by_id(self, user_id: int) -> Optional[dict]:
-        return self._db.query(f"SELECT * FROM {self._table} WHERE id = ?", (user_id,))
+    def get_all(self):
+        return self.db.execute("SELECT * FROM users").fetchall()
 
-    def find_by_email(self, email: str) -> Optional[dict]:
-        return self._db.query(f"SELECT * FROM {self._table} WHERE email = ?", (email,))
+    def get_by_id(self, user_id):
+        return self.db.execute(
+            "SELECT * FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
 
-    def create(self, name: str, email: str) -> int:
-        return self._db.execute(
-            f"INSERT INTO {self._table} (name, email) VALUES (?, ?)",
-            (name, email),
+    def create(self, name, email):
+        cursor = self.db.execute(
+            "INSERT INTO users (name, email) VALUES (?, ?)", (name, email)
         )
-
-    def update(self, user_id: int, **kwargs) -> bool:
-        if not kwargs:
-            return False
-        sets = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values()) + [user_id]
-        return self._db.execute(
-            f"UPDATE {self._table} SET {sets} WHERE id = ?", values
-        )
-
-
-# views/user_view.py
-class UserTemplate:
-    def render_profile(self, user: dict) -> str:
-        return f"""
-        <div class="profile">
-            <h2>{user['name']}</h2>
-            <p>Email: {user['email']}</p>
-        </div>"""
-
-    def render_list(self, users: List[dict]) -> str:
-        items = "".join(
-            f"<li><a href='/users/{u['id']}'>{u['name']}</a></li>"
-            for u in users
-        )
-        return f"<ul>{items}</ul>"
-
+        self.db.commit()
+        return cursor.lastrowid
 
 # controllers/user_controller.py
+from flask import Blueprint, render_template, request, redirect, url_for
+
+user_bp = Blueprint('users', __name__)
+
 class UserController:
-    def __init__(self, user_model, template):
-        self._model = user_model
-        self._template = template
+    def __init__(self, model):
+        self.model = model
 
-    def show(self, user_id: int) -> str:
-        user = self._model.find_by_id(user_id)
-        if not user:
-            return "<h1>404 Not Found</h1>"
-        return self._template.render_profile(user)
+    def list_users(self):
+        users = self.model.get_all()
+        return render_template('users/list.html', users=users)
 
-    def register(self, name: str, email: str) -> str:
-        existing = self._model.find_by_email(email)
-        if existing:
-            return "<h1>Email already registered</h1>"
-        user_id = self._model.create(name, email)
-        return f"<h1>User created with ID {user_id}</h1>"
+    def create_user(self):
+        if request.method == 'POST':
+            name = request.form['name']
+            email = request.form['email']
+            self.model.create(name, email)
+            return redirect(url_for('users.list'))
+        return render_template('users/form.html')
+
+# views/user_views.py
+@user_bp.route('/users')
+def list():
+    controller = UserController(User(get_db()))
+    return controller.list_users()
+
+@user_bp.route('/users/create', methods=['GET', 'POST'])
+def create():
+    controller = UserController(User(get_db()))
+    return controller.create_user()
 ```
 
-```python
-# Django MTV architecture simulation
-# Django's MTV: Model defines data, Template renders HTML, View handles logic
-class DjangoLikeModel:
-    class Meta:
-        table_name = ""
+### Real-World Use Cases
+- Web frameworks (Django, Flask, Rails, Spring MVC)
+- Desktop applications (Qt, Tkinter, WPF)
+- Mobile apps (iOS, Android)
+- Single-page applications (React, Angular, Vue)
+- Game development (entity-component systems)
+- Data visualization dashboards
 
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+### Common Mistakes
+- Putting business logic in Views or Controllers
+- Making Models too anemic (just data without behavior)
+- Tight coupling between components
+- Controller becoming a "god object" with too much responsibility
+- Not using Observer pattern for Model-View communication
+- Mixing presentation logic with business logic
 
-    def save(self):
-        fields = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
-        print(f"[ORM] SAVED {self.Meta.table_name}: {fields}")
+### Best Practices
+- Keep Models rich with business logic (domain-driven design)
+- Keep Views dumb (only presentation logic)
+- Keep Controllers/ViewModels thin (coordination only)
+- Use dependency injection for component communication
+- Implement Observer pattern for Model updates
+- Use services for complex business logic that spans multiple Models
 
-    @classmethod
-    def objects_all(cls):
-        return cls._mock_db.get(cls.Meta.table_name, [])
+### Performance Considerations
+- Observer notifications can cause cascading updates
+- Two-way data binding in MVVM can create overhead
+- Thick Views (complex UI) can slow rendering
+- Caching in ViewModel can improve performance
+- Lazy loading helps manage memory in data-heavy applications
 
-    @classmethod
-    def objects_filter(cls, **kwargs):
-        results = cls.objects_all()
-        for k, v in kwargs.items():
-            results = [r for r in results if getattr(r, k, None) == v]
-        return results
+### Interview Questions
+1. Explain the responsibilities of Model, View, and Controller.
+2. How does MVVM differ from MVC?
+3. What is the role of the Controller in a web application?
+4. How does Django's MVT compare to classic MVC?
+5. Explain how data binding works in MVVM.
 
+### Coding Challenges
+1. Implement a simple MVC to-do list application
+2. Build a note-taking app with MVVM architecture
+3. Create a Django-like MVT framework from scratch
+4. Convert a monolithic script into MVC architecture
 
-class BlogPost(DjangoLikeModel):
-    class Meta:
-        table_name = "blog_posts"
-
-    _mock_db = {"blog_posts": []}
-
-    def __init__(self, title="", content="", author=""):
-        super().__init__(title=title, content=content, author=author)
-        self.id = len(self._mock_db["blog_posts"]) + 1
-
-
-def populate_db():
-    posts = [
-        BlogPost(title="First Post", content="Hello World", author="Alice"),
-        BlogPost(title="Second Post", content="MVC is great", author="Bob"),
-    ]
-    for p in posts:
-        p.save()
-        BlogPost._mock_db["blog_posts"].append(p)
-
-
-class DjangoTemplate:
-    def render(self, template_name: str, context: dict) -> str:
-        if template_name == "blog/list.html":
-            posts = context.get("posts", [])
-            items = "\n".join(
-                f"<h2><a href='/post/{p.id}/'>{p.title}</a></h2>"
-                f"<p>By {p.author}</p>"
-                for p in posts
-            )
-            return f"<html><body><h1>Blog</h1>{items}</body></html>"
-
-        elif template_name == "blog/detail.html":
-            post = context.get("post")
-            return (
-                f"<html><body>"
-                f"<h1>{post.title}</h1>"
-                f"<p>By {post.author}</p>"
-                f"<article>{post.content}</article>"
-                f"</body></html>"
-            )
-        return "<html><body><h1>Template not found</h1></body></html>"
-
-
-class DjangoView:
-    def __init__(self, template: DjangoTemplate):
-        self._template = template
-
-    def get(self, request: Request, **kwargs):
-        raise NotImplementedError
-
-
-class BlogListView(DjangoView):
-    def get(self, request: Request, **kwargs):
-        posts = BlogPost.objects_all()
-        html = self._template.render("blog/list.html", {"posts": posts})
-        return Response(200, html)
-
-
-class BlogDetailView(DjangoView):
-    def get(self, request: Request, **kwargs):
-        post_id = int(kwargs.get("id", 0))
-        posts = BlogPost.objects_filter(id=post_id)
-        if not posts:
-            return Response(404, "<h1>Not Found</h1>")
-        html = self._template.render("blog/detail.html", {"post": posts[0]})
-        return Response(200, html)
-
-
-populate_db()
-template = DjangoTemplate()
-router4 = Router()
-router4.add("GET", "/", BlogListView(template).get)
-router4.add("GET", r"/post/(?P<id>\d+)/", BlogDetailView(template).get)
-
-print(router4.dispatch(Request("GET", "/")))
-print(router4.dispatch(Request("GET", "/post/1/")))
-```
-
-## Common Mistakes
-
-```python
-# MISTAKE 1: Fat controller with business logic
-class FatController:
-    def save_user(self, data):
-        # Validation
-        if not data.get("name"):
-            return "Error"
-        # Business logic
-        self.send_email(data["email"])
-        # Database logic
-        self.db.save(data)
-        # View logic
-        return self.view.render(data)
-```
-
-```python
-# MISTAKE 2: Model leaking into view directly
-class BadView:
-    def render(self):
-        # View should not know about database
-        return str(Model._db.query("SELECT * FROM users"))
-```
-
-```python
-# MISTAKE 3: Tight coupling between components
-class TightController:
-    def __init__(self):
-        self.model = UserModel()  # Hard-coded!
-        self.view = HTMLView()    # Hard-coded!
-```
-
-## Best Practices
-
-```python
-# 1. Keep models focused on data and business rules
-# 2. Controllers should be thin — delegate to services
-# 3. Views should only handle presentation logic
-# 4. Use dependency injection for loose coupling
-# 5. Follow consistent naming conventions
-# 6. Use services layer for complex business logic
-# 7. Keep models testable without views
-```
-
-```python
-# Best practice: Service layer between controller and model
-class UserService:
-    def __init__(self, user_repo, email_service):
-        self._repo = user_repo
-        self._email = email_service
-
-    def register(self, name, email):
-        if self._repo.find_by_email(email):
-            raise ValueError("Email exists")
-        user = self._repo.create(name, email)
-        self._email.send_welcome(email)
-        return user
-```
-
-## Interview Questions
-
-```python
-# Q1: MVC vs MVVM vs MVP?
-# MVC: Controller handles input, updates Model, selects View
-# MVVM: ViewModel exposes data/commands for binding
-# MVP: Presenter handles all UI logic, View is passive
-```
-
-```python
-# Q2: Why separate Model, View, and Controller?
-# Separation of concerns, testability, maintainability,
-# parallel development, multiple views per model
-```
-
-```python
-# Q3: Django MTV vs classic MVC?
-# Django's Model = Model, Template = View, View = Controller
-# Same separation, different naming convention
-```
-
-```python
-# Q4: How does MVC support testing?
-# Models testable independently
-# Controllers testable with mock models/views
-# Views can be tested with mock data
-```
-
-## Coding Challenges
-
-```python
-# Challenge 1: Build a complete MVC todo app with
-# add, edit, delete, complete, and filter capabilities
-```
-
-```python
-# Challenge 2: Implement MVVM with data binding
-# that auto-updates the view when model changes
-```
-
-```python
-# Challenge 3: Create a REST API following MVC
-# with proper separation of concerns
-```
-
-```python
-# Challenge 4: Build a miniature web framework
-# with URL routing, controllers, and template rendering
-```
-
-```python
-# Challenge 5: Refactor a monolithic application
-# into MVC layers without changing functionality
-```
-
-## Summary
-
-MVC separates applications into Model (data/business logic), View (presentation), and Controller (input handling/coordination). This separation enables modular, testable, and maintainable code. Python web frameworks like Django (MTV) and Flask (flexible) implement MVC variants. MVVM is common in GUI applications with data binding. The key principle is separation of concerns — each component has a distinct responsibility and communicates through well-defined interfaces.
-
-## Related Topics
-
-- Observer Pattern: Often used for Model-View synchronization
-- Command Pattern: Can be used for Controller actions
-- Strategy Pattern: Controllers can use strategies for request handling
-- Template Method: Used in framework base classes
-- Service Layer: Between Controller and Model for business logic
-- Dependency Injection: Decouples MVC components
+### Related Topics
+- Observer pattern
+- Strategy pattern
+- Dependency injection
+- Three-tier architecture
+- Domain-driven design
+- RESTful API design
+- Frontend frameworks (React, Vue, Angular)

@@ -1,698 +1,1175 @@
 # Standard Library - os, sys, re, math, datetime, random, subprocess
-
 ## Introduction
+Python's standard library is one of its greatest strengths — a vast collection of modules included with every Python installation that provides ready-to-use functionality for file I/O, system interaction, text processing, mathematics, date/time manipulation, random generation, and process management. This file covers seven essential modules that every Python developer should master.
 
-Python's standard library is a vast collection of modules and packages that come bundled with every Python installation. It provides ready-to-use solutions for common programming tasks, from file I/O and string processing to networking, data serialization, and system interaction.
+## os module
+### What It Is
+The `os` module provides a portable interface to operating system functionality. It abstracts OS-specific differences (Windows, Linux, macOS) behind a unified Python API for tasks such as file/directory manipulation, environment variables, process management, and path handling.
 
-## Why It Is Important
+### Why It Is Important
+Using `os` instead of shell commands or platform-specific code makes Python scripts cross-platform. It is the foundational tool for interacting with the underlying operating system in a structured, programmatic way.
 
-The standard library eliminates the need to write everything from scratch or immediately reach for third-party packages. It is tested, documented, and guaranteed to be available wherever Python runs, making code more portable, maintainable, and secure.
+### How It Works Internally
+The `os` module is implemented in C (`posixmodule.c` on Unix, `_winapi.c` on Windows). It calls native OS system calls (e.g., `CreateFileW` on Windows, `open/read/write` on POSIX) via Python's C API. The module detects the platform at import time and exposes the appropriate implementation — `os` is actually a loader that imports `posix` or `nt` depending on `sys.platform`.
 
-## Syntax
-
+### Syntax
 ```python
-import module_name
-from module_name import function_name
-from module_name import function_one, function_two
-from module_name import name as alias
-import module_name.submodule
+import os
+os.getcwd()          # current working directory
+os.listdir(".")      # list directory contents
+os.mkdir("newdir")   # create directory
+os.remove("file")    # delete file
+os.rename("old", "new")
+os.environ           # dict of environment variables
+os.getenv("HOME")    # get env var or None
 ```
 
-## Examples
-
-### os — Operating System Interface
-
+### Beginner Examples
 ```python
 import os
 
 cwd = os.getcwd()
-print(f"Current working directory: {cwd}")
+print(f"Current directory: {cwd}")
 
-os.makedirs("temp_dir", exist_ok=True)
-print(f"Created temp_dir: {os.path.exists('temp_dir')}")
+items = os.listdir(".")
+for item in items:
+    print(item)
 
-os.rmdir("temp_dir")
-print(f"Removed temp_dir: {os.path.exists('temp_dir')}")
-
-all_files = os.listdir(".")
-print(f"Number of items in CWD: {len(all_files)}")
-
-env_path = os.environ.get("PATH", "")
-print(f"PATH variable length: {len(env_path)} chars")
+os.makedirs("data/logs/2025", exist_ok=True)
+print("Directories created")
 ```
 
-### sys — System-Specific Parameters
+### Intermediate Examples
+```python
+import os
 
+def walk_and_print(root_dir):
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        level = dirpath.replace(root_dir, "").count(os.sep)
+        indent = " " * 2 * level
+        print(f"{indent}{os.path.basename(dirpath)}/")
+        sub_indent = " " * 2 * (level + 1)
+        for f in filenames:
+            full = os.path.join(dirpath, f)
+            size = os.path.getsize(full)
+            print(f"{sub_indent}{f} ({size} bytes)")
+
+walk_and_print(".")
+
+# Environment variables
+db_url = os.getenv("DATABASE_URL", "sqlite:///default.db")
+debug = os.getenv("DEBUG", "0") == "1"
+os.environ["MY_APP_MODE"] = "production"
+```
+
+### Advanced Examples
+```python
+import os
+import tempfile
+
+# Low-level file descriptor operations
+fd = os.open("test.bin", os.O_RDWR | os.O_CREAT, 0o644)
+os.write(fd, b"hello world")
+os.lseek(fd, 0, os.SEEK_SET)
+data = os.read(fd, 5)
+os.close(fd)
+
+# Fork (Unix only)
+pid = os.fork()
+if pid == 0:
+    print(f"Child process: {os.getpid()}")
+    os._exit(0)
+else:
+    print(f"Parent process, child PID: {pid}")
+    os.waitpid(pid, 0)
+
+# Temporary file with automatic cleanup
+with tempfile.TemporaryDirectory() as tmpdir:
+    path = os.path.join(tmpdir, "tmp.txt")
+    os.write(os.open(path, os.O_CREAT | os.O_WRONLY), b"data")
+    print(os.listdir(tmpdir))
+
+# Symbolic links
+try:
+    os.symlink("target.txt", "link.txt")
+    print(f"Symlink target: {os.readlink('link.txt')}")
+except OSError:
+    print("Symlinks not supported on this platform")
+```
+
+### Real-World Use Cases
+- **Build scripts** that must work on both Windows CI and Linux production
+- **Log rotation** — renaming, compressing, deleting old log files by age
+- **Configuration management** — reading environment variables for secrets
+- **Directory watchers** — polling `os.listdir` or `os.scandir` for changes
+- **Cross-platform installers** — creating directory structures and symlinks
+
+### Common Mistakes
+- Using `os.system("rm -rf ...")` instead of `os.remove/os.rmdir` — not cross-platform
+- Forgetting `exist_ok=True` on `os.makedirs`, causing race conditions
+- Assuming `os.listdir` returns full paths — it returns basenames
+- Using `os.getcwd()` result after changing directory in another thread
+
+### Best Practices
+- Prefer `os.path.join` over string concatenation for paths
+- Use `os.path.exists`, `os.path.isfile`, `os.path.isdir` for type checks
+- For directory iteration, `os.scandir` is faster than `os.listdir` + `os.path.isdir`
+- Use `pathlib.Path` for modern, object-oriented path handling (Python 3.4+)
+- Protect file operations with `try/except OSError`
+
+### Performance Considerations
+- `os.scandir` reduces syscalls by retrieving file attributes in one call
+- `os.walk` internally uses `scandir` for efficient traversal
+- Repeated `os.stat` calls are expensive — cache results when possible
+- `os.listdir` on very large directories can be memory-intensive
+
+### Interview Questions
+1. What is the difference between `os.mkdir` and `os.makedirs`?
+2. How would you recursively calculate total directory size using `os.walk`?
+3. Explain how `os.path.join` handles absolute path components.
+4. What does `os.fork()` do and when is it used?
+
+### Coding Challenges
+- Write a function that finds the 5 largest files in a directory tree
+- Implement a `rmtree` replacement that logs all deletions
+- Build a cross-platform script that sets up a project skeleton
+
+### Related Topics
+- pathlib, shutil, tempfile, subprocess, sys
+
+## sys module
+### What It Is
+The `sys` module provides access to Python interpreter variables and functions. It exposes command-line arguments, the Python path, standard streams, exit functions, and low-level interpreter configuration.
+
+### Why It Is Important
+Many Python programs need to read CLI arguments, modify the module search path, or interact with the interpreter itself. `sys` is the gateway for these capabilities.
+
+### How It Works Internally
+`sys` is a built-in module compiled into the Python interpreter (`PySys_Init` in `Python/sysmodule.c`). Its attributes are populated during interpreter initialization — `sys.path` is built from `PYTHONPATH`, site-packages, and the current working directory. `sys.modules` is a dict caching all imported modules.
+
+### Syntax
+```python
+import sys
+sys.argv          # command-line arguments list
+sys.path          # module search path (list of strings)
+sys.modules       # dict of imported modules
+sys.exit(0)       # exit interpreter
+sys.version       # Python version string
+sys.platform      # platform identifier ('win32', 'linux', 'darwin')
+sys.stdin/stdout/stderr
+```
+
+### Beginner Examples
 ```python
 import sys
 
 print(f"Python version: {sys.version}")
 print(f"Platform: {sys.platform}")
-print(f"Command line args: {sys.argv}")
+print(f"Arguments: {sys.argv[1:]}")
 
-sys.path.insert(0, "/tmp/custom_packages")
-print(f"sys.path entries: {len(sys.path)}")
+sys.stdout.write("Hello stdout\n")
+sys.stderr.write("Error message\n")
 
-print(f"Recursion limit: {sys.getrecursionlimit()}")
-sys.setrecursionlimit(5000)
-print(f"New recursion limit: {sys.getrecursionlimit()}")
-
-print(f"Default encoding: {sys.getdefaultencoding()}")
-print(f"File system encoding: {sys.getfilesystemencoding()}")
+# Exit with status code
+if len(sys.argv) < 2:
+    print("Usage: script.py <name>")
+    sys.exit(1)
 ```
 
-### re — Regular Expressions
+### Intermediate Examples
+```python
+import sys
 
+# Modify module search path
+sys.path.insert(0, "/my/custom/path")
+
+# Import a module by string name
+import importlib
+module = importlib.import_module(sys.argv[1])
+print(f"Imported: {module.__name__}")
+
+# Check loaded modules
+mod_names = [k for k in sys.modules if "os" in k]
+print(f"OS-related modules: {mod_names}")
+
+# Recursion limit
+print(f"Recursion limit: {sys.getrecursionlimit()}")
+sys.setrecursionlimit(5000)
+
+# Size of objects
+data = [i for i in range(1000)]
+print(f"List size: {sys.getsizeof(data)} bytes")
+print(f"Item size: {sys.getsizeof(data[0])} bytes")
+```
+
+### Advanced Examples
+```python
+import sys
+import traceback
+
+# Custom excepthook
+def global_exception_handler(exc_type, exc_value, exc_tb):
+    with open("errors.log", "a") as f:
+        traceback.print_exception(exc_type, exc_value, exc_tb, file=f)
+    print(f"Unhandled exception: {exc_type.__name__}: {exc_value}", file=sys.stderr)
+
+sys.excepthook = global_exception_handler
+
+# Audit hooks (Python 3.8+)
+def audit_hook(event, args):
+    if event in ("import", "open"):
+        print(f"Audit: {event} - {args}")
+
+sys.addaudithook(audit_hook)
+
+# Set tracing for debugger-like behavior
+def trace_calls(frame, event, arg):
+    if event == "call":
+        print(f"Calling: {frame.f_code.co_name}")
+    return trace_calls
+
+sys.settrace(trace_calls)
+
+# Control stdin/stdout encoding
+sys.stdin.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8")
+```
+
+### Real-World Use Cases
+- **CLI tools** — parsing `sys.argv` for arguments
+- **Plugin systems** — dynamically importing modules by path
+- **Debug tools** — using `sys.settrace` for code coverage
+- **Environment checks** — verifying Python version early in startup
+- **Security** — audit hooks to detect malicious imports
+
+### Common Mistakes
+- Modifying `sys.path` permanently instead of using virtual environments
+- Using `sys.argv[0]` as the script directory without `os.path.dirname`
+- Forgetting that `sys.exit` raises `SystemExit` (caught by outer `except`)
+- Assuming `sys.platform` returns `"linux"` or `"windows"` consistently
+
+### Best Practices
+- Use `argparse` instead of raw `sys.argv` for complex CLI
+- Prefer `sys.exit(1)` over `os._exit(1)` for clean shutdown
+- Use `sys.path` modifications sparingly — prefer `PYTHONPATH` env var
+- Check `sys.version_info >= (3, 10)` for version gating
+
+### Performance Considerations
+- `sys.getsizeof` only returns shallow size (not nested objects)
+- `sys.modules` lookups are O(1) — used internally for fast imports
+- Setting `sys.settrace` significantly slows execution
+
+### Interview Questions
+1. What is the difference between `sys.exit` and `os._exit`?
+2. How does `sys.path` get populated?
+3. What is `sys.modules` and how can it be used?
+4. Explain the purpose of `sys.version_info`.
+
+### Coding Challenges
+- Write a script that reports import times for all loaded modules
+- Build a minimal debugger using `sys.settrace` that prints line numbers
+- Create a module that refuses to import on Python versions < 3.10
+
+### Related Topics
+- os, argparse, importlib, traceback, platform
+
+## re module
+### What It Is
+The `re` module provides regular expression (regex) matching operations. It allows pattern-based text search, extraction, replacement, and splitting using a regex syntax largely compatible with Perl.
+
+### Why It Is Important
+String methods (`str.find`, `str.replace`, etc.) handle only literal patterns. `re` enables complex pattern matching — validating email formats, extracting structured data from logs, syntax highlighting, and text normalization.
+
+### How It Works Internally
+Patterns are compiled into an internal bytecode representation (a mini-instruction set) that is executed by the `_sre` engine (C module). The engine uses backtracking with a stack — patterns with nested quantifiers can cause catastrophic backtracking (exponential time). Python 3.11+ includes an optimised regex engine with better caching.
+
+### Syntax
+```python
+import re
+re.search(pattern, string)    # first match anywhere
+re.match(pattern, string)     # match at start only
+re.fullmatch(pattern, string) # match entire string
+re.findall(pattern, string)   # all non-overlapping matches
+re.finditer(pattern, string)  # iterator of match objects
+re.sub(pattern, repl, string) # replace
+re.split(pattern, string)     # split by pattern
+re.compile(pattern)           # compile for reuse
+```
+
+### Beginner Examples
 ```python
 import re
 
-text = "Contact us at support@example.com or sales@company.org"
+text = "Contact: alice@example.com, bob@test.org"
 
-email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-emails = re.findall(email_pattern, text)
-print(f"Emails found: {emails}")
-
-match = re.search(r"(\w+)@(\w+)", text)
+# Search for first email
+match = re.search(r"[\w.]+@[\w.]+", text)
 if match:
-    print(f"Full match: {match.group()}")
-    print(f"Username: {match.group(1)}, Domain: {match.group(2)}")
+    print(f"Found: {match.group()} at pos {match.start()}")
 
-replaced = re.sub(r"@\w+\.\w+", "@redacted.com", text)
-print(f"Redacted: {replaced}")
+# Find all emails
+emails = re.findall(r"[\w.]+@[\w.]+", text)
+print(f"All emails: {emails}")
 
-phone = "123-456-7890"
-if re.fullmatch(r"\d{3}-\d{3}-\d{4}", phone):
-    print(f"{phone} is a valid phone number")
+# Replace
+censored = re.sub(r"[\w.]+@[\w.]+", "[REDACTED]", text)
+print(censored)
 
+# Split
 parts = re.split(r"[,;]\s*", "apple, banana; cherry, date")
-print(f"Split: {parts}")
+print(parts)
 ```
 
-### math — Mathematical Functions
+### Intermediate Examples
+```python
+import re
 
+# Named groups
+log = "2025-01-15 ERROR: Disk 98% full on /dev/sda1"
+pattern = r"(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<level>\w+):\s+(?P<message>.+)"
+match = re.search(pattern, log)
+if match:
+    print(match.groupdict())
+    # {'date': '2025-01-15', 'level': 'ERROR', 'message': 'Disk 98% full on /dev/sda1'}
+
+# Compile for performance
+email_re = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.]+$")
+valid_emails = [e for e in ["a@b.com", "bad", "c@d.org"] if email_re.match(e)]
+print(valid_emails)
+
+# Non-greedy vs greedy
+text = "<b>bold</b> and <i>italic</i>"
+greedy = re.findall(r"<.*>", text)    # ['<b>bold</b> and <i>italic</i>']
+lazy = re.findall(r"<.*?>", text)      # ['<b>', '</b>', '<i>', '</i>']
+print(f"Greedy: {greedy}, Lazy: {lazy}")
+
+# Lookahead/lookbehind
+prices = "Item A: $10, Item B: $20, $5 discount"
+dollars = re.findall(r"(?<=\$)\d+", prices)
+print(f"Prices: {dollars}")
+```
+
+### Advanced Examples
+```python
+import re
+
+# Verbose pattern with comments
+date_pattern = re.compile(r"""
+    (?P<year>\d{4})     # four-digit year
+    [-/]                # separator
+    (?P<month>\d{2})    # two-digit month
+    [-/]                # separator
+    (?P<day>\d{2})      # two-digit day
+""", re.VERBOSE | re.IGNORECASE)
+
+# Callback in substitution
+def uppercase_hex(match):
+    value = int(match.group(1), 16)
+    return f"0x{value:X}"
+
+text = "colors: #ff0000, #00ff00"
+result = re.sub(r"#([0-9a-f]{6})", uppercase_hex, text)
+print(result)  # colors: #0xFF0000, #0x00FF00
+
+# Scanner/tokenizer
+master_re = re.compile("|".join([
+    r"(?P<NUMBER>\d+)",
+    r"(?P<PLUS>\+)",
+    r"(?P<MINUS>\-)",
+    r"(?P<MUL>\*)",
+    r"(?P<WS>\s+)",
+]))
+
+def tokenize(expr):
+    pos = 0
+    while pos < len(expr):
+        match = master_re.match(expr, pos)
+        if not match:
+            raise SyntaxError(f"Unexpected char at {pos}")
+        tok_type = match.lastgroup
+        if tok_type != "WS":
+            yield (tok_type, match.group())
+        pos = match.end()
+
+print(list(tokenize("12 + 34 * 5")))
+```
+
+### Real-World Use Cases
+- **Log parsing** — extracting timestamps, error codes, IP addresses
+- **Data validation** — email, phone, URL format checking
+- **Code linting** — finding TODO/FIXME comments, checking naming conventions
+- **Text normalization** — collapsing whitespace, normalizing quotes
+- **Web scraping** — extracting data from HTML (though BeautifulSoup is preferred)
+
+### Common Mistakes
+- Forgetting to escape backslashes — use raw strings `r"\d"` not `"\\d"`
+- Overusing regex when string methods suffice — `str.startswith` is faster
+- Catastrophic backtracking with nested `(.*)*` patterns
+- Using `re.match` when `re.search` is needed (match anchors to start)
+- Not compiling patterns used in loops
+
+### Best Practices
+- Always use raw strings `r"..."` for patterns
+- Compile patterns with `re.compile` when reused
+- Use named groups `(?P<name>...)` for clarity
+- Add `re.VERBOSE` for complex patterns with comments
+- Set `re.DOTALL` if `.` should match newlines
+- Use a timeout or limit input size to prevent ReDoS attacks
+
+### Performance Considerations
+- `re.compile` caches patterns (default cache 512 entries)
+- Character classes `[a-z]` are faster than alternation `(a|b|c|...)`
+- Atomic groups `(?>...)` prevent backtracking
+- `re.search` exits on first match; `re.findall` must scan entire input
+- Use `re.DEBUG` flag to inspect compiled bytecode
+
+### Interview Questions
+1. What is the difference between `re.match` and `re.search`?
+2. Explain greedy vs non-greedy quantifiers.
+3. What is catastrophic backtracking and how do you prevent it?
+4. How do lookahead and lookbehind assertions work?
+5. What is a raw string and why is it important in regex?
+
+### Coding Challenges
+- Write a regex that validates IPv4 addresses
+- Parse Apache/Nginx log lines into structured dicts
+- Implement a simple template engine using `re.sub`
+- Extract all URLs from a markdown document
+
+### Related Topics
+- str methods, textwrap, difflib, tokenize
+
+## math module
+### What It Is
+The `math` module provides C-standard mathematical functions: trigonometric, logarithmic, exponential, power, special functions, and constants (pi, e, tau, inf, nan). It operates on floats and integers.
+
+### Why It Is Important
+Raw Python arithmetic lacks many common mathematical functions. `math` fills this gap with fast, IEEE-754 compliant implementations. It is essential for scientific computing, game physics, data analysis, and financial calculations.
+
+### How It Works Internally
+Most functions wrap C math library calls (`sin`, `cos`, `sqrt`, `log`, etc.) from `libm`. Integer functions like `gcd` and `comb` use pure-Python algorithms in CPython. Constants like `math.pi` are computed at compile time using `M_PI`.
+
+### Syntax
+```python
+import math
+math.sqrt(x)      # square root
+math.log(x, base) # logarithm
+math.sin(x)       # sine (radians)
+math.cos(x)       # cosine
+math.ceil(x)      # round up
+math.floor(x)     # round down
+math.factorial(x) # factorial
+math.gcd(a, b)    # greatest common divisor
+math.pi           # 3.14159...
+math.e            # 2.71828...
+math.inf          # infinity
+math.nan          # not a number
+```
+
+### Beginner Examples
 ```python
 import math
 
-print(f"Pi: {math.pi:.6f}")
-print(f"Euler's number: {math.e:.6f}")
-print(f"Infinity: {math.inf}")
-print(f"Not a number: {math.nan}")
+# Basic operations
+print(f"sqrt(16) = {math.sqrt(16)}")
+print(f"pi = {math.pi}")
+print(f"e = {math.e}")
 
-print(f"Square root of 144: {math.sqrt(144)}")
-print(f"Ceil of 3.14: {math.ceil(3.14)}")
-print(f"Floor of 3.14: {math.floor(3.14)}")
-print(f"Factorial of 5: {math.factorial(5)}")
-print(f"GCD of 48 and 18: {math.gcd(48, 18)}")
+# Rounding
+print(f"ceil(3.2) = {math.ceil(3.2)}")
+print(f"floor(3.8) = {math.floor(3.8)}")
 
-print(f"sin(pi/2): {math.sin(math.pi / 2)}")
-print(f"cos(0): {math.cos(0)}")
-print(f"tan(pi/4): {math.tan(math.pi / 4):.1f}")
+# GCD and LCM
+print(f"gcd(48, 18) = {math.gcd(48, 18)}")
+print(f"lcm via gcd: {48 * 18 // math.gcd(48, 18)}")
 
-print(f"log10(1000): {math.log10(1000)}")
-print(f"log(e^2): {math.log(math.e ** 2)}")
-print(f"2^10: {math.pow(2, 10)}")
+# Trigonometry
+angle = math.radians(45)
+print(f"sin(45°) = {math.sin(angle):.4f}")
+print(f"cos(45°) = {math.cos(angle):.4f}")
 ```
 
-### datetime — Dates and Times
-
+### Intermediate Examples
 ```python
-from datetime import datetime, date, time, timedelta, timezone
+import math
 
+# Distance between two points
+def distance(x1, y1, x2, y2):
+    return math.hypot(x2 - x1, y2 - y1)
+
+print(f"Distance: {distance(0, 0, 3, 4)}")  # 5.0
+
+# Factorial and combinations
+print(f"5! = {math.factorial(5)}")
+print(f"C(10, 3) = {math.comb(10, 3)}")      # 120
+print(f"P(10, 3) = {math.perm(10, 3)}")      # 720
+
+# Logarithmic scales
+for x in [1, 10, 100, 1000]:
+    print(f"log10({x}) = {math.log10(x)}")
+
+# Degree/radian conversion
+print(f"180° in radians = {math.radians(180)}")
+print(f"π rad in degrees = {math.degrees(math.pi)}")
+
+# Special functions
+print(f"gamma(5) = {math.gamma(5)}")      # 24.0 (4!)
+print(f"erf(1) = {math.erf(1):.4f}")       # error function
+```
+
+### Advanced Examples
+```python
+import math
+import random
+
+# Numerical integration (Simpson's rule)
+def integrate(f, a, b, n=1000):
+    h = (b - a) / n
+    s = f(a) + f(b)
+    for i in range(1, n, 2):
+        s += 4 * f(a + i * h)
+    for i in range(2, n - 1, 2):
+        s += 2 * f(a + i * h)
+    return s * h / 3
+
+area = integrate(math.sin, 0, math.pi)
+print(f"∫sin(x)dx from 0 to π ≈ {area:.6f}")  # 2.0
+
+# Is close comparison (floating point safe)
+a, b = 0.1 + 0.2, 0.3
+print(f"Direct: {a == b}")           # False
+print(f"isclose: {math.isclose(a, b)}")  # True
+
+# Floating point classification
+for v in [0.0, -0.0, math.inf, -math.inf, math.nan]:
+    print(f"{v}: isfinite={math.isfinite(v)}, isnan={math.isnan(v)}, isinf={math.isinf(v)}")
+
+# Modular arithmetic with large numbers
+mod = 10**9 + 7
+n = 10**6
+fact = math.factorial(n) % mod
+print(f"{n}! mod {mod} = {fact}")
+
+# Custom sinc function
+def sinc(x):
+    return 1.0 if x == 0 else math.sin(x) / x
+
+for x in [0, 0.5, 1.0]:
+    print(f"sinc({x}) = {sinc(x):.4f}")
+```
+
+### Real-World Use Cases
+- **Game physics** — velocity, acceleration, collision detection via vectors
+- **Financial models** — compound interest, amortization, present value
+- **Data normalization** — log transformation, z-score, min-max scaling
+- **Geometry** — area/volume calculations, coordinate transformations
+- **Statistics** — combinations, permutations, gamma for distributions
+
+### Common Mistakes
+- Using `math.sqrt(-1)` instead of `cmath.sqrt` for imaginary results
+- Expecting `math.isclose` defaults to work for very small/large numbers
+- Confusing `math.ceil(-0.5)` → `0` not `-1`
+- Forgetting trig functions expect radians, not degrees
+
+### Best Practices
+- Use `math.isclose` for float equality checks with tolerance
+- Prefer `math.hypot(x, y)` over `math.sqrt(x*x + y*y)` (avoids overflow)
+- Use `math.fsum` for accurate summation of floats (higher precision)
+- For complex numbers, use `cmath` (complex math) module
+- For arbitrary-precision, use `decimal.Decimal`
+
+### Performance Considerations
+- `math` functions are implemented in C and very fast
+- `math.sqrt` is significantly faster than `x**0.5`
+- `math.hypot` avoids intermediate overflow but is slightly slower
+- Precompute constants outside loops
+
+### Interview Questions
+1. Why should you use `math.isclose` instead of `==` for floats?
+2. What is the difference between `math.floor` and `math.trunc` for negative numbers?
+3. How does `math.hypot` improve numerical stability?
+4. Explain the gamma function and its relationship to factorial.
+
+### Coding Challenges
+- Implement a prime sieve using `math.isqrt` for upper bound
+- Write a `Point` class with distance, rotation, and translation using `math`
+- Calculate the approximate value of pi using Monte Carlo integration
+- Implement logistic regression hypothesis function using `math.exp`
+
+### Related Topics
+- cmath, decimal, fractions, random, statistics, numpy
+
+## datetime module
+### What It Is
+The `datetime` module supplies classes for manipulating dates, times, and time intervals: `date`, `time`, `datetime`, `timedelta`, `timezone`, and `tzinfo`. It supports arithmetic, formatting, parsing, and time zone handling.
+
+### Why It Is Important
+Working with dates and times is ubiquitous in software — logging, scheduling, data analysis, user interfaces. `datetime` provides a standard, reliable way to handle these operations without external dependencies.
+
+### How It Works Internally
+`datetime` is implemented in C (`_datetimemodule.c`). Dates are stored as proleptic Gregorian ordinal integers (days since 0001-01-01). Times are stored as microseconds since midnight. `timedelta` stores days, seconds, and microseconds separately for exact representation. Timezone handling uses the `tzinfo` abstract base class with concrete `timezone` (fixed offset) in Python 3.2+.
+
+### Syntax
+```python
+from datetime import date, time, datetime, timedelta, timezone
+
+date.today()                     # current local date
+datetime.now()                   # current local datetime
+datetime.utcnow()                # UTC datetime (naive)
+datetime.now(timezone.utc)       # timezone-aware UTC
+dt.strftime("%Y-%m-%d")          # format to string
+datetime.strptime("2025-01-15", "%Y-%m-%d")  # parse string
+dt - other_dt                    # timedelta arithmetic
+```
+
+### Beginner Examples
+```python
+from datetime import date, datetime, timedelta
+
+# Current date and time
+today = date.today()
 now = datetime.now()
-print(f"Current datetime: {now}")
-print(f"Today's date: {date.today()}")
+print(f"Today: {today}")
+print(f"Now: {now}")
 
-utc_now = datetime.now(timezone.utc)
-print(f"UTC time: {utc_now}")
+# Date arithmetic
+tomorrow = today + timedelta(days=1)
+yesterday = today - timedelta(days=1)
+print(f"Tomorrow: {tomorrow}")
+print(f"Yesterday: {yesterday}")
 
-parsed = datetime.strptime("2024-12-25 10:30:00", "%Y-%m-%d %H:%M:%S")
-print(f"Parsed datetime: {parsed}")
-
-formatted = parsed.strftime("%A, %B %d, %Y at %I:%M %p")
+# Formatting
+formatted = now.strftime("%A, %B %d, %Y at %I:%M %p")
 print(f"Formatted: {formatted}")
 
-delta = timedelta(days=7, hours=3)
-future = now + delta
-print(f"One week + 3 hours from now: {future}")
+# Parsing
+parsed = datetime.strptime("2025-12-25 10:30", "%Y-%m-%d %H:%M")
+print(f"Parsed: {parsed}")
 
-diff = future - now
-print(f"Difference in seconds: {diff.total_seconds():.0f}")
+# Date components
+print(f"Year: {today.year}, Month: {today.month}, Day: {today.day}")
 ```
 
-### random — Generate Random Numbers
+### Intermediate Examples
+```python
+from datetime import date, datetime, timedelta, timezone
 
+# Date range iteration
+def date_range(start, end):
+    for n in range(int((end - start).days)):
+        yield start + timedelta(n)
+
+start = date(2025, 1, 1)
+end = date(2025, 1, 10)
+for d in date_range(start, end):
+    print(d.strftime("%a %Y-%m-%d"))
+
+# Timezone handling
+utc = timezone.utc
+eastern = timezone(timedelta(hours=-5))
+dt_utc = datetime.now(utc)
+dt_est = dt_utc.astimezone(eastern)
+print(f"UTC: {dt_utc.isoformat()}")
+print(f"EST: {dt_est.isoformat()}")
+
+# Age calculation
+def age(birth_date):
+    today = date.today()
+    return today.year - birth_date.year - (
+        (today.month, today.day) < (birth_date.month, birth_date.day)
+    )
+
+print(f"Age: {age(date(1990, 6, 15))}")
+
+# ISO week number
+iso = today.isocalendar()
+print(f"ISO year: {iso[0]}, week: {iso[1]}, weekday: {iso[2]}")
+
+# Quarter calculation
+quarter = (today.month - 1) // 3 + 1
+print(f"Q{quarter} {today.year}")
+```
+
+### Advanced Examples
+```python
+from datetime import datetime, timedelta, timezone
+import calendar
+
+# Last day of month
+def last_day_of_month(year, month):
+    return calendar.monthrange(year, month)[1]
+
+print(f"Days in Feb 2025: {last_day_of_month(2025, 2)}")
+
+# Business days between two dates
+def business_days(start, end):
+    days = []
+    current = start
+    while current < end:
+        if current.weekday() < 5:
+            days.append(current)
+        current += timedelta(days=1)
+    return days
+
+start = date(2025, 1, 1)
+end = date(2025, 1, 15)
+print(f"Business days: {len(business_days(start, end))}")
+
+# Timezone-aware scheduling
+def next_alarm(hour=9, minute=0, tz=timezone.utc):
+    now = datetime.now(tz)
+    alarm = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if alarm <= now:
+        alarm += timedelta(days=1)
+    return alarm
+
+alarm = next_alarm(14, 30, timezone(timedelta(hours=2)))
+print(f"Next alarm: {alarm}")
+
+# RFC 3339 / ISO 8601 parsing (Python 3.11+)
+# dt = datetime.fromisoformat("2025-01-15T10:30:00+00:00")
+
+# Unix timestamp conversion
+ts = 1705314000
+dt_from_ts = datetime.fromtimestamp(ts, tz=timezone.utc)
+print(f"From timestamp: {dt_from_ts}")
+
+# High-precision timing
+start = datetime.now()
+for _ in range(1_000_000):
+    pass
+elapsed = datetime.now() - start
+print(f"Elapsed: {elapsed.total_seconds():.6f}s")
+```
+
+### Real-World Use Cases
+- **Logging** — timestamping events with timezone awareness
+- **Scheduling** — computing next run times for cron-like jobs
+- **Data pipelines** — partitioning data by date, time-windowed aggregations
+- **E-commerce** — calculating delivery windows, order age
+- **Finance** — maturity dates, coupon payment schedules, business day conventions
+
+### Common Mistakes
+- Performing arithmetic on naive datetimes with inconsistent local times
+- Assuming `datetime.utcnow()` is timezone-aware (it returns a naive datetime)
+- Using `timedelta(months=1)` — `timedelta` does not support months
+- Confusing `datetime.time` with the `time` module
+- Forgetting DST transitions when adding days
+
+### Best Practices
+- Always use timezone-aware datetimes in production systems
+- Store datetimes in UTC, convert to local time only for display
+- Use `datetime.now(timezone.utc)` instead of `datetime.utcnow()`
+- Prefer `dateutil` library for complex timezone and date parsing
+- Use `timedelta` for duration, `dateutil.relativedelta` for calendar months
+- In Python 3.11+, use `fromisoformat` for standard parsing
+
+### Performance Considerations
+- `datetime` objects are immutable (creates new objects on operation)
+- Parsing with `strptime` is relatively slow — cache format strings
+- `datetime.now()` is fast but not monotonic — use `time.perf_counter` for benchmarks
+
+### Interview Questions
+1. What is the difference between naive and aware datetimes?
+2. How do you handle DST transitions in Python?
+3. What is the maximum and minimum `datetime` representable?
+4. How does `timedelta` store its value internally?
+5. Why is storing datetimes in UTC recommended?
+
+### Coding Challenges
+- Implement a function that lists all Mondays in a given year
+- Build a cron expression parser using `datetime`
+- Create a meeting scheduler that finds common free slots across time zones
+- Write a function that calculates age in years, months, and days
+
+### Related Topics
+- time, calendar, dateutil, pytz, pendulum, timezone
+
+## random module
+### What It Is
+The `random` module implements pseudo-random number generators for various distributions: uniform, normal, exponential, triangular, and more. It also provides functions for random selection, shuffling, and sampling.
+
+### Why It Is Important
+Randomness is needed for simulations, games, testing, cryptography (non-secure), statistical sampling, and randomized algorithms. `random` provides a simple, fast, reproducible interface to these operations.
+
+### How It Works Internally
+The default generator is the Mersenne Twister (MT19937) — a deterministic PRNG with a period of 2^19937-1. It maintains a 624-element internal state array. The algorithm is not cryptographically secure — for security use `secrets` or `os.urandom`. Python 3.9+ also provides `random.Random` subclassability and `SystemRandom`.
+
+### Syntax
+```python
+import random
+random.random()          # float in [0.0, 1.0)
+random.randint(1, 10)    # int in [1, 10] inclusive
+random.uniform(0, 5)     # float in [0.0, 5.0)
+random.choice(seq)       # random element
+random.choices(seq, k=3) # k elements with replacement
+random.sample(seq, k=3)  # k unique elements
+random.shuffle(lst)      # in-place shuffle
+random.seed(42)          # fixed seed for reproducibility
+random.gauss(mu, sigma)  # normal distribution
+```
+
+### Beginner Examples
 ```python
 import random
 
-print(f"Random float [0,1): {random.random():.4f}")
-print(f"Random int 1-100: {random.randint(1, 100)}")
-print(f"Random choice: {random.uniform(10.0, 20.0):.2f}")
+# Basic random numbers
+print(f"Random float: {random.random():.4f}")
+print(f"Random int 1-10: {random.randint(1, 10)}")
+print(f"Random float 0-5: {random.uniform(0, 5):.2f}")
 
-fruits = ["apple", "banana", "cherry", "date", "elderberry"]
-print(f"Random item: {random.choice(fruits)}")
-print(f"Random sample (3): {random.sample(fruits, 3)}")
+# Selection
+fruits = ["apple", "banana", "cherry", "date"]
+print(f"Random fruit: {random.choice(fruits)}")
+print(f"Two fruits: {random.sample(fruits, 2)}")
 
-random.shuffle(fruits)
-print(f"Shuffled: {fruits}")
+# Shuffle
+deck = list(range(52))
+random.shuffle(deck)
+print(f"Shuffled deck (first 5): {deck[:5]}")
 
-print(f"Gaussian(0,1): {random.gauss(0, 1):.4f}")
+# Dice roll
+def roll_dice(n=2):
+    return sum(random.randint(1, 6) for _ in range(n))
 
+print(f"Rolled: {roll_dice()}")
+```
+
+### Intermediate Examples
+```python
+import random
+
+# Weighted choices
+colors = ["red", "green", "blue", "yellow"]
+weights = [0.5, 0.3, 0.15, 0.05]
+print(f"Weighted choice: {random.choices(colors, weights=weights, k=10)}")
+
+# Normal distribution
+heights = [round(random.gauss(170, 10), 1) for _ in range(20)]
+print(f"Mean height: {sum(heights) / len(heights):.1f}")
+
+# Reproducible randomness
 random.seed(42)
-print(f"Seeded choice: {random.choice(fruits)}")
+print(f"First: {random.randint(1, 100)}")  # 82
 random.seed(42)
-print(f"Same choice: {random.choice(fruits)}")
+print(f"Second: {random.randint(1, 100)}")  # 82 (same)
+
+# Random password generator (non-cryptographic)
+def simple_password(length=12):
+    chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%"
+    return "".join(random.choice(chars) for _ in range(length))
+
+print(f"Password: {simple_password()}")
+
+# Shuffle without mutation
+original = [1, 2, 3, 4, 5]
+shuffled = original[:]
+random.shuffle(shuffled)
+print(f"Original: {original}, Shuffled: {shuffled}")
 ```
 
-### json — JSON Encoding and Decoding
-
+### Advanced Examples
 ```python
-import json
+import random
+import math
+import statistics
 
-data = {
-    "name": "Alice",
-    "age": 30,
-    "skills": ["Python", "Data Science", "Machine Learning"],
-    "active": True,
-    "metadata": None,
-    "scores": {"math": 95, "science": 88}
-}
+# Monte Carlo estimation of pi
+def estimate_pi(num_points=100_000):
+    inside = 0
+    for _ in range(num_points):
+        x, y = random.random(), random.random()
+        if x * x + y * y <= 1.0:
+            inside += 1
+    return 4 * inside / num_points
 
-json_string = json.dumps(data, indent=2)
-print(f"JSON string:\n{json_string}")
+print(f"Estimated pi: {estimate_pi(200_000):.6f}")
 
-decoded = json.loads(json_string)
-print(f"Decoded name: {decoded['name']}")
-print(f"Decoded skills: {decoded['skills']}")
+# Custom distribution via inverse transform
+def exponential_random(rate=1.0):
+    return -math.log(1.0 - random.random()) / rate
 
-with open("sample.json", "w") as f:
-    json.dump(data, f, indent=2)
+samples = [exponential_random(0.5) for _ in range(1000)]
+print(f"Mean (expected 2.0): {statistics.mean(samples):.3f}")
 
-with open("sample.json", "r") as f:
-    loaded = json.load(f)
+# Random walk simulation
+def random_walk(steps=100):
+    x, y = 0, 0
+    path = [(x, y)]
+    for _ in range(steps):
+        dx, dy = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+        x += dx
+        y += dy
+        path.append((x, y))
+    return path
 
-print(f"Round-trip equality: {data == loaded}")
+path = random_walk(1000)
+print(f"Final position: {path[-1]}, distance: {math.hypot(*path[-1]):.2f}")
 
-import os
-os.remove("sample.json")
+# Shuffled deck with card class
+suits = ["♠", "♥", "♦", "♣"]
+ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
+deck = [f"{r}{s}" for s in suits for r in ranks]
+random.shuffle(deck)
+hand = deck[:5]
+print(f"Hand: {hand}")
+
+# Reservoir sampling (streaming)
+def reservoir_sample(stream, k):
+    reservoir = []
+    for i, item in enumerate(stream):
+        if i < k:
+            reservoir.append(item)
+        else:
+            j = random.randint(0, i)
+            if j < k:
+                reservoir[j] = item
+    return reservoir
+
+sample = reservoir_sample(range(1_000_000), 5)
+print(f"Reservoir sample: {sample}")
 ```
 
-### collections — Container Data Types
+### Real-World Use Cases
+- **Games** — dice rolls, card shuffles, loot drops, procedural generation
+- **Simulations** — Monte Carlo methods, queuing models, financial risk
+- **Testing** — generating random test data, fuzzing
+- **A/B testing** — random assignment to control/treatment groups
+- **Machine learning** — train/test split, mini-batch sampling, weight initialization
 
-```python
-from collections import Counter, defaultdict, OrderedDict, deque, namedtuple
+### Common Mistakes
+- Using `random` for security-sensitive operations (passwords, tokens, session IDs)
+- Forgetting `random.seed()` makes randomness reproducible, not unpredictable
+- Assuming `random.shuffle` returns a value (shuffles in-place, returns None)
+- Using `random.sample` on a generator (requires a sequence)
 
-text = "mississippi"
-counter = Counter(text)
-print(f"Letter counts: {dict(counter)}")
-print(f"Most common (3): {counter.most_common(3)}")
+### Best Practices
+- Use `secrets` module for cryptographic randomness
+- Call `random.seed()` once at program start for reproducibility in tests
+- Use `random.SystemRandom` for non-blocking OS entropy
+- For weighted selections, `random.choices` with `weights` parameter
+- Use `random.getrandbits(k)` for fast random integers
 
-dd = defaultdict(list)
-dd["fruits"].append("apple")
-dd["fruits"].append("banana")
-dd["veggies"].append("carrot")
-print(f"Default dict: {dict(dd)}")
+### Performance Considerations
+- `random.random()` is very fast (C implementation)
+- `random.shuffle` is O(n) in-place
+- `random.sample` uses partial Fisher-Yates shuffle, O(k) for k samples
+- Mersenne Twister is not thread-safe; use separate `Random` instances per thread
 
-Point = namedtuple("Point", ["x", "y"])
-p1 = Point(10, 20)
-p2 = Point(3, 4)
-print(f"Point p1: x={p1.x}, y={p1.y}")
-print(f"Distance from origin: {((p1.x)**2 + (p1.y)**2)**0.5:.1f}")
+### Interview Questions
+1. What algorithm does Python's `random` module use?
+2. What is the difference between `random.sample` and `random.choices`?
+3. How do you make random numbers reproducible?
+4. Why should you not use `random` for password generation?
+5. Explain the Fisher-Yates shuffle algorithm.
 
-dq = deque(maxlen=5)
-for i in range(10):
-    dq.append(i)
-print(f"Deque (maxlen=5): {list(dq)}")
+### Coding Challenges
+- Implement a deck of cards with shuffle, deal, and hand evaluation
+- Write a simulate_dice function that returns the distribution of sums
+- Implement reservoir sampling for an infinite stream
+- Build a simple procedural terrain generator using Perlin-like noise
+- Monte Carlo simulation for the birthday paradox
 
-dq.appendleft(99)
-print(f"After appendleft: {list(dq)}")
+### Related Topics
+- secrets, os.urandom, numpy.random, statistics, itertools
 
-od = OrderedDict()
-od["first"] = 1
-od["second"] = 2
-od["third"] = 3
-print(f"Ordered dict keys: {list(od.keys())}")
-```
+## subprocess module
+### What It Is
+The `subprocess` module allows spawning new processes, connecting to their input/output/error pipes, and obtaining their return codes. It replaces older modules like `os.system`, `os.spawn*`, and `os.popen*`.
 
-### itertools — Iterator Tools
+### Why It Is Important
+Python programs often need to run external commands, shell scripts, or other executables. `subprocess` provides a secure, flexible, and cross-platform API for process creation and management with full I/O control.
 
-```python
-import itertools
+### How It Works Internally
+On POSIX, `subprocess` uses `os.fork()` and `os.execve()` to create child processes. On Windows, it uses `CreateProcess`. Pipes are created via `os.pipe()` on POSIX or anonymous pipes on Windows. The `Popen` class manages process lifecycle — it spawns the subprocess in `__init__` and provides `wait`, `poll`, `communicate`, and `kill` methods.
 
-print("Count (first 5):", list(itertools.islice(itertools.count(10, 2), 5)))
-print("Cycle (first 6):", list(itertools.islice(itertools.cycle("AB"), 6)))
-print("Repeat (5 times):", list(itertools.repeat("x", 5)))
-
-print("Chain:", list(itertools.chain([1, 2], [3, 4], [5])))
-print("Compress:", list(itertools.compress("ABCDEF", [1, 0, 1, 0, 1, 0])))
-
-print("Permutations of 'AB':", list(itertools.permutations("AB", 2)))
-print("Combinations of 'ABC' (2):", list(itertools.combinations("ABC", 2)))
-print("Product:", list(itertools.product("AB", repeat=2)))
-
-data = [1, 2, 3, 4, 5]
-print("Accumulate:", list(itertools.accumulate(data)))
-print("Accumulate (mul):", list(itertools.accumulate(data, lambda a, b: a * b)))
-
-grouped = itertools.groupby("AAABBBCCAAA", lambda c: c)
-print("Groupby:", {k: len(list(g)) for k, g in grouped})
-```
-
-### pathlib — Object-Oriented File System Paths
-
-```python
-from pathlib import Path
-
-p = Path(".")
-print(f"Current dir absolute: {p.absolute()}")
-print(f"Current dir name: {p.name}")
-
-new_dir = Path("test_dir")
-new_dir.mkdir(exist_ok=True)
-print(f"Directory exists: {new_dir.exists()}")
-print(f"Is directory: {new_dir.is_dir()}")
-
-file_path = new_dir / "hello.txt"
-file_path.write_text("Hello, World!")
-print(f"File content: {file_path.read_text()}")
-print(f"File size: {file_path.stat().st_size} bytes")
-
-renamed = new_dir / "greeting.txt"
-file_path.rename(renamed)
-print(f"Renamed exists: {renamed.exists()}")
-
-for item in Path(".").iterdir():
-    print(f"  {'[DIR]' if item.is_dir() else '[FILE]'} {item.name}")
-
-renamed.unlink()
-new_dir.rmdir()
-```
-
-### subprocess — Spawning Subprocesses
-
+### Syntax
 ```python
 import subprocess
-import sys
+subprocess.run(args, ...)           # run command, wait, return CompletedProcess
+subprocess.Popen(args, ...)         # low-level process management
+subprocess.check_call(args)         # run, raise CalledProcessError on non-zero
+subprocess.check_output(args)       # run, return stdout
+subprocess.PIPE                     # send to pipe
+subprocess.STDOUT                   # redirect stderr to stdout
+```
 
+### Beginner Examples
+```python
+import subprocess
+
+# Simple command
+result = subprocess.run(["echo", "Hello World"], capture_output=True, text=True, shell=True)
+print(f"stdout: {result.stdout}")
+print(f"returncode: {result.returncode}")
+
+# Check output
+output = subprocess.check_output(["echo", "Hello"], text=True, shell=True)
+print(f"Output: {output.strip()}")
+
+# Error handling
+try:
+    subprocess.check_call(["false"], shell=True)
+except subprocess.CalledProcessError as e:
+    print(f"Command failed with code {e.returncode}")
+
+# Shell=True (use with caution)
+subprocess.run("dir", shell=True)
+```
+
+### Intermediate Examples
+```python
+import subprocess
+
+# Capture both stdout and stderr
 result = subprocess.run(
-    [sys.executable, "-c", "print('Hello from subprocess')"],
-    capture_output=True,
-    text=True
-)
-print(f"stdout: {result.stdout.strip()}")
-print(f"stderr: {result.stderr}")
-print(f"Return code: {result.returncode}")
-
-result_check = subprocess.run(
-    [sys.executable, "-c", "print('OK')"],
+    ["python", "-c", "import sys; print('out'); sys.stderr.write('err')"],
     capture_output=True,
     text=True,
-    check=True
 )
-print(f"Checked call: {result_check.stdout.strip()}")
+print(f"stdout: {result.stdout.strip()}")
+print(f"stderr: {result.stderr.strip()}")
 
-with subprocess.Popen(
-    [sys.executable, "-c", """
-import sys
-for i in range(5):
-    print(f"line {i}")
-"""],
+# Pipe input
+proc = subprocess.Popen(
+    ["sort"],
+    stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
-    text=True
-) as proc:
-    for line in proc.stdout:
-        print(f"Pipe: {line.strip()}")
+    text=True,
+)
+stdout, _ = proc.communicate("banana\napple\ncherry\n")
+print(f"Sorted: {stdout.strip()}")
 
-print("Subprocess module complete")
-```
+# Timeout
+try:
+    subprocess.run(["sleep", "10"], timeout=3, shell=True)
+except subprocess.TimeoutExpired:
+    print("Command timed out")
 
-### argparse — Command-Line Argument Parsing
+# Working directory and environment
+result = subprocess.run(
+    ["pwd"],
+    cwd="/tmp",
+    capture_output=True,
+    text=True,
+    shell=True,
+)
+print(f"Working directory: {result.stdout.strip()}")
 
-```python
-import argparse
-
-parser = argparse.ArgumentParser(description="Sample argument parser")
-parser.add_argument("input", help="Input file path")
-parser.add_argument("-o", "--output", help="Output file path")
-parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
-parser.add_argument("--count", type=int, default=1, help="Number of times")
-parser.add_argument("--mode", choices=["read", "write", "append"], default="read")
-
-args = parser.parse_args(["--verbose", "--count", "3", "in.txt"])
-print(f"Input: {args.input}")
-print(f"Output: {args.output}")
-print(f"Verbose: {args.verbose}")
-print(f"Count: {args.count}")
-print(f"Mode: {args.mode}")
-```
-
-## Beginner Examples
-
-```python
-# File copy utility using standard library modules
-import shutil
+# Environment modification
 import os
-from pathlib import Path
-
-def backup_file(source_path, backup_dir="backups"):
-    source = Path(source_path)
-    if not source.exists():
-        print(f"Error: {source_path} does not exist")
-        return False
-
-    backup_path = Path(backup_dir)
-    backup_path.mkdir(exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dest_name = f"{source.stem}_{timestamp}{source.suffix}"
-    dest = backup_path / dest_name
-
-    shutil.copy2(source, dest)
-    print(f"Backed up {source.name} -> {dest}")
-    return True
-
-from datetime import datetime
-backup_file(__file__)
-
-# Count lines of code in a directory
-def count_lines(directory=".", extensions=(".py",)):
-    total = 0
-    files = 0
-    for path in Path(directory).rglob("*"):
-        if path.suffix in extensions and path.is_file():
-            lines = len(path.read_text().splitlines())
-            total += lines
-            files += 1
-    print(f"Found {files} files with {total} total lines")
-    return total
-
-count_lines()
+env = os.environ.copy()
+env["MY_VAR"] = "hello"
+result = subprocess.run(
+    ["echo", "%MY_VAR%"],
+    env=env,
+    capture_output=True,
+    text=True,
+    shell=True,
+)
+print(f"Env var: {result.stdout.strip()}")
 ```
 
-## Intermediate Examples
-
+### Advanced Examples
 ```python
-# JSON configuration manager with schema validation
-import json
-import os
-from pathlib import Path
-import re
+import subprocess
+import threading
+import queue
 
-class ConfigManager:
-    def __init__(self, config_path="config.json"):
-        self.config_path = Path(config_path)
-        self.data = {}
-        self.load()
-
-    def load(self):
-        if self.config_path.exists():
-            with open(self.config_path) as f:
-                self.data = json.load(f)
-        else:
-            self.data = {"version": "1.0", "settings": {}}
-            self.save()
-
-    def save(self):
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, "w") as f:
-            json.dump(self.data, f, indent=2)
-
-    def get(self, key, default=None):
-        keys = key.split(".")
-        value = self.data
-        for k in keys:
-            if isinstance(value, dict):
-                value = value.get(k)
-            else:
-                return default
-        return value if value is not None else default
-
-    def set(self, key, value):
-        keys = key.split(".")
-        target = self.data
-        for k in keys[:-1]:
-            if k not in target:
-                target[k] = {}
-            target = target[k]
-        target[keys[-1]] = value
-        self.save()
-
-    def validate_email_config(self):
-        email = self.get("settings.email")
-        if email and re.match(r"[^@]+@[^@]+\.[^@]+", email):
-            return True
-        print("Invalid email configuration")
-        return False
-
-cfg = ConfigManager("test_config.json")
-cfg.set("settings.email", "user@example.com")
-cfg.set("settings.retries", 3)
-cfg.set("database.host", "localhost")
-cfg.set("database.port", 5432)
-print(f"Email: {cfg.get('settings.email')}")
-print(f"Host: {cfg.get('database.host')}")
-cfg.validate_email_config()
-os.remove("test_config.json")
-
-# Log file analyzer using collections and re
-def analyze_log_file(log_content):
-    from collections import Counter, defaultdict
-    import re
-
-    ip_pattern = r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-    ips = re.findall(ip_pattern, log_content)
-    ip_counts = Counter(ips)
-    print(f"Unique IPs: {len(ip_counts)}")
-    print(f"Top IPs: {ip_counts.most_common(3)}")
-
-    error_pattern = r"(ERROR|WARNING|INFO|DEBUG)"
-    levels = re.findall(error_pattern, log_content)
-    level_counts = Counter(levels)
-    print(f"Log levels: {dict(level_counts)}")
-
-    return {"ips": ip_counts, "levels": level_counts}
-
-sample_log = """
-2024-01-15 10:30:00 INFO 192.168.1.1 - Server started
-2024-01-15 10:30:05 ERROR 192.168.1.2 - Connection timeout
-2024-01-15 10:30:10 WARNING 192.168.1.1 - High memory usage
-2024-01-15 10:30:15 ERROR 192.168.1.3 - Disk full
-2024-01-15 10:30:20 INFO 192.168.1.1 - Request completed
-"""
-analyze_log_file(sample_log)
-```
-
-## Advanced Examples
-
-```python
-# Concurrent file processor using multiprocessing, pathlib, and argparse
-import multiprocessing as mp
-from pathlib import Path
-import argparse
-import json
-import hashlib
-import time
-
-def process_file(file_path):
-    path = Path(file_path)
-    if not path.is_file():
-        return None
-
-    content = path.read_bytes()
-    result = {
-        "path": str(path),
-        "size": len(content),
-        "md5": hashlib.md5(content).hexdigest(),
-        "lines": len(content.splitlines()) if content else 0,
-        "extension": path.suffix
-    }
-    return result
-
-def process_batch(file_paths):
-    results = []
-    for fp in file_paths:
-        result = process_file(fp)
-        if result:
-            results.append(result)
-    return results
-
-def scan_and_process(directory=".", recursive=True, output=None, workers=4):
-    base = Path(directory)
-    if not base.exists():
-        print(f"Directory {directory} does not exist")
-        return
-
-    pattern = "**/*" if recursive else "*"
-    files = [str(p) for p in base.glob(pattern) if p.is_file()]
-    print(f"Found {len(files)} files to process")
-
-    if not files:
-        return
-
-    chunk_size = max(1, len(files) // workers)
-    chunks = [files[i:i + chunk_size] for i in range(0, len(files), chunk_size)]
-
-    start = time.time()
-    with mp.Pool(workers) as pool:
-        chunk_results = pool.map(process_batch, chunks)
-
-    all_results = []
-    for cr in chunk_results:
-        all_results.extend(cr)
-
-    elapsed = time.time() - start
-    total_size = sum(r["size"] for r in all_results)
-    total_lines = sum(r["lines"] for r in all_results)
-
-    summary = {
-        "files_processed": len(all_results),
-        "total_size_bytes": total_size,
-        "total_lines": total_lines,
-        "time_seconds": round(elapsed, 2),
-        "files_per_second": round(len(all_results) / elapsed, 1) if elapsed > 0 else 0
-    }
-
-    print(f"Processed {summary['files_processed']} files in {summary['time_seconds']}s")
-    print(f"Total size: {total_size}, Total lines: {total_lines}")
-
-    if output:
-        with open(output, "w") as f:
-            json.dump({"summary": summary, "files": all_results}, f, indent=2)
-        print(f"Results saved to {output}")
-
-    return summary
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced concurrent file processor")
-    parser.add_argument("directory", nargs="?", default=".", help="Directory to scan")
-    parser.add_argument("-o", "--output", help="Output JSON file")
-    parser.add_argument("-w", "--workers", type=int, default=4, help="Number of workers")
-    parser.add_argument("--no-recursive", action="store_false", dest="recursive")
-    args = parser.parse_args()
-
-    summary = scan_and_process(
-        directory=args.directory,
-        recursive=args.recursive,
-        output=args.output,
-        workers=args.workers
+# Streaming output in real-time
+def stream_output():
+    proc = subprocess.Popen(
+        ["ping", "localhost", "-n", "5"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
+    for line in iter(proc.stdout.readline, ""):
+        print(f"[OUT] {line.strip()}")
+    proc.stdout.close()
+    proc.wait()
 
-    if summary:
-        print(json.dumps(summary, indent=2))
+# Parallel subprocesses
+def run_parallel(commands):
+    processes = [subprocess.Popen(cmd, shell=True) for cmd in commands]
+    for proc in processes:
+        proc.wait()
+    return [proc.returncode for proc in processes]
 
-# Custom itertools-like combinatorics library
-class Combinatorics:
-    @staticmethod
-    def permutations(items, r=None):
-        n = len(items)
-        r = r or n
-        if r > n:
-            return
-        indices = list(range(n))
-        cycles = list(range(n, n - r, -1))
-        yield tuple(items[i] for i in indices[:r])
-        while True:
-            for i in reversed(range(r)):
-                cycles[i] -= 1
-                if cycles[i] == 0:
-                    indices[i:] = indices[i + 1:] + indices[i:i + 1]
-                    cycles[i] = n - i
-                else:
-                    j = cycles[i]
-                    indices[i], indices[-j] = indices[-j], indices[i]
-                    yield tuple(items[i] for i in indices[:r])
-                    break
-            else:
-                return
+codes = run_parallel(["echo a", "echo b", "echo c"])
+print(f"Return codes: {codes}")
 
-    @staticmethod
-    def combinations(items, r):
-        n = len(items)
-        if r > n:
-            return
-        indices = list(range(r))
-        yield tuple(items[i] for i in indices)
-        while True:
-            for i in reversed(range(r)):
-                if indices[i] != i + n - r:
-                    break
-            else:
-                return
-            indices[i] += 1
-            for j in range(i + 1, r):
-                indices[j] = indices[j - 1] + 1
-            yield tuple(items[i] for i in indices)
+# Interactive subprocess
+proc = subprocess.Popen(
+    ["python", "-i"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+)
+stdout, _ = proc.communicate("print(2 + 2)\nexit()\n")
+print(stdout)
 
-c = Combinatorics()
-print("Permutations of ABC:", list(c.permutations("ABC", 2)))
-print("Combinations of ABCD (3):", list(c.combinations("ABCD", 3)))
+# Process group management
+import signal
+import os
+
+def run_with_timeout(cmd, timeout):
+    proc = subprocess.Popen(cmd, shell=True, preexec_fn=os.setsid if os.name != "nt" else None)
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # Kill process group
+        if os.name == "nt":
+            proc.kill()
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        raise
+    return proc.returncode
 ```
 
-## Real-World Use Cases
+### Real-World Use Cases
+- **Build automation** — running compilers, linters, test runners
+- **Deployment** — SSH commands, Docker operations, package managers
+- **Data processing** — piping data through external filters (jq, sed, awk)
+- **System administration** — checking disk usage, restarting services
+- **FFI alternative** — calling CLI tools when Python libraries don't exist
 
-- **os/sys**: Environment configuration, path manipulation, cross-platform utilities
-- **re**: Log parsing, input validation (emails, phone numbers, URLs), code analysis
-- **math/datetime/random**: Scientific computing, timestamp handling, Monte Carlo simulations
-- **json**: REST API responses, configuration files, data interchange format
-- **collections/itertools**: Efficient data processing, memory-efficient iteration, frequency analysis
-- **pathlib**: Cross-platform file system operations, replacing os.path
-- **subprocess/argparse**: CLI tools, build scripts, system administration
-- **shutil**: File backups, directory archival (make_archive), disk usage statistics
+### Common Mistakes
+- Using `shell=True` with user input (command injection risk)
+- Not quoting arguments with `shell=True` — prefer list form
+- Ignoring the return code (check `result.returncode` or use `check_call`)
+- Deadlocking by reading `stdout` before closing `stdin` in `Popen`
+- Using `subprocess.run` with `stdout=PIPE` but never reading the pipe
 
-## Common Mistakes
+### Best Practices
+- **Never use** `shell=True` with untrusted input or string concatenation
+- Prefer list argument form (`["ls", "-l"]`) over shell string
+- Use `capture_output=True` (Python 3.7+) instead of manually setting `stdout=PIPE`
+- Set `text=True` to get strings instead of bytes
+- Use `timeout` parameter to prevent hangs
+- Handle `CalledProcessError` and `TimeoutExpired` explicitly
+- Use `shlex.split()` for safe tokenization of command strings
 
-- Using `os.path` when `pathlib.Path` is more readable and cross-platform
-- Forgetting that `random` is not suitable for cryptographic purposes (use `secrets` instead)
-- Neglecting to handle `json.JSONDecodeError` when parsing untrusted JSON
-- Modifying a `defaultdict` or `Counter` while iterating over it
-- Using `subprocess.run` with `shell=True` without sanitizing input (security risk)
-- Overlooking that `itertools` functions return iterators, not lists (lazy evaluation)
-- Assuming `datetime.now()` returns timezone-aware objects (it returns naive objects by default)
-- Using mutable default arguments in combination with `defaultdict`
+### Performance Considerations
+- Process creation is expensive — avoid spawning processes in tight loops
+- Pipe buffering can cause delays — use `bufsize=1` for line-buffered output
+- `subprocess.run` blocks until completion — use `Popen` with `asyncio` for concurrent I/O
+- On Windows, process creation is slower than on POSIX
 
-## Best Practices
+### Interview Questions
+1. What is the difference between `subprocess.run` and `subprocess.Popen`?
+2. Why is `shell=True` dangerous?
+3. How do you prevent deadlocks when using `Popen` with pipes?
+4. How would you run multiple subprocesses in parallel?
+5. What does `capture_output=True` do in `subprocess.run`?
 
-- Prefer `import module` over `from module import *` to avoid namespace pollution
-- Use `pathlib.Path` for all file path operations in new code
-- Leverage `itertools` and `collections` for memory-efficient data processing
-- Always specify `encoding="utf-8"` explicitly when opening text files
-- Use `argparse` over `sys.argv` for robust CLI argument parsing
-- Prefer `subprocess.run` with `capture_output=True` over `os.system`
-- Use `json.dumps(..., ensure_ascii=False)` when handling non-ASCII text
-- Use `datetime.timezone.utc` instead of the deprecated `pytz` library in Python 3.11+
+### Coding Challenges
+- Write a Python function that runs a command with a timeout and kills the process tree
+- Build a simple task runner that executes commands in parallel with output streaming
+- Implement a Python REPL that runs code in a subprocess for isolation
+- Create a wrapper around `ffmpeg` that converts video formats
 
-## Interview Questions
-
-1. **Q**: What is the difference between `os.path.join` and `pathlib.Path /` operator?
-   **A**: Both join path components, but pathlib is object-oriented, more readable, and cross-platform. The `/` operator creates a `Path` object while `os.path.join` returns a string.
-
-2. **Q**: How does `Counter.most_common()` work internally?
-   **A**: It uses `heapq.nlargest` to find the n most frequent elements in O(n log k) time where k is the number of requested items.
-
-3. **Q**: Explain the difference between `re.match` and `re.search`.
-   **A**: `re.match` checks for a match only at the beginning of the string, while `re.search` checks anywhere in the string.
-
-4. **Q**: How do you make `datetime.now()` timezone-aware?
-   **A**: Use `datetime.now(timezone.utc)` or `datetime.now().astimezone()` to get a timezone-aware datetime.
-
-5. **Q**: When would you use `defaultdict` over a regular `dict`?
-   **A**: When you want to avoid KeyError checks for missing keys, especially when building collections (lists of grouped items, nested dictionaries).
-
-## Coding Challenges
-
-1. **Log Parser**: Write a function that parses an Apache-style log file and returns hourly request counts, top IPs, and error rates using `re`, `collections.Counter`, and `datetime`.
-
-2. **File Synchronizer**: Using `pathlib`, `os`, and `hashlib`, write a tool that compares two directories and prints files that are new, modified, or deleted.
-
-3. **JSON Schema Validator**: Using `json` and `collections.abc`, implement a simple JSON schema validator that checks required fields, types, and nested structures.
-
-4. **Pipeline Combinator**: Using `itertools`, implement a function that takes multiple iterables and yields elements in a round-robin fashion, stopping when all iterables are exhausted.
-
-5. **Configuration Merge**: Using `collections.ChainMap` or nested `defaultdict`, implement a configuration system that merges defaults, user config, and environment variables with proper precedence.
-
-## Summary
-
-Python's standard library is a comprehensive toolkit covering virtually every common programming need. Mastering modules like `os`, `sys`, `re`, `json`, `collections`, `itertools`, `pathlib`, and `subprocess` is essential for writing idiomatic, efficient, and portable Python code. The standard library reduces external dependencies, improves code consistency, and is rigorously tested across all supported platforms.
-
-## Related Topics
-
-Packages and Modules (54.x series), Creating Packages (58.x), Virtual Environments (56.x), pip (55.x), Import System (57.x)
+### Related Topics
+- os.system, os.exec*, shlex, asyncio.subprocess, signal, multiprocessing
